@@ -1,0 +1,12 @@
+/target
+# Test materials
+/report/*_out
+/testwav
+# Reference implementation
+/flac-1.3.4
+# Working-copy-specific config
+/.cargo/config.toml
+/.vscode
+# artifacts from xctrace
+/Launch_*
+
