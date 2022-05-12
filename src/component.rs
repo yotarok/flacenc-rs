@@ -945,6 +945,7 @@ mod tests {
       + 1 + 7 + 24 // METADATA_BLOCK_HEADER
       + 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128 // METADATA_BLOCK_STREAMINFO
         );
+        assert_eq!(stream.count_bits(), bv.len());
         Ok(())
     }
 
@@ -954,6 +955,7 @@ mod tests {
         let mut bv: BitVec<u8> = BitVec::new();
         stream_info.write(&mut bv)?;
         assert_eq!(bv.len(), 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128);
+        assert_eq!(stream_info.count_bits(), bv.len());
         Ok(())
     }
 
@@ -980,6 +982,8 @@ mod tests {
             ]
         );
 
+        assert_eq!(header.count_bits(), bv.len());
+
         Ok(())
     }
 
@@ -993,6 +997,8 @@ mod tests {
         let frame = make_frame(&stream_info, &framebuf, 0);
         let mut bv: BitVec<usize> = BitVec::new();
         frame.write(&mut bv)?;
+
+        assert_eq!(frame.count_bits(), bv.len());
         Ok(())
     }
 
@@ -1064,6 +1070,7 @@ mod tests {
         let mut bv: BitVec<usize> = BitVec::new();
         ch.write(&mut bv)?;
         assert_eq!(bv, bits![1, 0, 0, 1]);
+        assert_eq!(ch.count_bits(), bv.len());
         Ok(())
     }
 
