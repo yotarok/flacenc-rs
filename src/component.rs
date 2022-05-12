@@ -367,6 +367,11 @@ impl StreamInfo {
         self.md5.copy_from_slice(digest);
     }
 
+    #[cfg(test)]
+    pub const fn md5(&self) -> &[u8; 16] {
+        &self.md5
+    }
+
     pub const fn channels(&self) -> usize {
         self.channels as usize
     }

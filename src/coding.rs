@@ -438,6 +438,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source;
     use crate::test_helper;
 
     #[test]
@@ -466,5 +467,35 @@ mod tests {
         for t in 2..signal.len() {
             assert_eq!(unpacked[t], signal[t] - 2 * signal[t - 1] + signal[t - 2]);
         }
+    }
+
+    #[test]
+    fn md5_invariance() {
+        let channels = 2;
+        let bits_per_sample = 24;
+        let sample_rate = 16000;
+        let block_size = 128;
+        let constant = 23;
+        let signal_len = 1024;
+        let signal = test_helper::constant_plus_noise(signal_len * channels, constant, 0);
+        let source =
+            source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
+        let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size);
+        eprintln!(
+            "MD5 of DC signal ({}) with len={} and ch={} was",
+            constant, signal_len, channels
+        );
+        eprint!("[");
+        for &b in stream.stream_info().md5() {
+            eprint!("0x{:02X}, ", b);
+        }
+        eprintln!("]");
+        assert_eq!(
+            stream.stream_info().md5(),
+            &[
+                0xEE, 0x78, 0x7A, 0x6E, 0x99, 0x01, 0x36, 0x79, 0xA5, 0xBB, 0x6D, 0x5C, 0x10, 0xAF,
+                0x0B, 0x87
+            ]
+        );
     }
 }

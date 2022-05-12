@@ -211,7 +211,10 @@ lpc_order = 7
         let empty_src = "";
         let config: Encoder = toml::from_str(empty_src).expect("Parse error.");
         let default_config: Encoder = Encoder::default();
-        eprintln!("## Current default config\n\n{}", toml::to_string(&config).unwrap());
+        eprintln!(
+            "## Current default config\n\n{}",
+            toml::to_string(&config).unwrap()
+        );
         assert_eq!(toml::to_string(&config), toml::to_string(&default_config));
     }
 }
