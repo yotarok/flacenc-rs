@@ -13,17 +13,14 @@
 // limitations under the License.
 
 #![feature(portable_simd)]
-#![warn(
-    clippy::all,
-    clippy::nursery,
-    clippy::pedantic,
-// tentatively disabled
-    clippy::cargo,
-)]
+// Note that clippy attributes should be in sync with those declared in "main.rs"
+#![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
 // ad-hoc exceptions.
 #![allow(
-    clippy::cargo_common_metadata,
+    // Reactivate "use_self" once false-positive issue is gone.
+    // https://github.com/rust-lang/rust-clippy/issues/6902
+    clippy::use_self,
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,

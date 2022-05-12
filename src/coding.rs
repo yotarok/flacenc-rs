@@ -226,6 +226,7 @@ pub fn estimated_qlpc(
         config.qlpc.lpc_order,
         config.qlpc.quant_precision,
         signal,
+        &config.qlpc.window,
         &mut errors,
     );
     let residual = encode_residual(&config.prc, &errors, qlpc.order());

@@ -1,4 +1,3 @@
-#![feature(portable_simd)]
 // Copyright 2022 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,14 +11,17 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// Note that clippy attributes should be in sync with those declared in "lib.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
-// Some of clippy::pedantic rules are actually useful, so use it with a lot of
-// ad-hoc exceptions.
 #![allow(
+    clippy::use_self,
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_sign_loss
+    clippy::cast_sign_loss,
+    clippy::multiple_crate_versions,
+    clippy::must_use_candidate
 )]
 
 use std::fs::File;

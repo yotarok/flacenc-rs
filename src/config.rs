@@ -20,6 +20,8 @@ use serde::Serialize;
 use super::constant::MAX_RICE_PARAMETER;
 use super::constant::QLPC_DEFAULT_ORDER;
 use super::constant::QLPC_DEFAULT_PRECISION;
+use super::lpc::default_window;
+use super::lpc::Window;
 
 #[allow(clippy::unnecessary_wraps)]
 const fn default_fixed_block_size() -> Option<usize> {
@@ -167,6 +169,8 @@ pub struct Qlpc {
     /// Precision for quantized LPC coefficients.
     #[serde(default = "default_quant_precision")]
     pub quant_precision: usize,
+    #[serde(default = "default_window")]
+    pub window: Window,
 }
 
 impl Default for Qlpc {
@@ -174,6 +178,7 @@ impl Default for Qlpc {
         Self {
             lpc_order: default_lpc_order(),
             quant_precision: default_quant_precision(),
+            window: default_window(),
         }
     }
 }

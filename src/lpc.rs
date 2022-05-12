@@ -14,10 +14,58 @@
 
 //! Algorithms for quantized linear-prediction coding (QLPC).
 
+use std::cell::RefCell;
+
+use serde::Deserialize;
+use serde::Serialize;
+
 use super::constant::MAX_LPC_ORDER;
 use super::constant::MAX_LPC_ORDER_PLUS_1;
 use super::constant::QLPC_MAX_SHIFT;
 use super::constant::QLPC_MIN_SHIFT;
+
+/// Analysis window descriptor.
+///
+/// This enum is `Serializable` and `Deserializable` because this will be
+/// directly used in config structs.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type")]
+pub enum Window {
+    Rectangle,
+    Tukey { alpha: f32 },
+}
+
+impl Window {
+    #[inline]
+    pub fn weight(&self, t: usize, len: usize) -> f32 {
+        let t = t as f32;
+        let max_t = len as f32 - 1.0;
+        match *self {
+            Self::Rectangle => 1.0f32,
+            Self::Tukey { alpha } => {
+                let alpha_len = alpha * max_t;
+                if t < alpha_len / 2.0 {
+                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * t / alpha_len).cos())
+                } else if t < max_t - alpha_len / 2.0 {
+                    1.0
+                } else {
+                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * (max_t - t) / alpha_len).cos())
+                }
+            }
+        }
+    }
+}
+
+impl Default for Window {
+    fn default() -> Self {
+        default_window()
+    }
+}
+
+/// Default analysis window
+pub const fn default_window() -> Window {
+    Window::Tukey { alpha: 0.1 }
+}
 
 /// Finds shift parameter for quantizing the given set of coefficients.
 fn find_shift(coefs: &[f32], precision: usize) -> i8 {
@@ -217,7 +265,7 @@ impl QuantizedParameters {
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
-pub fn auto_correlation(order: usize, signal: &[i32], dest: &mut [f32]) {
+pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
     weighted_auto_correlation(order, signal, dest, |_t| 1.0f32);
 }
 
@@ -226,7 +274,7 @@ pub fn auto_correlation(order: usize, signal: &[i32], dest: &mut [f32]) {
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
-pub fn weighted_auto_correlation<F>(order: usize, signal: &[i32], dest: &mut [f32], weight_fn: F)
+pub fn weighted_auto_correlation<F>(order: usize, signal: &[f32], dest: &mut [f32], weight_fn: F)
 where
     F: Fn(usize) -> f32,
 {
@@ -293,16 +341,66 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
     }
 }
 
+/// Working buffer for (unquantized) LPC esitimation.
+struct LpcEstimator {
+    /// Buffer for storing windowed signal.
+    windowed_signal: Vec<f32>,
+    /// Buffer for storing auto-correlation coefficients.
+    corr_coefs: Vec<f32>,
+}
+
+impl LpcEstimator {
+    pub const fn new() -> Self {
+        Self {
+            windowed_signal: vec![],
+            corr_coefs: vec![],
+        }
+    }
+
+    #[allow(clippy::range_plus_one)]
+    pub fn lpc_from_auto_corr(
+        &mut self,
+        signal: &[i32],
+        window: &Window,
+        lpc_order: usize,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        let mut ret = heapless::Vec::new();
+        ret.resize(lpc_order, 0.0)
+            .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
+        self.corr_coefs.resize(lpc_order + 1, 0.0);
+        self.corr_coefs.fill(0f32);
+
+        self.windowed_signal.clear();
+        for (t, &v) in signal.iter().enumerate() {
+            self.windowed_signal
+                .push(v as f32 * window.weight(t, signal.len()));
+        }
+
+        auto_correlation(lpc_order + 1, &self.windowed_signal, &mut self.corr_coefs);
+        symmetric_levinson_recursion(
+            &self.corr_coefs[0..lpc_order],
+            &self.corr_coefs[1..lpc_order + 1],
+            &mut ret,
+        );
+        ret
+    }
+}
+
+thread_local! {
+    /// Global (thread-local) working buffer for LPC estimation.
+    static LPC_ESTIMATOR: RefCell<LpcEstimator> = RefCell::new(LpcEstimator::new());
+}
+
 /// Estimates the optimal LPC coefficients and populates error signal.
 ///
 /// # Panics
 ///
 /// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-#[allow(clippy::range_plus_one)]
 pub fn qlpc(
     lpc_order: usize,
     coef_prec: usize,
     signal: &[i32],
+    window: &Window,
     errors: &mut [i32],
 ) -> QuantizedParameters {
     // In fact `signal` only needs to be larger than `init_lpc_order`. But, this
@@ -310,22 +408,11 @@ pub fn qlpc(
     // to reliably estimate LPC coefficients.
     assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
 
-    let mut corr_coefs: heapless::Vec<f32, MAX_LPC_ORDER_PLUS_1> = heapless::Vec::new();
-    let mut lpc_coefs: heapless::Vec<f32, MAX_LPC_ORDER> = heapless::Vec::new();
-
-    corr_coefs
-        .resize(lpc_order + 1, 0.0)
-        .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
-    lpc_coefs
-        .resize(lpc_order, 0.0)
-        .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
-
-    auto_correlation(lpc_order + 1, signal, &mut corr_coefs);
-    symmetric_levinson_recursion(
-        &corr_coefs[0..lpc_order],
-        &corr_coefs[1..lpc_order + 1],
-        &mut lpc_coefs,
-    );
+    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+        estimator
+            .borrow_mut()
+            .lpc_from_auto_corr(signal, window, lpc_order)
+    });
 
     // Note: qlpc may truncate zeroed coefficients and reduce the order.
     //       `lpc_order` is no longer valid as the length of `qlpc`.
@@ -346,9 +433,9 @@ mod tests {
 
     #[test]
     fn auto_correlation_computation() {
-        let mut signal = [0i32; 128];
+        let mut signal = [0f32; 128];
         for t in 0..signal.len() {
-            signal[t] = ((t as f32 / 32.0 * 2.0 * PI).sin() * 1024.0) as i32;
+            signal[t] = (t as f32 / 32.0 * 2.0 * PI).sin() * 1024.0;
         }
         let mut corr = [0f32; 64];
         auto_correlation(32, &signal, &mut corr);
@@ -429,15 +516,14 @@ mod tests {
     fn qlpc_recovery(lpc_order: usize) {
         let coef_prec: usize = 12;
         let signal = test_helper::sinusoid_plus_noise(1024, 32, 30000.0, 128);
-        let mut corr_coefs = vec![0f32; lpc_order + 1];
-        let mut lpc_coefs = vec![0f32; lpc_order];
 
-        auto_correlation(lpc_order + 1, &signal, &mut corr_coefs);
-        symmetric_levinson_recursion(
-            &corr_coefs[0..lpc_order],
-            &corr_coefs[1..lpc_order + 1],
-            &mut lpc_coefs,
-        );
+        let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+            estimator.borrow_mut().lpc_from_auto_corr(
+                &signal,
+                &Window::Tukey { alpha: 0.1 },
+                lpc_order,
+            )
+        });
         let mut errors = vec![0i32; signal.len()];
         eprintln!("{:?}", signal);
         let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
@@ -473,8 +559,10 @@ mod tests {
     fn lpc_with_pure_dc() {
         const LPC_ORDER: usize = 1; // Overdetermined when order > 1
         let signal = [12345, 12345, 12345, 12345, 12345, 12345, 12345];
+        let signal_float = signal.iter().map(|&x| x as f32).collect::<Vec<f32>>();
+
         let mut corr = [0f32; LPC_ORDER + 1];
-        auto_correlation(LPC_ORDER + 1, &signal, &mut corr);
+        auto_correlation(LPC_ORDER + 1, &signal_float, &mut corr);
 
         let mut coefs = [0f32; LPC_ORDER];
         symmetric_levinson_recursion(&corr[0..LPC_ORDER], &corr[1..LPC_ORDER + 1], &mut coefs);
@@ -491,37 +579,37 @@ mod tests {
     #[test]
     fn lpc_with_known_coefs() {
         // [1, -1, 0.5]
-        const LPC_ORDER: usize = 3;
+        let lpc_order: usize = 3;
         let signal = vec![
-            //4096, 4096, 4096, 2048, 0, 0, 1024, 1024,
-            0, -512, 0, 512, 256, -256, -256, 128, 256, 0, -192, -64, 128, 96, -64, -96, 16, 80, 16,
-            -56, -32, 32, 36, -12,
+            0, -512, 0, 512, 256, -256, -256, 128, 256, 0, -192, -64, 128, 96, -64, -96, 16, 80,
+            16, -56, -32, 32, 36, -12,
         ];
 
-        let mut input_corr = [0f32; LPC_ORDER];
-        auto_correlation(LPC_ORDER, &signal[..signal.len() - 1], &mut input_corr);
-        eprintln!("Input Autocorr = {:?}", input_corr);
-        let mut output_corr = [0f32; LPC_ORDER + 1];
-        auto_correlation(LPC_ORDER + 1, &signal, &mut output_corr);
-
-        let mut coefs = [0f32; LPC_ORDER];
-        symmetric_levinson_recursion(&input_corr, &output_corr[1..], &mut coefs);
+        let coefs = LPC_ESTIMATOR.with(|estimator| {
+            estimator.borrow_mut().lpc_from_auto_corr(
+                &signal,
+                &Window::Tukey { alpha: 0.25 },
+                lpc_order,
+            )
+        });
         eprintln!("{:?}", coefs);
-        assert_close!(
-            input_corr[0] * coefs[0] + input_corr[1] * coefs[1] + input_corr[2] * coefs[2],
-            output_corr[1]
-        );
-        assert_close!(
-            input_corr[1] * coefs[0] + input_corr[0] * coefs[1] + input_corr[1] * coefs[2],
-            output_corr[2]
-        );
-        assert_close!(
-            input_corr[2] * coefs[0] + input_corr[1] * coefs[1] + input_corr[0] * coefs[2],
-            output_corr[3]
-        );
         // Actual auto-correlation function is not Toeplitz due to boundaries.
-        // assert!(coefs[0] > 0.0);
-        // assert!(coefs[1] < 0.0);
-        // assert!(coefs[2] > 0.0);
+        assert!(coefs[0] > 0.0);
+        assert!(coefs[1] < 0.0);
+        assert!(coefs[2] > 0.0);
+    }
+
+    #[test]
+    fn tukey_window() {
+        // reference computed with scipy as `scipy.signal.windows.tukey(32, 0.3)`.
+        let reference = [
+            0., 0.1098376, 0.39109322, 0.720197, 0.95255725, 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+            1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 0.95255725, 0.720197, 0.39109322,
+            0.1098376, 0.,
+        ];
+        let win = Window::Tukey { alpha: 0.3 };
+        for (t, &expected_w) in reference.iter().enumerate() {
+            assert_close!(win.weight(t, reference.len()), expected_w);
+        }
     }
 }
