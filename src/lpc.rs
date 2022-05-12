@@ -299,14 +299,17 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
 ///
 /// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
 #[allow(clippy::range_plus_one)]
-pub fn qlpc(signal: &[i32], errors: &mut [i32]) -> QuantizedParameters {
+pub fn qlpc(
+    lpc_order: usize,
+    coef_prec: usize,
+    signal: &[i32],
+    errors: &mut [i32],
+) -> QuantizedParameters {
     // In fact `signal` only needs to be larger than `init_lpc_order`. But, this
     // value is still subjected to change, and anyway we should have some margin
     // to reliably estimate LPC coefficients.
     assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
 
-    let coef_prec = 12;
-    let lpc_order = 16;
     let mut corr_coefs: heapless::Vec<f32, MAX_LPC_ORDER_PLUS_1> = heapless::Vec::new();
     let mut lpc_coefs: heapless::Vec<f32, MAX_LPC_ORDER> = heapless::Vec::new();
 

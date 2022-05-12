@@ -28,7 +28,6 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
-use super::constant::MAX_RICE_PARAMETER;
 use super::lpc;
 use super::rice;
 use super::source::FrameBuf;
@@ -45,9 +44,9 @@ pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
 }
 
 /// Constructs `Residual` component given the error signal.
-pub fn encode_residual(errors: &[i32], warmup_length: usize) -> Residual {
+pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
     let block_size = errors.len();
-    let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, MAX_RICE_PARAMETER);
+    let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     let nparts = 1 << prc_p.order;
     let part_size = errors.len() / nparts;
 
@@ -134,11 +133,16 @@ impl FixedLpcEncoder {
     }
 
     /// Constructs `FixedLpc` using the current `self.errors`.
-    fn make_subframe(&mut self, warmup_samples: &[i32], bits_per_sample: u8) -> FixedLpc {
+    fn make_subframe(
+        &mut self,
+        config: &config::Prc,
+        warmup_samples: &[i32],
+        bits_per_sample: u8,
+    ) -> FixedLpc {
         let order = warmup_samples.len();
         unpack_simds(&self.errors, &mut self.unpacked_errors);
         self.unpacked_errors.truncate(self.error_len_in_samples);
-        let residual = encode_residual(&self.unpacked_errors, order);
+        let residual = encode_residual(config, &self.unpacked_errors, order);
         FixedLpc::new(warmup_samples, residual, bits_per_sample as usize)
     }
 
@@ -155,6 +159,7 @@ impl FixedLpcEncoder {
     /// Finds the smalest config for `FixedLpc`.
     pub fn apply(
         &mut self,
+        config: &config::SubFrameCoding,
         signal: &[i32],
         bits_per_sample: u8,
         baseline_bits: usize,
@@ -167,7 +172,7 @@ impl FixedLpcEncoder {
 
         for order in 0..=4 {
             let subframe: SubFrame = self
-                .make_subframe(&signal[0..order], bits_per_sample)
+                .make_subframe(&config.prc, &signal[0..order], bits_per_sample)
                 .into();
             let bits = subframe.count_bits();
             if bits < min_bits {
@@ -192,12 +197,17 @@ thread_local! {
 /// The current implementation may cause overflow error if `bits_per_sample` is
 /// larger than 29. Therefore, it panics when `bits_per_sample` is larger than
 /// this.
-pub fn fixed_lpc(signal: &[i32], bits_per_sample: u8, baseline_bits: usize) -> Option<SubFrame> {
+pub fn fixed_lpc(
+    config: &config::SubFrameCoding,
+    signal: &[i32],
+    bits_per_sample: u8,
+    baseline_bits: usize,
+) -> Option<SubFrame> {
     assert!(bits_per_sample < 30);
     FIXED_LPC_ENCODER.with(|encoder| {
         encoder
             .borrow_mut()
-            .apply(signal, bits_per_sample, baseline_bits)
+            .apply(config, signal, bits_per_sample, baseline_bits)
     })
 }
 
@@ -206,10 +216,19 @@ pub fn fixed_lpc(signal: &[i32], bits_per_sample: u8, baseline_bits: usize) -> O
 /// # Panics
 ///
 /// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn estimated_lpc(signal: &[i32], bits_per_sample: u8) -> SubFrame {
+pub fn estimated_qlpc(
+    config: &config::SubFrameCoding,
+    signal: &[i32],
+    bits_per_sample: u8,
+) -> SubFrame {
     let mut errors = vec![0i32; signal.len()];
-    let qlpc = lpc::qlpc(signal, &mut errors);
-    let residual = encode_residual(&errors, qlpc.order());
+    let qlpc = lpc::qlpc(
+        config.qlpc.lpc_order,
+        config.qlpc.quant_precision,
+        signal,
+        &mut errors,
+    );
+    let residual = encode_residual(&config.prc, &errors, qlpc.order());
     Lpc::new(
         &signal[0..qlpc.order()],
         qlpc,
@@ -225,14 +244,14 @@ pub fn encode_subframe(
     samples: &[i32],
     bits_per_sample: u8,
 ) -> SubFrame {
-    if config.allow_constant && is_constant(samples) {
+    if config.use_constant && is_constant(samples) {
         // Assuming constant is always best if it's applicable.
         Constant::new(samples[0], bits_per_sample).into()
     } else {
         let verb: SubFrame = Verbatim::from_samples(samples, bits_per_sample).into();
         let baseline_bits = verb.count_bits();
-        let fixed = if config.allow_fixed {
-            fixed_lpc(samples, bits_per_sample, baseline_bits)
+        let fixed = if config.use_fixed {
+            fixed_lpc(config, samples, bits_per_sample, baseline_bits)
         } else {
             None
         };
@@ -240,8 +259,8 @@ pub fn encode_subframe(
         let baseline_bits = fixed.as_ref().map_or(baseline_bits, |x| {
             std::cmp::min(baseline_bits, x.count_bits())
         });
-        let est_lpc = if config.allow_lpc {
-            let candidate = estimated_lpc(samples, bits_per_sample);
+        let est_lpc = if config.use_lpc {
+            let candidate = estimated_qlpc(config, samples, bits_per_sample);
             if candidate.count_bits() < baseline_bits {
                 Some(candidate)
             } else {
@@ -320,19 +339,19 @@ impl StereoCodingHelper {
 
         let combinations = [
             (
-                config.stereo_coding.allow_leftside,
+                config.stereo_coding.use_leftside,
                 ChannelAssignment::LeftSide,
                 indep.subframe(0),
                 ms_frame.subframe(1),
             ),
             (
-                config.stereo_coding.allow_rightside,
+                config.stereo_coding.use_rightside,
                 ChannelAssignment::RightSide,
                 ms_frame.subframe(1),
                 indep.subframe(1),
             ),
             (
-                config.stereo_coding.allow_midside,
+                config.stereo_coding.use_midside,
                 ChannelAssignment::MidSide,
                 ms_frame.subframe(0),
                 ms_frame.subframe(1),

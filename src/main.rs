@@ -46,8 +46,10 @@ struct Args {
     /// Path for the input audio file.
     source: String,
     /// If set, load config from the specified file.
+    #[clap(short, long)]
     config: Option<String>,
     /// If set, dump the config used to the specified path.
+    #[clap(long)]
     dump_config: Option<String>,
 }
 
@@ -67,8 +69,6 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
 fn main() {
     let args = Args::parse();
 
-    let block_size: usize = 4096;
-
     let encoder_config = args.config.map_or_else(config::Encoder::default, |path| {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")
@@ -76,6 +76,10 @@ fn main() {
 
     let source =
         source::PreloadedSignal::from_path(&args.source).expect("Failed to load input source.");
+
+    let block_size = encoder_config
+        .fixed_block_size
+        .expect("Variable block-size is not supported yet.");
     let stream = coding::encode_with_fixed_block_size(&encoder_config, source, block_size);
 
     if let Some(path) = args.dump_config {
