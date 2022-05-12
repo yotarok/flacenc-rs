@@ -12,14 +12,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
-#![warn(
-    clippy::all,
-    clippy::nursery,
-    clippy::pedantic,
-// tentatively disabled
-//    clippy::cargo,
-)]
+#![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
 // ad-hoc exceptions.
 #![allow(

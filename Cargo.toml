@@ -7,6 +7,7 @@ license = "Apache-2.0"
 edition = "2021"
 keywords = ["flac", "lossless", "encoder", "audio"]
 categories = ["compression", "multimedia::audio", "multimedia::encoding"]
+repository = "https://github.com/yotarok/flacenc-rs/"
 
 # This is for enabling use of profilers with a release build.
 [profile.release]
