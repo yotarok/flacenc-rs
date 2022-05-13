@@ -20,28 +20,21 @@ use serde::Serialize;
 use super::constant::MAX_RICE_PARAMETER;
 use super::constant::QLPC_DEFAULT_ORDER;
 use super::constant::QLPC_DEFAULT_PRECISION;
-use super::lpc::default_window;
 use super::lpc::Window;
 
-#[allow(clippy::unnecessary_wraps)]
-const fn default_fixed_block_size() -> Option<usize> {
-    Some(4096)
-}
 
 /// Configuration for encoder.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct Encoder {
     /// If specified, the encoder operates on the fixed block size.
     ///
     /// Currently. variable block encoding is not supported. Therefore, this
     /// must be always set (or keep default).
-    #[serde(default = "default_fixed_block_size")]
     pub fixed_block_size: Option<usize>,
     /// Configuration for stereo-coding module.
-    #[serde(default)]
     pub stereo_coding: StereoCoding,
     /// Configuration for individual channels.
-    #[serde(default)]
     pub subframe_coding: SubFrameCoding,
 }
 
@@ -51,134 +44,96 @@ impl Default for Encoder {
         Self {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
-            fixed_block_size: default_fixed_block_size(),
+            fixed_block_size: Some(4096),
         }
     }
 }
 
-const fn default_use_leftside() -> bool {
-    true
-}
-const fn default_use_rightside() -> bool {
-    true
-}
-const fn default_use_midside() -> bool {
-    true
-}
-
 /// Configuration for stereo coding algorithms.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct StereoCoding {
     /// If set to false, left-side coding will not be used.
-    #[serde(default = "default_use_leftside")]
     pub use_leftside: bool,
     /// If set to false, right-side coding will not be used.
-    #[serde(default = "default_use_rightside")]
     pub use_rightside: bool,
     /// If set to false, mid-side coding will not be used.
-    #[serde(default = "default_use_midside")]
     pub use_midside: bool,
 }
 
 impl Default for StereoCoding {
     fn default() -> Self {
         Self {
-            use_leftside: default_use_leftside(),
-            use_rightside: default_use_rightside(),
-            use_midside: default_use_midside(),
+            use_leftside: true,
+            use_rightside: true,
+            use_midside: true,
         }
     }
 }
 
-const fn default_use_constant() -> bool {
-    true
-}
-const fn default_use_fixed() -> bool {
-    true
-}
-const fn default_use_lpc() -> bool {
-    true
-}
-
 /// Configuration for sub-frame (individual channel) coding.
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct SubFrameCoding {
     // Disabling verbatim coding is intentionally prohibited.
     /// If set to false, constant mode will not be used.
-    #[serde(default = "default_use_constant")]
     pub use_constant: bool,
     /// If set to false, fixed-LPC mode will not be used.
-    #[serde(default = "default_use_fixed")]
     pub use_fixed: bool,
     /// If set to false, LPC mode will not be used.
-    #[serde(default = "default_use_lpc")]
     pub use_lpc: bool,
     /// Configuration for quantized LPC encoder.
-    #[serde(default)]
     pub qlpc: Qlpc,
     /// Configuration for partitioned Rice coding.
-    #[serde(default)]
     pub prc: Prc,
 }
 
 impl Default for SubFrameCoding {
     fn default() -> Self {
         Self {
-            use_constant: default_use_constant(),
-            use_fixed: default_use_fixed(),
-            use_lpc: default_use_lpc(),
+            use_constant: true,
+            use_fixed: true,
+            use_lpc: true,
             qlpc: Qlpc::default(),
             prc: Prc::default(),
         }
     }
 }
 
-const fn default_max_parameter() -> usize {
-    MAX_RICE_PARAMETER
-}
-
 /// Configuration for partitioned-rice coding (PRC).
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct Prc {
     /// Max value for the parameter of rice coding.
-    #[serde(default = "default_max_parameter")]
     pub max_parameter: usize,
 }
 
 impl Default for Prc {
     fn default() -> Self {
         Self {
-            max_parameter: default_max_parameter(),
+            max_parameter: MAX_RICE_PARAMETER,
         }
     }
 }
 
-const fn default_lpc_order() -> usize {
-    QLPC_DEFAULT_ORDER
-}
-const fn default_quant_precision() -> usize {
-    QLPC_DEFAULT_PRECISION
-}
-
 /// Configuration for quantized linear-predictive coding (QLPC).
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(default)]
 pub struct Qlpc {
     /// LPC order.
-    #[serde(default = "default_lpc_order")]
     pub lpc_order: usize,
     /// Precision for quantized LPC coefficients.
-    #[serde(default = "default_quant_precision")]
     pub quant_precision: usize,
-    #[serde(default = "default_window")]
+    /// Window function to be used for LPC estimation.
     pub window: Window,
 }
 
 impl Default for Qlpc {
     fn default() -> Self {
         Self {
-            lpc_order: default_lpc_order(),
-            quant_precision: default_quant_precision(),
-            window: default_window(),
+            lpc_order: QLPC_DEFAULT_ORDER,
+            quant_precision: QLPC_DEFAULT_PRECISION,
+            window: Window::default(),
         }
     }
 }
@@ -201,14 +156,15 @@ lpc_order = 7
 ";
         let config: Encoder = toml::from_str(src).expect("Parse error.");
         assert_eq!(config.subframe_coding.qlpc.lpc_order, 7);
+        assert_eq!(config.subframe_coding.qlpc.quant_precision, QLPC_DEFAULT_PRECISION);
 
         // Check the rest is default.
         assert_eq!(
             config.subframe_coding.qlpc.quant_precision,
             QLPC_DEFAULT_PRECISION
         );
-        assert_eq!(config.fixed_block_size, default_fixed_block_size());
-        assert_eq!(config.subframe_coding.use_lpc, default_use_lpc());
+        assert_eq!(config.fixed_block_size, Some(4096));
+        assert!(config.subframe_coding.use_lpc);
     }
 
     #[test]

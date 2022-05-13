@@ -58,13 +58,8 @@ impl Window {
 
 impl Default for Window {
     fn default() -> Self {
-        default_window()
+        Window::Tukey { alpha: 0.1 }
     }
-}
-
-/// Default analysis window
-pub const fn default_window() -> Window {
-    Window::Tukey { alpha: 0.1 }
 }
 
 /// Finds shift parameter for quantizing the given set of coefficients.
