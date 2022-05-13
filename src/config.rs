@@ -22,7 +22,6 @@ use super::constant::QLPC_DEFAULT_ORDER;
 use super::constant::QLPC_DEFAULT_PRECISION;
 use super::lpc::Window;
 
-
 /// Configuration for encoder.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
@@ -156,7 +155,10 @@ lpc_order = 7
 ";
         let config: Encoder = toml::from_str(src).expect("Parse error.");
         assert_eq!(config.subframe_coding.qlpc.lpc_order, 7);
-        assert_eq!(config.subframe_coding.qlpc.quant_precision, QLPC_DEFAULT_PRECISION);
+        assert_eq!(
+            config.subframe_coding.qlpc.quant_precision,
+            QLPC_DEFAULT_PRECISION
+        );
 
         // Check the rest is default.
         assert_eq!(

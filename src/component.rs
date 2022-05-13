@@ -442,6 +442,11 @@ impl Frame {
         &self.header
     }
 
+    /// Returns a mutable referene to `FrameHeader` of this frame.
+    pub fn header_mut(&mut self) -> &mut FrameHeader {
+        &mut self.header
+    }
+
     /// Returnes `SubFrame` for the given channel.
     pub fn subframe(&self, ch: usize) -> &SubFrame {
         &self.subframes[ch]
@@ -565,6 +570,12 @@ impl FrameHeader {
             frame_number: 0,
             start_sample_number: start_sample_number as u64,
         }
+    }
+
+    /// Clear `variable_block_size` flag, and set `frame_number`.
+    pub fn enter_fixed_size_mode(&mut self, frame_number: u32) {
+        self.variable_block_size = false;
+        self.frame_number = frame_number;
     }
 
     /// Overwrites channel assignment information of the frame.
