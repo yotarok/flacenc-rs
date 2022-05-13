@@ -264,6 +264,15 @@ pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
     weighted_auto_correlation(order, signal, dest, |_t| 1.0f32);
 }
 
+/// Compute delay sum.
+///
+/// # Panics
+///
+/// Panics if the number of samples in `signal` is smaller than `order`.
+pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>) {
+    weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
+}
+
 /// Compute weighted auto-correlation coeffcients.
 ///
 /// # Panics
@@ -282,6 +291,40 @@ where
         for tau in 0..order {
             let v: f32 = (signal[t] * signal[t - tau]) as f32 * w;
             dest[tau] += v;
+        }
+    }
+}
+
+/// Compute weighted delay-sum statistics.
+///
+/// # Panics
+///
+/// Panics if the number of samples in `signal` is smaller than `order`.
+pub fn weighted_delay_sum<F>(
+    order: usize,
+    signal: &[f32],
+    dest: &mut nalgebra::DMatrix<f32>,
+    weight_fn: F,
+) where
+    F: Fn(usize) -> f32,
+{
+    assert!(dest.ncols() >= order);
+    assert!(dest.nrows() >= order);
+
+    dest.fill(0.0f32);
+
+    for t in (order - 1)..signal.len() {
+        let w = weight_fn(t);
+        for i in 0..order {
+            for j in i..order {
+                let v = signal[t - i] * signal[t - j] * w;
+                dest[(i, j)] += v;
+            }
+        }
+    }
+    for i in 0..order {
+        for j in (i + 1)..order {
+            dest[(j, i)] = dest[(i, j)];
         }
     }
 }
@@ -342,13 +385,24 @@ struct LpcEstimator {
     windowed_signal: Vec<f32>,
     /// Buffer for storing auto-correlation coefficients.
     corr_coefs: Vec<f32>,
+    /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
+    delay_sum: nalgebra::DMatrix<f32>,
 }
 
 impl LpcEstimator {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             windowed_signal: vec![],
             corr_coefs: vec![],
+            delay_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
+        }
+    }
+
+    fn fill_windowed_signal(&mut self, signal: &[i32], window: &Window) {
+        self.windowed_signal.clear();
+        for (t, &v) in signal.iter().enumerate() {
+            self.windowed_signal
+                .push(v as f32 * window.weight(t, signal.len()));
         }
     }
 
@@ -364,12 +418,7 @@ impl LpcEstimator {
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
         self.corr_coefs.resize(lpc_order + 1, 0.0);
         self.corr_coefs.fill(0f32);
-
-        self.windowed_signal.clear();
-        for (t, &v) in signal.iter().enumerate() {
-            self.windowed_signal
-                .push(v as f32 * window.weight(t, signal.len()));
-        }
+        self.fill_windowed_signal(signal, window);
 
         auto_correlation(lpc_order + 1, &self.windowed_signal, &mut self.corr_coefs);
         symmetric_levinson_recursion(
@@ -377,6 +426,49 @@ impl LpcEstimator {
             &self.corr_coefs[1..lpc_order + 1],
             &mut ret,
         );
+        ret
+    }
+
+    fn lpc_with_direct_mse(
+        &mut self,
+        signal: &[i32],
+        window: &Window,
+        lpc_order: usize,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        self.corr_coefs.resize(lpc_order + 1, 0.0);
+        self.corr_coefs.fill(0f32);
+
+        self.fill_windowed_signal(signal, window);
+
+        self.delay_sum.fill(0.0f32);
+        self.delay_sum.resize_mut(lpc_order, lpc_order, 0.0f32);
+        auto_correlation(lpc_order + 1, &self.windowed_signal, &mut self.corr_coefs);
+        delay_sum(
+            lpc_order,
+            &self.windowed_signal[..signal.len() - 1],
+            &mut self.delay_sum,
+        );
+
+        let mut xy = nalgebra::DVector::<f32>::from(self.corr_coefs[1..].to_vec());
+
+        let mut regularizer = f32::EPSILON;
+        loop {
+            if let Some(decompose) = self.delay_sum.clone().cholesky() {
+                decompose.solve_mut(&mut xy);
+                break;
+            }
+            for i in 0..lpc_order {
+                self.delay_sum[(i, i)] += regularizer;
+            }
+            regularizer *= 10.0;
+        }
+
+        let mut ret = heapless::Vec::new();
+        ret.resize(lpc_order, 0.0)
+            .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
+        for i in 0..lpc_order {
+            ret[i] = xy[i];
+        }
         ret
     }
 }
@@ -391,7 +483,7 @@ thread_local! {
 /// # Panics
 ///
 /// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn qlpc(
+pub fn qlpc_autocorr(
     lpc_order: usize,
     coef_prec: usize,
     signal: &[i32],
@@ -411,6 +503,31 @@ pub fn qlpc(
 
     // Note: qlpc may truncate zeroed coefficients and reduce the order.
     //       `lpc_order` is no longer valid as the length of `qlpc`.
+    let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
+    qlpc.compute_error(signal, errors);
+    qlpc
+}
+
+/// Estimates the optimal LPC coefficients and populates error signal.
+///
+/// # Panics
+///
+/// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
+pub fn qlpc_direct_mse(
+    lpc_order: usize,
+    coef_prec: usize,
+    signal: &[i32],
+    window: &Window,
+    errors: &mut [i32],
+) -> QuantizedParameters {
+    assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
+
+    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+        estimator
+            .borrow_mut()
+            .lpc_with_direct_mse(signal, window, lpc_order)
+    });
+
     let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
     qlpc.compute_error(signal, errors);
     qlpc
@@ -592,6 +709,17 @@ mod tests {
         assert!(coefs[0] > 0.0);
         assert!(coefs[1] < 0.0);
         assert!(coefs[2] > 0.0);
+
+        let coefs = LPC_ESTIMATOR.with(|estimator| {
+            estimator
+                .borrow_mut()
+                .lpc_with_direct_mse(&signal, &Window::Rectangle, lpc_order)
+        });
+        eprintln!("{:?}", coefs);
+        // Direct MSE can recover the oracle more accurately
+        assert!(0.9 < coefs[0] && coefs[0] < 1.1);
+        assert!(-1.1 < coefs[1] && coefs[1] < -0.9);
+        assert!(0.4 < coefs[2] && coefs[2] < 0.6);
     }
 
     #[test]
@@ -669,5 +797,68 @@ mod tests {
             10.0 * (signal_energy / error_energy).log10()
         );
         assert!(error_energy < signal_energy);
+    }
+
+    #[test]
+    fn if_direct_mse_is_better_than_autocorr() {
+        let lpc_order: usize = 24;
+        let mut signal = test_helper::test_signal("sus109", 0);
+
+        // Difference is more visible when window size is small.
+        signal.truncate(128);
+
+        let window_autocorr = Window::Tukey { alpha: 0.1 };
+        let window_direct_mse = Window::Rectangle;
+        let mut errors_autocorr = vec![0f32; signal.len()];
+        let mut errors_direct_mse = vec![0f32; signal.len()];
+
+        let coefs_autocorr = LPC_ESTIMATOR.with(|estimator| {
+            estimator
+                .borrow_mut()
+                .lpc_from_auto_corr(&signal, &window_autocorr, lpc_order)
+        });
+        let coefs_direct_mse = LPC_ESTIMATOR.with(|estimator| {
+            estimator
+                .borrow_mut()
+                .lpc_with_direct_mse(&signal, &window_direct_mse, lpc_order)
+        });
+
+        compute_raw_errors(&signal, &coefs_autocorr, &mut errors_autocorr);
+        compute_raw_errors(&signal, &coefs_direct_mse, &mut errors_direct_mse);
+
+        let signal_energy = compute_energy(&signal);
+        let error_energy_autocorr = compute_energy(&errors_autocorr[lpc_order..]);
+        let error_energy_direct_mse = compute_energy(&errors_direct_mse[lpc_order..]);
+
+        let snr_autocorr = 10.0 * (signal_energy / error_energy_autocorr).log10();
+        let snr_direct_mse = 10.0 * (signal_energy / error_energy_direct_mse).log10();
+
+        eprintln!("SNR of auto-correlation method = {} dB", snr_autocorr);
+        eprintln!("coefs_autocorr = {:?}", coefs_autocorr);
+        eprintln!("SNR of direct MSE method = {} dB", snr_direct_mse);
+        eprintln!("coefs_direct_mse = {:?}", coefs_direct_mse);
+        assert!(snr_autocorr < snr_direct_mse);
+    }
+
+    #[test]
+    #[allow(clippy::identity_op, clippy::neg_multiply)]
+    fn delay_sum_computation() {
+        let signal = vec![4.0, -4.0, 3.0, -3.0, 2.0, -2.0, 1.0, -1.0];
+        let mut result = nalgebra::DMatrix::zeros(2, 2);
+        delay_sum(2, &signal, &mut result);
+        eprintln!("{:?}", result);
+        assert_eq!(
+            result[(0, 0)],
+            (-4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1 + -1 * -1) as f32
+        );
+        assert_eq!(
+            result[(0, 1)],
+            (4 * -4 + -4 * 3 + 3 * -3 + -3 * 2 + 2 * -2 + -2 * 1 + 1 * -1) as f32
+        );
+        assert_eq!(
+            result[(1, 1)],
+            (4 * 4 + -4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1) as f32
+        );
+        assert_eq!(result[(1, 0)], result[(0, 1)])
     }
 }

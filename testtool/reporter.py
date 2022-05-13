@@ -34,7 +34,10 @@ REFERENCE_ENCODER_OPTS = {
     "opt8": ["-f", "-8"],
     "opt5": ["-f", "-5"],
 }
-TEST_ENCODER_OPTS = {"default": []}
+TEST_ENCODER_OPTS = {
+    "default": [],
+    "dmse": ["-c", "report/dmse.config.toml"],
+}
 REFERENCE_BINPATH = "flac-1.3.4/src/flac/flac"
 
 

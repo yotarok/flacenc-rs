@@ -1,0 +1,15 @@
+# Direct MSE mode estimates LPC parameters without using an approximation of
+# a Gram matrix using Toeplitz auto-correlation matrix.  As a result, direct
+# MSE mode is not affected by a boundary condition so this doesn't necessitate
+# a window function, and tuning of it.  As a drawback, the computational cost
+# increases even with skipping the computation for window functions.  This
+# feature is intended to be used for providing a reference data points when
+# tuning window functions.
+
+fixed_block_size = 2048
+
+[subframe_coding.qlpc]
+use_direct_mse = true
+
+[subframe_coding.qlpc.window]
+type = "Rectangle"
