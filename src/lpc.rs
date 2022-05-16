@@ -537,7 +537,7 @@ mod tests {
             "Prediction error ratio = {} dB",
             10.0 * (signal_energy / error_energy).log10()
         );
-        //assert!(error_energy < signal_energy);
+        assert!(error_energy < signal_energy);
 
         eprintln!("Recover with coefs: {:?}", qlpc.coefs());
         for t in lpc_order..signal.len() {
@@ -606,5 +606,68 @@ mod tests {
         for (t, &expected_w) in reference.iter().enumerate() {
             assert_close!(win.weight(t, reference.len()), expected_w);
         }
+    }
+
+    /// Compute raw errors from unquantized LPC coefficients.
+    fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
+        let lpc_order = lpc_coefs.len();
+        for t in lpc_order..signal.len() {
+            errors[t] = -signal[t] as f32;
+            for j in 0..lpc_order {
+                errors[t] += lpc_coefs[j] * signal[t - 1 - j] as f32;
+            }
+        }
+    }
+
+    /// Computes squared sum (energy) of the slice.
+    fn compute_energy<T>(signal: &[T]) -> f64
+    where
+        f64: From<T>,
+        T: Copy,
+    {
+        let mut ret: f64 = 0.0;
+        for v in signal.iter() {
+            ret += f64::from(*v) * f64::from(*v);
+        }
+        ret
+    }
+
+    #[test]
+    fn qlpc_with_test_signal() {
+        let mut signal = test_helper::test_signal("sus109", 0);
+        signal.truncate(4096);
+        let lpc_order = 8;
+        let coef_prec = 12;
+        let signal_energy = compute_energy(&signal[lpc_order..]);
+
+        let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+            estimator.borrow_mut().lpc_from_auto_corr(
+                &signal,
+                &Window::Tukey { alpha: 0.1 },
+                lpc_order,
+            )
+        });
+        let mut raw_errors = vec![0.0f32; signal.len()];
+        compute_raw_errors(&signal, &lpc_coefs[0..lpc_order], &mut raw_errors);
+
+        let raw_error_energy = compute_energy(&raw_errors[lpc_order..]);
+        eprintln!(
+            "Raw prediction error ratio = {} dB",
+            10.0 * (signal_energy / raw_error_energy).log10()
+        );
+
+        let mut errors = vec![0i32; signal.len()];
+        let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
+        assert_eq!(qlpc.coefs().len(), lpc_order);
+        eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
+        qlpc.compute_error(&signal, &mut errors);
+
+        let error_energy = compute_energy(&errors[lpc_order..]);
+        // expect some prediction efficiency.
+        eprintln!(
+            "Prediction error ratio = {} dB",
+            10.0 * (signal_energy / error_energy).log10()
+        );
+        assert!(error_energy < signal_energy);
     }
 }
