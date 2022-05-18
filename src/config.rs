@@ -195,6 +195,8 @@ pub struct Qlpc {
     pub quant_precision: usize,
     /// If set, use a direct MSE method for LPC estimation.
     pub use_direct_mse: bool,
+    /// If set, iteratively optimizes LPC parameters with the given steps.
+    pub mae_optimization_steps: usize,
     /// Window function to be used for LPC estimation.
     pub window: Window,
 }
@@ -205,6 +207,7 @@ impl Default for Qlpc {
             lpc_order: QLPC_DEFAULT_ORDER,
             quant_precision: QLPC_DEFAULT_PRECISION,
             use_direct_mse: false,
+            mae_optimization_steps: 0,
             window: Window::default(),
         }
     }

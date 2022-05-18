@@ -16,6 +16,7 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
     - default: 0.5461089932701508
     - dmse: 0.5432152877413235
     - bsbs: 0.5444507514704172
+    - mae: 0.5390729315822728
 
 
 ### Average compression speed (inverse RTF)
@@ -28,5 +29,6 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
     - default: 30.004566674590354
     - dmse: 16.73409443484315
     - bsbs: 6.437339330846765
+    - mae: 1.7690019877866545
 
 

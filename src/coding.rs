@@ -228,13 +228,24 @@ pub fn estimated_qlpc(
 ) -> SubFrame {
     let mut errors = vec![0i32; signal.len()];
     let qlpc = if config.qlpc.use_direct_mse {
-        lpc::qlpc_direct_mse(
-            config.qlpc.lpc_order,
-            config.qlpc.quant_precision,
-            signal,
-            &config.qlpc.window,
-            &mut errors,
-        )
+        if config.qlpc.mae_optimization_steps > 0 {
+            lpc::qlpc_mae(
+                config.qlpc.lpc_order,
+                config.qlpc.quant_precision,
+                signal,
+                &config.qlpc.window,
+                &mut errors,
+                config.qlpc.mae_optimization_steps,
+            )
+        } else {
+            lpc::qlpc_direct_mse(
+                config.qlpc.lpc_order,
+                config.qlpc.quant_precision,
+                signal,
+                &config.qlpc.window,
+                &mut errors,
+            )
+        }
     } else {
         lpc::qlpc_autocorr(
             config.qlpc.lpc_order,

@@ -329,6 +329,19 @@ pub fn weighted_delay_sum<F>(
     }
 }
 
+/// Computes raw errors from unquantized LPC coefficients.
+///
+/// This function computes "prediction - signal" in floating-point numbers.
+fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
+    let lpc_order = lpc_coefs.len();
+    for t in lpc_order..signal.len() {
+        errors[t] = -signal[t] as f32;
+        for j in 0..lpc_order {
+            errors[t] += lpc_coefs[j] * signal[t - 1 - j] as f32;
+        }
+    }
+}
+
 /// Solves "y = T x" where T is a Toeplitz matrix with the given coefficients.
 ///
 /// The (i, j)-th element of the Toeplitz matrix "T" is defined by
@@ -379,7 +392,7 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
     }
 }
 
-/// Working buffer for (unquantized) LPC esitimation.
+/// Working buffer for (unquantized) LPC estimation.
 struct LpcEstimator {
     /// Buffer for storing windowed signal.
     windowed_signal: Vec<f32>,
@@ -387,6 +400,8 @@ struct LpcEstimator {
     corr_coefs: Vec<f32>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
     delay_sum: nalgebra::DMatrix<f32>,
+    /// Weights for IRLS.
+    weights: Vec<f32>,
 }
 
 impl LpcEstimator {
@@ -395,6 +410,7 @@ impl LpcEstimator {
             windowed_signal: vec![],
             corr_coefs: vec![],
             delay_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
+            weights: vec![],
         }
     }
 
@@ -407,12 +423,16 @@ impl LpcEstimator {
     }
 
     #[allow(clippy::range_plus_one)]
-    pub fn lpc_from_auto_corr(
+    pub fn weighted_lpc_from_auto_corr<F>(
         &mut self,
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        weight_fn: F,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER>
+    where
+        F: Fn(usize) -> f32,
+    {
         let mut ret = heapless::Vec::new();
         ret.resize(lpc_order, 0.0)
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
@@ -420,7 +440,12 @@ impl LpcEstimator {
         self.corr_coefs.fill(0f32);
         self.fill_windowed_signal(signal, window);
 
-        auto_correlation(lpc_order + 1, &self.windowed_signal, &mut self.corr_coefs);
+        weighted_auto_correlation(
+            lpc_order + 1,
+            &self.windowed_signal,
+            &mut self.corr_coefs,
+            weight_fn,
+        );
         symmetric_levinson_recursion(
             &self.corr_coefs[0..lpc_order],
             &self.corr_coefs[1..lpc_order + 1],
@@ -429,12 +454,60 @@ impl LpcEstimator {
         ret
     }
 
-    fn lpc_with_direct_mse(
+    pub fn lpc_from_auto_corr(
         &mut self,
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
     ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        self.weighted_lpc_from_auto_corr(signal, window, lpc_order, |_t| 1.0f32)
+    }
+
+    /// Optimizes LPC with Mean-Absolute-Error criterion.
+    pub fn lpc_mae(
+        &mut self,
+        signal: &[i32],
+        window: &Window,
+        lpc_order: usize,
+        steps: usize,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        self.weights.clear();
+        self.weights.resize(signal.len(), 1.0f32);
+        let mut raw_errors = vec![0.0f32; signal.len()];
+        let mut best_coefs = None;
+        let mut best_error = f32::MAX;
+
+        let normalizer = signal.iter().map(|x| x.abs()).max().unwrap() as f32;
+        let weight_fn = |err: f32| (err.abs().max(1.0) / normalizer).max(0.01).powf(-1.2);
+
+        for _t in 0..=steps {
+            let ws = self.weights.clone();
+            let coefs = self.weighted_lpc_with_direct_mse(signal, window, lpc_order, |t| ws[t]);
+            compute_raw_errors(signal, &coefs, &mut raw_errors);
+
+            let sum_abs_err: f32 = raw_errors.iter().copied().map(f32::abs).sum::<f32>();
+            if sum_abs_err < best_error {
+                best_error = sum_abs_err;
+                best_coefs = Some(coefs);
+            }
+
+            for (p, &err) in self.weights.iter_mut().zip(&raw_errors).skip(lpc_order) {
+                *p = weight_fn(err);
+            }
+        }
+        best_coefs.unwrap()
+    }
+
+    fn weighted_lpc_with_direct_mse<F>(
+        &mut self,
+        signal: &[i32],
+        window: &Window,
+        lpc_order: usize,
+        weight_fn: F,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER>
+    where
+        F: Fn(usize) -> f32,
+    {
         self.corr_coefs.resize(lpc_order + 1, 0.0);
         self.corr_coefs.fill(0f32);
 
@@ -442,11 +515,17 @@ impl LpcEstimator {
 
         self.delay_sum.fill(0.0f32);
         self.delay_sum.resize_mut(lpc_order, lpc_order, 0.0f32);
-        auto_correlation(lpc_order + 1, &self.windowed_signal, &mut self.corr_coefs);
-        delay_sum(
+        weighted_auto_correlation(
+            lpc_order + 1,
+            &self.windowed_signal,
+            &mut self.corr_coefs,
+            &weight_fn,
+        );
+        weighted_delay_sum(
             lpc_order,
             &self.windowed_signal[..signal.len() - 1],
             &mut self.delay_sum,
+            |t| weight_fn(t + 1),
         );
 
         let mut xy = nalgebra::DVector::<f32>::from(self.corr_coefs[1..].to_vec());
@@ -470,6 +549,15 @@ impl LpcEstimator {
             ret[i] = xy[i];
         }
         ret
+    }
+
+    fn lpc_with_direct_mse(
+        &mut self,
+        signal: &[i32],
+        window: &Window,
+        lpc_order: usize,
+    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+        self.weighted_lpc_with_direct_mse(signal, window, lpc_order, |_t| 1.0f32)
     }
 }
 
@@ -528,6 +616,34 @@ pub fn qlpc_direct_mse(
             .lpc_with_direct_mse(signal, window, lpc_order)
     });
 
+    let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
+    qlpc.compute_error(signal, errors);
+    qlpc
+}
+
+/// Estimates the optimal LPC coefficients and populates error signal.
+///
+/// # Panics
+///
+/// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
+pub fn qlpc_mae(
+    lpc_order: usize,
+    coef_prec: usize,
+    signal: &[i32],
+    window: &Window,
+    errors: &mut [i32],
+    steps: usize,
+) -> QuantizedParameters {
+    assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
+
+    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+        estimator
+            .borrow_mut()
+            .lpc_mae(signal, window, lpc_order, steps)
+    });
+
+    // Note: qlpc may truncate zeroed coefficients and reduce the order.
+    //       `lpc_order` is no longer valid as the length of `qlpc`.
     let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
     qlpc.compute_error(signal, errors);
     qlpc
@@ -736,17 +852,6 @@ mod tests {
         }
     }
 
-    /// Compute raw errors from unquantized LPC coefficients.
-    fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
-        let lpc_order = lpc_coefs.len();
-        for t in lpc_order..signal.len() {
-            errors[t] = -signal[t] as f32;
-            for j in 0..lpc_order {
-                errors[t] += lpc_coefs[j] * signal[t - 1 - j] as f32;
-            }
-        }
-    }
-
     /// Computes squared sum (energy) of the slice.
     fn compute_energy<T>(signal: &[T]) -> f64
     where
@@ -860,5 +965,46 @@ mod tests {
             (4 * 4 + -4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1) as f32
         );
         assert_eq!(result[(1, 0)], result[(0, 1)])
+    }
+
+    #[parameterized(block_size = {
+        256, 512, 1024, 2048, 4096
+    })]
+    fn comparing_mse_vs_mae(block_size: usize) {
+        let lpc_order: usize = 16;
+        let mut signal = test_helper::test_signal("sus109", 0);
+
+        signal.truncate(block_size);
+
+        let mut errors_mae = vec![0f32; signal.len()];
+        let mut errors_mse = vec![0f32; signal.len()];
+
+        let coefs_mse = LPC_ESTIMATOR.with(|estimator| {
+            estimator
+                .borrow_mut()
+                .lpc_with_direct_mse(&signal, &Window::Rectangle, lpc_order)
+        });
+
+        let coefs_mae = LPC_ESTIMATOR.with(|estimator| {
+            estimator
+                .borrow_mut()
+                .lpc_mae(&signal, &Window::Rectangle, lpc_order, 4)
+        });
+
+        compute_raw_errors(&signal, &coefs_mse, &mut errors_mse);
+        compute_raw_errors(&signal, &coefs_mae, &mut errors_mae);
+
+        let mae_mse: f32 = errors_mse
+            .iter()
+            .map(|&x| x.abs() / signal.len() as f32)
+            .sum();
+        let mae_mae: f32 = errors_mae
+            .iter()
+            .map(|&x| x.abs() / signal.len() as f32)
+            .sum();
+
+        eprintln!("MAE of MSE-estimated parameters: {}", mae_mse);
+        eprintln!("MAE of MAE-estimated parameters: {}", mae_mae);
+        assert!(mae_mse >= mae_mae);
     }
 }
