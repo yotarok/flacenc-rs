@@ -36,6 +36,8 @@ use flacenc_rs::coding;
 use flacenc_rs::component::BitRepr;
 use flacenc_rs::component::Stream;
 use flacenc_rs::config;
+use flacenc_rs::constant::ExitCode;
+use flacenc_rs::error::Verify;
 use flacenc_rs::source;
 
 /// FLAC encoder.
@@ -75,6 +77,11 @@ fn main() {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")
     });
+
+    if let Err(e) = encoder_config.verify() {
+        eprintln!("Error: {}", e.within("encoder_config"));
+        std::process::exit(ExitCode::InvalidConfig as i32);
+    }
 
     let source =
         source::PreloadedSignal::from_path(&args.source).expect("Failed to load input source.");

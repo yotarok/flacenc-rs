@@ -34,6 +34,7 @@ pub mod coding;
 pub mod component;
 pub mod config;
 pub mod constant;
+pub mod error;
 pub mod lpc;
 pub mod rice;
 pub mod source;

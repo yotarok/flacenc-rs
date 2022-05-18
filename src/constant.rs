@@ -14,6 +14,19 @@
 
 //! Configuration constants
 
+/// Exit code: Invalid config
+pub enum ExitCode {
+    #[allow(dead_code)]
+    Normal = 0,
+    InvalidConfig = -1,
+}
+
+/// Maximum length of a block.
+pub const MIN_BLOCKSIZE_SUPPORTED: usize = 32;
+
+/// Maximum length of a block.
+pub const MAX_BLOCKSIZE_SUPPORTED: usize = 32768;
+
 /// Maximum length of a block.
 #[allow(dead_code)]
 pub const MAX_BLOCKSIZE: usize = 65536;
@@ -51,6 +64,9 @@ pub const MAX_SAMPLE_BITS: usize = 32;
 
 /// The number of bits used for encoding shift bits of QLPC.
 pub const QLPC_SHIFT_BITS: usize = 5;
+
+/// Max precision for storing QLPC coefficients.
+pub const QLPC_MAX_PRECISION: usize = 16;
 
 /// Maximum shift parameter defined by the specification.
 pub const QLPC_MAX_SHIFT: i8 = (1i8 << (QLPC_SHIFT_BITS - 1)) - 1;

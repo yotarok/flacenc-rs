@@ -17,9 +17,15 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::constant::MAX_BLOCKSIZE_SUPPORTED;
+use super::constant::MAX_LPC_ORDER;
 use super::constant::MAX_RICE_PARAMETER;
+use super::constant::MIN_BLOCKSIZE_SUPPORTED;
 use super::constant::QLPC_DEFAULT_ORDER;
 use super::constant::QLPC_DEFAULT_PRECISION;
+use super::constant::QLPC_MAX_PRECISION;
+use super::error::Verify;
+use super::error::VerifyError;
 use super::lpc::Window;
 
 /// Configuration for encoder.
@@ -48,6 +54,37 @@ impl Default for Encoder {
     }
 }
 
+impl Verify for Encoder {
+    fn verify(&self) -> Result<(), VerifyError> {
+        if let Some(bs) = self.fixed_block_size {
+            if bs > MAX_BLOCKSIZE_SUPPORTED {
+                return Err(VerifyError::new(
+                    "fixed_block_size",
+                    &format!("Must be less than {}", MAX_BLOCKSIZE_SUPPORTED),
+                ));
+            } else if bs < MIN_BLOCKSIZE_SUPPORTED {
+                return Err(VerifyError::new(
+                    "fixed_block_size",
+                    &format!("Must be more than {}", MIN_BLOCKSIZE_SUPPORTED),
+                ));
+            }
+        } else {
+            return Err(VerifyError::new(
+                "fixed_block_size",
+                "Must be set (variable block size is not supported yet.)",
+            ));
+        }
+
+        self.stereo_coding
+            .verify()
+            .map_err(|err| err.within("stereo_coding"))?;
+        self.subframe_coding
+            .verify()
+            .map_err(|err| err.within("subframe_coding"))?;
+        Ok(())
+    }
+}
+
 /// Configuration for stereo coding algorithms.
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
@@ -67,6 +104,12 @@ impl Default for StereoCoding {
             use_rightside: true,
             use_midside: true,
         }
+    }
+}
+
+impl Verify for StereoCoding {
+    fn verify(&self) -> Result<(), VerifyError> {
+        Ok(())
     }
 }
 
@@ -99,6 +142,14 @@ impl Default for SubFrameCoding {
     }
 }
 
+impl Verify for SubFrameCoding {
+    fn verify(&self) -> Result<(), VerifyError> {
+        self.qlpc.verify().map_err(|err| err.within("qlpc"))?;
+        self.prc.verify().map_err(|err| err.within("prc"))?;
+        Ok(())
+    }
+}
+
 /// Configuration for partitioned-rice coding (PRC).
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
@@ -112,6 +163,18 @@ impl Default for Prc {
         Self {
             max_parameter: MAX_RICE_PARAMETER,
         }
+    }
+}
+
+impl Verify for Prc {
+    fn verify(&self) -> Result<(), VerifyError> {
+        if self.max_parameter > MAX_RICE_PARAMETER {
+            return Err(VerifyError::new(
+                "max_parameter",
+                &format!("Must not exceed {}", MAX_RICE_PARAMETER),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -140,8 +203,31 @@ impl Default for Qlpc {
     }
 }
 
+impl Verify for Qlpc {
+    fn verify(&self) -> Result<(), VerifyError> {
+        if self.lpc_order > MAX_LPC_ORDER {
+            return Err(VerifyError::new(
+                "lpc_order",
+                &format!("Must not exceed {}", MAX_LPC_ORDER),
+            ));
+        }
+        if self.quant_precision > QLPC_MAX_PRECISION {
+            return Err(VerifyError::new(
+                "quant_precision",
+                &format!("Must not exceed {}", QLPC_MAX_PRECISION),
+            ));
+        }
+        if self.quant_precision == 0 {
+            return Err(VerifyError::new("quant_precision", "Must not be zero"));
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::super::error::Verify;
     use super::*;
 
     #[test]
@@ -182,5 +268,17 @@ lpc_order = 7
             toml::to_string(&config).unwrap()
         );
         assert_eq!(toml::to_string(&config), toml::to_string(&default_config));
+    }
+
+    #[test]
+    fn deserialize_and_verify() {
+        let src = "
+[subframe_coding.qlpc]
+lpc_order = 256
+";
+        let config: Encoder = toml::from_str(src).expect("Parse error.");
+        let verify_result = config.verify();
+        assert!(verify_result.is_err());
+        eprintln!("{}", verify_result.err().unwrap());
     }
 }

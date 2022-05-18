@@ -155,7 +155,7 @@ impl Stream {
     ///
     /// # Panics
     ///
-    /// Panics if `self` is corrputed by manually modifying fields.
+    /// Panics if `self` is corrupted by manually modifying fields.
     pub const fn stream_info(&self) -> &StreamInfo {
         // This "allow" is required because `MetadataBlockData` variants other
         // than `StreamInfo` are not implemented yet.
@@ -170,7 +170,7 @@ impl Stream {
     ///
     /// # Panics
     ///
-    /// Panics if `self` is corrputed by manually modifying fields.
+    /// Panics if `self` is corrupted by manually modifying fields.
     pub fn stream_info_mut(&mut self) -> &mut StreamInfo {
         // This "allow" is required because `MetadataBlockData` variants other
         // than `StreamInfo` are not implemented yet.
