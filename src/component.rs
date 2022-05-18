@@ -442,12 +442,12 @@ impl Frame {
         &self.header
     }
 
-    /// Returns a mutable referene to `FrameHeader` of this frame.
+    /// Returns a mutable reference to `FrameHeader` of this frame.
     pub fn header_mut(&mut self) -> &mut FrameHeader {
         &mut self.header
     }
 
-    /// Returnes `SubFrame` for the given channel.
+    /// Returns `SubFrame` for the given channel.
     pub fn subframe(&self, ch: usize) -> &SubFrame {
         &self.subframes[ch]
     }
@@ -485,7 +485,7 @@ pub enum ChannelAssignment {
 }
 
 impl ChannelAssignment {
-    /// Returns the number of extra bit reqired to store the channel samples.
+    /// Returns the number of extra bit required to store the channel samples.
     pub const fn bits_per_sample_offset(&self, ch: usize) -> usize {
         #[allow(clippy::match_same_arms)]
         match *self {
@@ -846,7 +846,7 @@ pub struct Residual {
     rice_params: Vec<u8>,
 
     // Here, raw-value is expected to have the sign bits encoded as its LSB.
-    quotinents: Vec<u32>, // This should have left-padded for warm up samples
+    quotients: Vec<u32>, // This should have left-padded for warm up samples
     remainders: Vec<u32>, // This should have left-padded for warm up samples
 }
 
@@ -856,7 +856,7 @@ impl Residual {
         block_size: usize,
         warmup_length: usize,
         rice_params: &[u8],
-        quotinents: &[u32],
+        quotients: &[u32],
         remainders: &[u32],
     ) -> Self {
         Self {
@@ -864,7 +864,7 @@ impl Residual {
             block_size,
             warmup_length,
             rice_params: rice_params.to_owned(),
-            quotinents: quotinents.to_owned(),
+            quotients: quotients.to_owned(),
             remainders: remainders.to_owned(),
         }
     }
@@ -873,10 +873,10 @@ impl Residual {
     pub fn get(&self, id: usize) -> i32 {
         let nparts = 1usize << self.partition_order as usize;
         let part_id = id * nparts / self.block_size;
-        let quotinent = self.quotinents[id];
+        let quotient = self.quotients[id];
         let shift = u32::from(self.rice_params[part_id]);
         let remainder = self.remainders[id];
-        let v = (quotinent << shift) + remainder;
+        let v = (quotient << shift) + remainder;
         rice::decode_signbit(v)
     }
 }
@@ -884,17 +884,17 @@ impl Residual {
 impl BitRepr for Residual {
     fn count_bits(&self) -> usize {
         let nparts = 1usize << self.partition_order as usize;
-        let mut quotinent_bits: usize = 0;
+        let mut quotient_bits: usize = 0;
         for t in self.warmup_length..self.block_size {
             // plus 1 for stop bits.
-            quotinent_bits += self.quotinents[t] as usize + 1;
+            quotient_bits += self.quotients[t] as usize + 1;
         }
         let mut remainder_bits: usize = 0;
         for p in 0..nparts {
             let part_len = self.block_size / nparts - if p == 0 { self.warmup_length } else { 0 };
             remainder_bits += self.rice_params[p] as usize * part_len as usize;
         }
-        2 + 4 + nparts * 4 + quotinent_bits + remainder_bits
+        2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
@@ -909,7 +909,7 @@ impl BitRepr for Residual {
             );
             let end = ((p + 1) * self.block_size) >> self.partition_order;
             for t in start..end {
-                let mut q = self.quotinents[t] as usize;
+                let mut q = self.quotients[t] as usize;
                 while q >= 64 {
                     dest.write(0u64);
                     q -= 64;
