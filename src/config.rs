@@ -32,11 +32,10 @@ use super::lpc::Window;
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct Encoder {
-    /// If specified, the encoder operates on the fixed block size.
-    ///
-    /// Currently. variable block encoding is not supported. Therefore, this
-    /// must be always set (or keep default).
-    pub fixed_block_size: Option<usize>,
+    /// The possible block sizes encoder can use.
+    pub block_sizes: Vec<usize>,
+    /// Beam width for block-size search.
+    pub block_size_search_beam_width: Option<usize>,
     /// Configuration for stereo-coding module.
     pub stereo_coding: StereoCoding,
     /// Configuration for individual channels.
@@ -49,30 +48,38 @@ impl Default for Encoder {
         Self {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
-            fixed_block_size: Some(4096),
+            block_sizes: vec![4096usize],
+            block_size_search_beam_width: None,
         }
     }
 }
 
 impl Verify for Encoder {
     fn verify(&self) -> Result<(), VerifyError> {
-        if let Some(bs) = self.fixed_block_size {
+        if self.block_sizes.is_empty() {
+            return Err(VerifyError::new(
+                "block_sizes",
+                "Must specify at least one block size.",
+            ));
+        }
+        if self.block_size_search_beam_width == Some(0) {
+            return Err(VerifyError::new(
+                "block_size_search_beam_width",
+                "Must be more than 1.",
+            ));
+        }
+        for (i, &bs) in self.block_sizes.iter().enumerate() {
             if bs > MAX_BLOCKSIZE_SUPPORTED {
                 return Err(VerifyError::new(
-                    "fixed_block_size",
+                    &format!("block_sizes[{}]", i),
                     &format!("Must be less than {}", MAX_BLOCKSIZE_SUPPORTED),
                 ));
             } else if bs < MIN_BLOCKSIZE_SUPPORTED {
                 return Err(VerifyError::new(
-                    "fixed_block_size",
+                    &format!("block_sizes[{}]", i),
                     &format!("Must be more than {}", MIN_BLOCKSIZE_SUPPORTED),
                 ));
             }
-        } else {
-            return Err(VerifyError::new(
-                "fixed_block_size",
-                "Must be set (variable block size is not supported yet.)",
-            ));
         }
 
         self.stereo_coding
@@ -254,7 +261,7 @@ lpc_order = 7
             config.subframe_coding.qlpc.quant_precision,
             QLPC_DEFAULT_PRECISION
         );
-        assert_eq!(config.fixed_block_size, Some(4096));
+        assert_eq!(config.block_sizes, &[4096]);
         assert!(config.subframe_coding.use_lpc);
     }
 

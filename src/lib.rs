@@ -85,7 +85,8 @@ mod test {
             source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
 
         let stream =
-            coding::encode_with_fixed_block_size(&config::Encoder::default(), source, block_size);
+            coding::encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
+                .expect("Source error");
 
         let bits = stream.count_bits();
         let comp_rate = bits as f64 / (signal.len() * bits_per_sample) as f64;

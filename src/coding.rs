@@ -15,6 +15,8 @@
 //! Controller connecting coding algorithms.
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
@@ -28,9 +30,12 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
+use super::constant::BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER;
 use super::lpc;
 use super::rice;
 use super::source::FrameBuf;
+use super::source::ReadError;
+use super::source::Seekable;
 use super::source::Source;
 
 /// Returns true if samples are all same.
@@ -429,11 +434,15 @@ pub fn encode_fixed_size_frame(
 }
 
 /// Encoder entry function for fixed block-size encoding.
+///
+/// # Errors
+///
+/// This function returns `ReadError` when it failed to read samples from `src`.
 pub fn encode_with_fixed_block_size<T: Source>(
     config: &config::Encoder,
     mut src: T,
     block_size: usize,
-) -> Stream {
+) -> Result<Stream, ReadError> {
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let channels = src.channels();
     let mut framebuf = FrameBuf::with_size(channels, block_size);
@@ -442,7 +451,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let mut offset: usize = 0;
     let mut frame_number: usize = 0;
     loop {
-        let read_samples = src.read_samples(&mut framebuf).expect("Loading failed.");
+        let read_samples = src.read_samples(&mut framebuf)?;
         if read_samples == 0 {
             break;
         }
@@ -459,7 +468,208 @@ pub fn encode_with_fixed_block_size<T: Source>(
     stream
         .stream_info_mut()
         .set_md5_digest(&md5_context.compute().into());
-    stream
+    Ok(stream)
+}
+
+/// A hypothesis for block-size beam search.
+struct Hyp {
+    frame: Frame,
+    offset: usize,
+    block_size: usize,
+    samples: usize,
+    bits: usize,
+    back_pointer: Option<Arc<Hyp>>,
+    is_last: bool,
+    md5_context: md5::Context,
+}
+
+impl Hyp {
+    /// Creates a new beam-search node connecting to the given `back_pointer`.
+    ///
+    /// # Error
+    ///
+    /// Returns `ReadError` when it failed to read from `src`.
+    pub fn new<T: Seekable>(
+        src: &mut T,
+        block_size: usize,
+        config: &config::Encoder,
+        stream_info: &StreamInfo,
+        back_pointer: Option<Arc<Self>>,
+    ) -> Result<Arc<Self>, ReadError> {
+        // OPTIMIZE ME: Heap allocation done for each hyp.
+        let mut framebuf = FrameBuf::with_size(stream_info.channels(), block_size);
+        let offset = back_pointer.as_ref().map_or(0, |h| h.next_offset());
+        src.read_samples_from(offset, &mut framebuf)?;
+        let frame_samples = std::cmp::min(src.len() - offset, block_size);
+        let frame = encode_frame(config, &framebuf, offset, stream_info);
+        let bits = frame.count_bits();
+        let prev_samples = back_pointer.as_ref().map_or(0, |h| h.samples);
+        let prev_bits = back_pointer.as_ref().map_or(0, |h| h.bits);
+        let mut md5_context = back_pointer
+            .as_ref()
+            .map_or(md5::Context::new(), |h| h.md5_context.clone());
+        framebuf.update_md5(
+            stream_info.bits_per_sample(),
+            frame_samples,
+            &mut md5_context,
+        );
+        Ok(Arc::new(Self {
+            frame,
+            offset,
+            block_size,
+            samples: prev_samples + frame_samples,
+            bits: prev_bits + bits,
+            back_pointer,
+            is_last: frame_samples != block_size,
+            md5_context,
+        }))
+    }
+
+    pub const fn next_offset(&self) -> usize {
+        self.offset + self.block_size
+    }
+
+    pub fn bits_per_sample(&self) -> f64 {
+        self.bits as f64 / self.samples as f64
+    }
+}
+
+struct BeamSearch<'a, T: Seekable> {
+    config: &'a config::Encoder,
+    stream_info: &'a StreamInfo,
+    src: &'a mut T,
+    beam_width: usize,
+    best_hyp: Option<Arc<Hyp>>,
+    current_hyps: Vec<Arc<Hyp>>,
+    next_hyps: Vec<Arc<Hyp>>,
+    prune_markers: BTreeSet<usize>,
+}
+
+impl<'a, T: Seekable> BeamSearch<'a, T> {
+    pub fn new(
+        config: &'a config::Encoder,
+        stream_info: &'a StreamInfo,
+        src: &'a mut T,
+    ) -> Result<Self, ReadError> {
+        let beam_width = config
+            .block_size_search_beam_width
+            .unwrap_or(config.block_sizes.len() * BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER);
+        let mut ret = Self {
+            config,
+            stream_info,
+            src,
+            beam_width,
+            best_hyp: None,
+            current_hyps: vec![],
+            next_hyps: vec![],
+            prune_markers: BTreeSet::new(),
+        };
+        ret.extend_one(&None)?;
+        ret.prune_and_update();
+        Ok(ret)
+    }
+
+    pub fn extend_all(&mut self) -> Result<(), ReadError> {
+        self.next_hyps.clear();
+        let current_hyps = self.current_hyps.clone();
+        for hyp in &current_hyps {
+            self.extend_one(&Some(hyp.clone()))?;
+        }
+        self.prune_and_update();
+        Ok(())
+    }
+
+    pub fn done(&self) -> bool {
+        self.current_hyps.is_empty()
+    }
+
+    pub fn results(&self) -> impl Iterator<Item = Arc<Hyp>> {
+        let mut ret = vec![];
+        if let Some(best) = self.best_hyp.as_ref() {
+            let mut cur = best.clone();
+            loop {
+                ret.push(cur.clone());
+                if let Some(prev) = cur.back_pointer.as_ref() {
+                    cur = prev.clone();
+                } else {
+                    break;
+                }
+            }
+        }
+        ret.into_iter().rev()
+    }
+
+    fn update_best_hyp(&mut self, hyp: Arc<Hyp>) {
+        let best_bps = self
+            .best_hyp
+            .as_ref()
+            .map_or(f64::MAX, |h| h.bits_per_sample());
+        if hyp.bits_per_sample() < best_bps {
+            self.best_hyp = Some(hyp);
+        }
+    }
+
+    fn extend_one(&mut self, back_pointer: &Option<Arc<Hyp>>) -> Result<(), ReadError> {
+        for &bs in &self.config.block_sizes {
+            let hyp = Hyp::new(
+                self.src,
+                bs,
+                self.config,
+                self.stream_info,
+                back_pointer.clone(),
+            )?;
+            if hyp.is_last {
+                self.update_best_hyp(hyp.clone());
+            } else {
+                self.next_hyps.push(hyp);
+            }
+        }
+        Ok(())
+    }
+
+    fn prune_and_update(&mut self) {
+        self.next_hyps.sort_by(|x, y| {
+            x.bits_per_sample()
+                .partial_cmp(&y.bits_per_sample())
+                .unwrap()
+        });
+        self.prune_markers.clear();
+        self.current_hyps.clear();
+        for hyp in &self.next_hyps {
+            if self.prune_markers.contains(&hyp.next_offset()) {
+                continue;
+            }
+            self.prune_markers.insert(hyp.next_offset());
+            self.current_hyps.push(hyp.clone());
+        }
+        self.current_hyps.truncate(self.beam_width);
+    }
+}
+
+/// Searches combination of block sizes and encodes `src` in variable length format.
+///
+/// # Errors
+///
+/// This function returns `ReadError` when it failed to read samples from `src`.
+#[allow(clippy::missing_panics_doc)]
+pub fn encode_with_multiple_block_sizes<T: Seekable>(
+    config: &config::Encoder,
+    mut src: T,
+) -> Result<Stream, ReadError> {
+    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
+    let stream_info = stream.stream_info();
+    let mut beam_search = BeamSearch::new(config, stream_info, &mut src)?;
+
+    // TODO: MD5 checksums are not supported in BSBS mode.
+    while !beam_search.done() {
+        beam_search.extend_all()?;
+    }
+    for hyp in beam_search.results() {
+        stream.add_frame(hyp.frame.clone());
+    }
+    stream.stream_info_mut().set_total_samples(src.len());
+
+    Ok(stream)
 }
 
 #[cfg(test)]
@@ -507,7 +717,8 @@ mod tests {
         let signal = test_helper::constant_plus_noise(signal_len * channels, constant, 0);
         let source =
             source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
-        let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size);
+        let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
+            .expect("Source read error");
         eprintln!(
             "MD5 of DC signal ({}) with len={} and ch={} was",
             constant, signal_len, channels

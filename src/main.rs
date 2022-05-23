@@ -86,10 +86,13 @@ fn main() {
     let source =
         source::PreloadedSignal::from_path(&args.source).expect("Failed to load input source.");
 
-    let block_size = encoder_config
-        .fixed_block_size
-        .expect("Variable block-size is not supported yet.");
-    let stream = coding::encode_with_fixed_block_size(&encoder_config, source, block_size);
+    let stream = if encoder_config.block_sizes.len() == 1 {
+        let block_size = encoder_config.block_sizes[0];
+        coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
+            .expect("Read error.")
+    } else {
+        coding::encode_with_multiple_block_sizes(&encoder_config, source).expect("Read error.")
+    };
 
     if let Some(path) = args.dump_config {
         let mut file = File::create(path).expect("Failed to create a file.");

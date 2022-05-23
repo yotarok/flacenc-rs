@@ -182,6 +182,11 @@ impl Stream {
     }
 
     /// Appends `Frame` to this `Stream` and updates `StreamInfo`.
+    ///
+    /// This also updates frame statistics in `stream_info` but does not update
+    /// MD5 checksums and the total number of samples.  For updating those,
+    /// please manually call `set_total_samples` and `set_md5_digest`,
+    /// respectively, via `self.stream_info_mut`.
     pub fn add_frame(&mut self, frame: Frame) {
         // Consume frame and add to stream.
         self.stream_info_mut().update_frame_info(&frame);
@@ -401,6 +406,7 @@ impl BitRepr for StreamInfo {
 }
 
 /// [`FRAME`](https://xiph.org/flac/format.html#frame) component.
+#[derive(Clone, Debug)]
 pub struct Frame {
     header: FrameHeader,
     subframes: heapless::Vec<SubFrame, MAX_CHANNELS>,
@@ -846,7 +852,7 @@ pub struct Residual {
     rice_params: Vec<u8>,
 
     // Here, raw-value is expected to have the sign bits encoded as its LSB.
-    quotients: Vec<u32>, // This should have left-padded for warm up samples
+    quotients: Vec<u32>,  // This should have left-padded for warm up samples
     remainders: Vec<u32>, // This should have left-padded for warm up samples
 }
 
@@ -926,6 +932,9 @@ impl BitRepr for Residual {
 mod tests {
     use super::*;
     use crate::test_helper;
+
+    use rand::distributions::Distribution;
+    use rand::distributions::Uniform;
 
     fn make_frame(stream_info: &StreamInfo, samples: &[i32], offset: usize) -> Frame {
         let channels = stream_info.channels as usize;
@@ -1110,5 +1119,40 @@ mod tests {
         // second_frame_size = 5 + 2 + 0 + 0 + 2 + 1 + 2 * 192 * 2 + 1 = 779
         assert_eq!(stream_info.min_frame_size, 779);
         assert_eq!(stream_info.max_frame_size, 1034);
+    }
+
+    #[test]
+    #[allow(clippy::cast_lossless)]
+    fn bit_count_residual() -> Result<(), Error> {
+        let mut rng = rand::thread_rng();
+        let block_size = 4 * Uniform::from(4..=1024).sample(&mut rng);
+        let partition_order: usize = 2;
+        let nparts = 2usize.pow(partition_order as u32);
+        let part_len = block_size / nparts;
+        let params = vec![7, 8, 6, 7];
+        let mut quotients: Vec<u32> = vec![];
+        let mut remainders: Vec<u32> = vec![];
+
+        for t in 0..block_size {
+            let part_id = t / part_len;
+            let p = params[part_id];
+
+            quotients.push((255 / p) as u32);
+            remainders.push((255 % p) as u32);
+        }
+        let residual = Residual::new(
+            partition_order,
+            block_size,
+            0,
+            &params,
+            &quotients,
+            &remainders,
+        );
+
+        let mut bv: BitVec<usize> = BitVec::new();
+        residual.write(&mut bv)?;
+
+        assert_eq!(residual.count_bits(), bv.len());
+        Ok(())
     }
 }

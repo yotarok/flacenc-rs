@@ -1,0 +1,4 @@
+# Block-size beam-search searches the sequence of block sizes with using a
+# beam-search algorithm.
+
+block_sizes = [4096, 8192]

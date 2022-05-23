@@ -37,6 +37,7 @@ REFERENCE_ENCODER_OPTS = {
 TEST_ENCODER_OPTS = {
     "default": [],
     "dmse": ["-c", "report/dmse.config.toml"],
+    "bsbs": ["-c", "report/bsbs.config.toml"],
 }
 REFERENCE_BINPATH = "flac-1.3.4/src/flac/flac"
 
@@ -157,7 +158,7 @@ def itemize_average(
 ):
     ret = ""
     for confname, results in run_results.items():
-        vals = [key(runstat) for unuserd_srcname, runstat in results.items()]
+        vals = [key(runstat) for unused_src, runstat in results.items()]
         ret += f"- {confname}: {statistics.mean(vals)}\n"
     return ret
 
