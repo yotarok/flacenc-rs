@@ -28,6 +28,6 @@ sndfile = "0.0"
 toml = "0.5"
 
 [dev-dependencies]
-parameterized = "1.0.0"
 rand = "0.8.5"
+rstest = "0.13.0"
 tempfile = "3"

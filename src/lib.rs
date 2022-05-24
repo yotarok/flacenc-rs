@@ -54,19 +54,19 @@ mod test {
 
     use bitvec::prelude::BitVec;
     use bitvec::prelude::Msb0;
-    use parameterized::parameterized;
+    use rstest::rstest;
     use tempfile::NamedTempFile;
 
-    #[parameterized(channels = {
-        1, 2, 3, 5, 8
-    }, block_size = {
-        456, 192, 1024, 234, 512
-    })]
-    fn e2e_with_generated_sinusoids(channels: usize) {
+    #[rstest]
+    fn e2e_with_generated_sinusoids(
+        #[values(1, 2, 3, 5, 8)]
+        channels: usize,
+        #[values(512, 1024)]
+        block_size: usize,
+    ) {
         let signal_len = 16123;
         let bits_per_sample = 16;
         let sample_rate = 16000;
-        let block_size = 512;
 
         let mut channel_signals = vec![];
         for _ch in 0..channels {
