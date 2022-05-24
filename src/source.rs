@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn sequenctial_read() {
+    fn sequential_read() {
         let mut signal = vec![];
         let total_size = 1100;
         let channels = 3;

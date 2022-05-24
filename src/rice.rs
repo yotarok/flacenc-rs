@@ -287,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn parititon_evaluation() {
+    fn partition_evaluation() {
         let mut part1 = PrcBitTable::zero(4);
         part1.p_to_bits[0..5].copy_from_slice(&[17, 19, 15, 11, 19]);
         let mut part2 = PrcBitTable::zero(4);

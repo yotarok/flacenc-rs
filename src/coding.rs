@@ -55,7 +55,7 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
     let nparts = 1 << prc_p.order;
     let part_size = errors.len() / nparts;
 
-    let mut quotinents = vec![0u32; block_size];
+    let mut quotients = vec![0u32; block_size];
     let mut remainders = vec![0u32; block_size];
 
     for (p, rice_p) in prc_p.ps.iter().enumerate().take(nparts) {
@@ -65,7 +65,7 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
 
         for t in start..end {
             let err = rice::encode_signbit(errors[t]);
-            quotinents[t] = if t < warmup_length { 0 } else { err >> rice_p };
+            quotients[t] = if t < warmup_length { 0 } else { err >> rice_p };
             remainders[t] = if t < warmup_length {
                 0
             } else {
@@ -78,7 +78,7 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
         block_size,
         warmup_length,
         &prc_p.ps,
-        &quotinents,
+        &quotients,
         &remainders,
     )
 }
@@ -161,7 +161,7 @@ impl FixedLpcEncoder {
         }
     }
 
-    /// Finds the smalest config for `FixedLpc`.
+    /// Finds the smallest config for `FixedLpc`.
     pub fn apply(
         &mut self,
         config: &config::SubFrameCoding,

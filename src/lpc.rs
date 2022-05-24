@@ -129,7 +129,7 @@ impl QuantizedParameters {
         for (n, coef) in coefs.iter().enumerate() {
             // This clamp op is mainly for safety, but actually required
             // because the shift-width estimation `find_shift` used here is not
-            // perfect, and quantization may yields "2^(p-1)" qunatized value
+            // perfect, and quantization may yields "2^(p-1)" quantized value
             // for precision "p" configuration, that is larger than a maximum
             // p-bits signed integer "2^(p-1) - 1".
             q_coefs[n] = std::cmp::min(
@@ -255,7 +255,7 @@ impl QuantizedParameters {
     }
 }
 
-/// Compute auto-correlation coeffcients.
+/// Compute auto-correlation coefficients.
 ///
 /// # Panics
 ///
@@ -273,7 +273,7 @@ pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
 
-/// Compute weighted auto-correlation coeffcients.
+/// Compute weighted auto-correlation coefficients.
 ///
 /// # Panics
 ///

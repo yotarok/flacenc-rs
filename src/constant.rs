@@ -76,7 +76,7 @@ pub const QLPC_MAX_SHIFT: i8 = (1i8 << (QLPC_SHIFT_BITS - 1)) - 1;
 
 /// Minimum shift parameter.
 ///
-/// Accoding to the bitstream specification, it can be -16
+/// According to the bitstream specification, it can be -16
 /// (`-(1 << QLPC_SHIFT_BITS)`), but the reference decoder doesn't support
 /// negative shift case.
 pub const QLPC_MIN_SHIFT: i8 = 0;

@@ -470,8 +470,8 @@ impl BitRepr for Frame {
         let mut frame_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(self.count_bits());
 
         self.header.write(&mut frame_buffer)?;
-        for subf in self.subframes.iter() {
-            subf.write(&mut frame_buffer)?;
+        for sub in self.subframes.iter() {
+            sub.write(&mut frame_buffer)?;
         }
         frame_buffer.align_to_byte();
 
