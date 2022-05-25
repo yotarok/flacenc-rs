@@ -3,7 +3,7 @@
 # This is (currently) computationally prohibitive for inputs with realistic
 # lengths.
 
-fixed_block_size = 2048
+block_sizes = [2048]
 
 [subframe_coding.qlpc]
 use_direct_mse = true
