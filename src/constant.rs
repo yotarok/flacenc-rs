@@ -68,7 +68,7 @@ pub const MAX_SAMPLE_BITS: usize = 32;
 /// The number of bits used for encoding shift bits of QLPC.
 pub const QLPC_SHIFT_BITS: usize = 5;
 
-/// Max precision for storing QLPC coefficients.
+/// Max (by spec) precision for storing QLPC coefficients.
 pub const QLPC_MAX_PRECISION: usize = 16;
 
 /// Maximum shift parameter defined by the specification.
@@ -82,7 +82,7 @@ pub const QLPC_MAX_SHIFT: i8 = (1i8 << (QLPC_SHIFT_BITS - 1)) - 1;
 pub const QLPC_MIN_SHIFT: i8 = 0;
 
 /// Default LPC order for QLPC module.
-pub const QLPC_DEFAULT_ORDER: usize = 16;
+pub const QLPC_DEFAULT_ORDER: usize = 10;
 
 /// Default precision for storing QLPC coefficients.
 pub const QLPC_DEFAULT_PRECISION: usize = 12;
