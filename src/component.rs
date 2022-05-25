@@ -251,6 +251,7 @@ impl BitRepr for Stream {
 }
 
 /// [`METADATA_BLOCK`](https://xiph.org/flac/format.html#metadata_block) component.
+#[derive(Clone, Debug)]
 struct MetadataBlock {
     // METADATA_BLOCK_HEADER
     is_last: bool,
@@ -461,9 +462,12 @@ impl Frame {
 
 impl BitRepr for Frame {
     fn count_bits(&self) -> usize {
-        let footprint = self.header.count_bits() + 16;
+        let header = self.header.count_bits();
         let body: usize = self.subframes.iter().map(BitRepr::count_bits).sum();
-        footprint + body
+
+        let aligned = (header + body + 7) / 8 * 8;
+        let footer = 16;
+        aligned + footer
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
