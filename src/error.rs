@@ -17,6 +17,72 @@
 use std::error::Error;
 use std::fmt;
 
+/// Enum of errors that can be returned in the encoder.
+#[derive(Clone, Debug)]
+#[allow(clippy::module_name_repetitions)]
+pub enum EncodeError {
+    Range(RangeError),
+}
+
+impl Error for EncodeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EncodeError::Range(err) => err.fmt(f),
+        }
+    }
+}
+
+impl From<RangeError> for EncodeError {
+    fn from(e: RangeError) -> Self {
+        EncodeError::Range(e)
+    }
+}
+
+#[derive(Clone, Debug)]
+#[allow(clippy::module_name_repetitions)]
+pub struct RangeError {
+    var: String,
+    reason: String,
+    actual: String,
+}
+
+/// Error object returned when a variable is out of supported range.
+impl RangeError {
+    pub fn from_display<T>(var: &str, reason: &str, actual: &T) -> Self
+    where
+        T: fmt::Display,
+    {
+        Self {
+            var: var.to_owned(),
+            reason: reason.to_owned(),
+            actual: format!("{}", actual),
+        }
+    }
+}
+
+impl Error for RangeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for RangeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "`{}` is out of range: {} (actual={})",
+            self.var, self.reason, self.actual
+        )
+    }
+}
+
+/// Error object returned when data integrity verification failed.
 #[derive(Debug, Hash)]
 #[allow(clippy::module_name_repetitions)]
 pub struct VerifyError {

@@ -584,7 +584,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
         self.next_hyps.clear();
         let current_hyps = self.current_hyps.clone();
         for hyp in &current_hyps {
-            self.extend_one(&Some(hyp.clone()))?;
+            self.extend_one(&Some(Arc::clone(hyp)))?;
         }
         self.prune_and_update();
         Ok(())
@@ -597,11 +597,11 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
     pub fn results(&self) -> impl Iterator<Item = Arc<Hyp>> {
         let mut ret = vec![];
         if let Some(best) = self.best_hyp.as_ref() {
-            let mut cur = best.clone();
+            let mut cur = Arc::clone(best);
             loop {
-                ret.push(cur.clone());
+                ret.push(Arc::clone(&cur));
                 if let Some(prev) = cur.back_pointer.as_ref() {
-                    cur = prev.clone();
+                    cur = Arc::clone(prev);
                 } else {
                     break;
                 }
@@ -630,7 +630,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
                 back_pointer.clone(),
             )?;
             if hyp.is_last {
-                self.update_best_hyp(hyp.clone());
+                self.update_best_hyp(Arc::clone(&hyp));
             } else {
                 self.next_hyps.push(hyp);
             }
@@ -651,7 +651,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
                 continue;
             }
             self.prune_markers.insert(hyp.next_offset());
-            self.current_hyps.push(hyp.clone());
+            self.current_hyps.push(Arc::clone(hyp));
         }
         self.current_hyps.truncate(self.beam_width);
     }

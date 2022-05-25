@@ -22,11 +22,12 @@ use bitvec::prelude::BitVec;
 use bitvec::prelude::Lsb0;
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
-use derive_more::From;
 
 use super::bitsink::BitSink;
 use super::constant::MAX_CHANNELS;
 use super::constant::MAX_LPC_ORDER;
+use super::error::EncodeError;
+use super::error::RangeError;
 use super::lpc;
 use super::rice;
 
@@ -40,31 +41,21 @@ pub trait BitRepr {
 
     /// Writes the bit sequence to `BitSink`.
     #[allow(clippy::missing_errors_doc)]
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error>;
-}
-
-/// Errors that can be returned from this module.
-#[derive(Debug)]
-pub enum Error {
-    BadData {
-        name: String,
-        reason: String,
-    },
-    #[allow(dead_code)]
-    NotImplemented,
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError>;
 }
 
 /// Encodes the given integer into UTF-8-like byte sequence.
-fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), Error> {
+fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeError> {
     let val_size = usize::BITS as usize;
     let code_bits: usize = val_size - val.leading_zeros() as usize;
     if code_bits <= 7 {
         dest.write_lsbs(val, 8);
     } else if code_bits > 36 {
-        return Err(Error::BadData {
-            name: "UTF8Encode.val".to_owned(),
-            reason: "Cannot exceed 36 bits.".to_owned(),
-        });
+        return Err(RangeError::from_display(
+            "input",
+            "cannot exceed 36 bits.",
+            &val,
+        ));
     } else {
         // capacity = n * 6 + 6 - n = n * 5 + 6
         // n = ceil(capacity - 6 / 5)
@@ -197,31 +188,6 @@ impl Stream {
     pub fn frame(&self, n: usize) -> &Frame {
         &self.frames[n]
     }
-
-    fn verify_metadata_order(&self) -> Result<(), Error> {
-        if self.metadata.is_empty() {
-            if !self.stream_info.is_last {
-                return Err(Error::BadData {
-                    name: "Stream.MetadataBlock.is_last".to_string(),
-                    reason: "Must be true for the last block".to_string(),
-                });
-            }
-        } else {
-            let mut last_found = self.stream_info.is_last;
-            for md in &self.metadata {
-                if md.is_last {
-                    if last_found {
-                        return Err(Error::BadData {
-                            name: "Stream.MetadataBlock.is_last".to_string(),
-                            reason: "Must be true only for the last block".to_string(),
-                        });
-                    }
-                    last_found = true;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 impl BitRepr for Stream {
@@ -236,9 +202,8 @@ impl BitRepr for Stream {
         ret
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
-        self.verify_metadata_order()?;
-        dest.write_lsbs(0x66_4c_61_43_u32, 32); // fLaC
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
+        dest.write_lsbs(0x66_4c_61_43u32, 32); // fLaC
         self.stream_info.write(dest)?;
         for elem in &self.metadata {
             elem.write(dest)?;
@@ -275,7 +240,7 @@ impl BitRepr for MetadataBlock {
         32 + self.data.count_bits()
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let block_type = self.block_type as u32 + if self.is_last { 0x80 } else { 0x00 };
         dest.write_lsbs(block_type, 8);
         let mut data_buf: BitVec<usize> = BitVec::with_capacity(self.data.count_bits());
@@ -315,7 +280,7 @@ impl BitRepr for MetadataBlockData {
         }
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         match self {
             MetadataBlockData::StreamInfo(info) => info.write(dest)?,
         }
@@ -392,7 +357,7 @@ impl BitRepr for StreamInfo {
         272
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         dest.write::<u16>(self.min_block_size);
         dest.write::<u16>(self.max_block_size);
         dest.write_lsbs(self.min_frame_size, 24);
@@ -470,7 +435,7 @@ impl BitRepr for Frame {
         aligned + footer
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let mut frame_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(self.count_bits());
 
         self.header.write(&mut frame_buffer)?;
@@ -530,14 +495,11 @@ impl BitRepr for ChannelAssignment {
         4
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         match *self {
             Self::Independent(ch) => {
                 if ch > 8 {
-                    return Err(Error::BadData {
-                        name: "ChannelAssignment.channels".to_owned(),
-                        reason: "Must be less than 8".to_owned(),
-                    });
+                    return Err(RangeError::from_display("#channel", "cannot exceed 8", &ch).into());
                 }
                 dest.write_lsbs(ch - 1, 4);
             }
@@ -607,7 +569,7 @@ impl BitRepr for FrameHeader {
         ret
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let mut header_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(128 * 8);
         {
             let dest = &mut header_buffer;
@@ -639,13 +601,37 @@ impl BitRepr for FrameHeader {
 }
 
 /// [SUBFRAME](https://xiph.org/flac/format.html#subframe) component.
-#[derive(Clone, Debug, From)]
+#[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubFrame {
     Constant(Constant),
     Verbatim(Verbatim),
     FixedLpc(FixedLpc),
     Lpc(Lpc),
+}
+
+impl From<Constant> for SubFrame {
+    fn from(c: Constant) -> Self {
+        SubFrame::Constant(c)
+    }
+}
+
+impl From<Verbatim> for SubFrame {
+    fn from(c: Verbatim) -> Self {
+        SubFrame::Verbatim(c)
+    }
+}
+
+impl From<FixedLpc> for SubFrame {
+    fn from(c: FixedLpc) -> Self {
+        SubFrame::FixedLpc(c)
+    }
+}
+
+impl From<Lpc> for SubFrame {
+    fn from(c: Lpc) -> Self {
+        SubFrame::Lpc(c)
+    }
 }
 
 impl BitRepr for SubFrame {
@@ -658,7 +644,7 @@ impl BitRepr for SubFrame {
         }
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         match self {
             SubFrame::Verbatim(c) => c.write(dest),
             SubFrame::Constant(c) => c.write(dest),
@@ -689,7 +675,7 @@ impl BitRepr for Constant {
         8 + self.bits_per_sample as usize
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         dest.write_bitslice(bits![0, 0, 0, 0, 0, 0, 0, 0]);
         dest.write_twoc(self.dc_offset, self.bits_per_sample as usize);
         Ok(())
@@ -717,7 +703,7 @@ impl BitRepr for Verbatim {
         8 + self.data.len() * (self.bits_per_sample as usize)
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         dest.write_bitslice(bits![0, 0, 0, 0, 0, 0, 1, 0]);
         for i in 0..self.data.len() {
             dest.write_twoc(self.data[i], self.bits_per_sample as usize);
@@ -756,7 +742,7 @@ impl BitRepr for FixedLpc {
         8 + self.bits_per_sample as usize * self.order() + self.residual.count_bits()
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let head_byte = 0x10u8 | (self.order() << 1) as u8;
         dest.write(head_byte);
         for v in self.warm_up.iter() {
@@ -818,7 +804,7 @@ impl BitRepr for Lpc {
             + self.residual.count_bits()
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let head_byte = 0x40 | (((self.order() - 1) as u8) << 1);
         dest.write(head_byte);
 
@@ -907,7 +893,7 @@ impl BitRepr for Residual {
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
 
-    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), Error> {
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         // The number of partitions with 00 (indicating 4-bit mode) prepended.
         dest.write_lsbs(self.partition_order, 6);
         let nparts = 1usize << self.partition_order as usize;
@@ -959,7 +945,7 @@ mod tests {
     }
 
     #[test]
-    fn write_empty_stream() -> Result<(), Error> {
+    fn write_empty_stream() -> Result<(), EncodeError> {
         let stream = Stream::new(44100, 2, 16);
         let mut bv: BitVec<u8> = BitVec::new();
         stream.write(&mut bv)?;
@@ -974,7 +960,7 @@ mod tests {
     }
 
     #[test]
-    fn write_stream_info() -> Result<(), Error> {
+    fn write_stream_info() -> Result<(), EncodeError> {
         let stream_info = StreamInfo::new(44100, 2, 16);
         let mut bv: BitVec<u8> = BitVec::new();
         stream_info.write(&mut bv)?;
@@ -984,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn write_frame_header() -> Result<(), Error> {
+    fn write_frame_header() -> Result<(), EncodeError> {
         let header = FrameHeader::new(2304, ChannelAssignment::Independent(2), 192);
         let mut bv: BitVec<usize> = BitVec::new();
         header.write(&mut bv)?;
@@ -1012,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    fn write_verbatim_frame() -> Result<(), Error> {
+    fn write_verbatim_frame() -> Result<(), EncodeError> {
         let nchannels: usize = 3;
         let nsamples: usize = 17;
         let bits_per_sample: usize = 16;
@@ -1027,7 +1013,7 @@ mod tests {
     }
 
     #[test]
-    fn utf8_encoding() -> Result<(), Error> {
+    fn utf8_encoding() -> Result<(), EncodeError> {
         let v = 0x56;
         let mut bv: BitVec<usize> = BitVec::new();
         encode_to_utf8like(v, &mut bv)?;
@@ -1085,7 +1071,7 @@ mod tests {
     }
 
     #[test]
-    fn channel_assignment_encoding() -> Result<(), Error> {
+    fn channel_assignment_encoding() -> Result<(), EncodeError> {
         let ch = ChannelAssignment::Independent(8);
         let mut bv: BitVec<usize> = BitVec::new();
         ch.write(&mut bv)?;
@@ -1127,7 +1113,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::cast_lossless)]
-    fn bit_count_residual() -> Result<(), Error> {
+    fn bit_count_residual() -> Result<(), EncodeError> {
         let mut rng = rand::thread_rng();
         let block_size = 4 * Uniform::from(4..=1024).sample(&mut rng);
         let partition_order: usize = 2;

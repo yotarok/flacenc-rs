@@ -72,6 +72,7 @@ impl PrcBitTable {
         self.p_to_bits[p] as usize
     }
 
+    #[inline]
     pub fn minimizer(&self) -> (usize, usize) {
         let ret_bits = self.mask.select(self.p_to_bits, MAXES).reduce_min();
         let ret_p = self
@@ -84,6 +85,7 @@ impl PrcBitTable {
     }
 
     #[allow(unused_comparisons)]
+    #[inline]
     pub fn merge(&self, other: &Self, offset: usize) -> Self {
         let offset = std::simd::u32x16::splat(offset as u32);
         let offset = self.mask.select(offset, ZEROS);

@@ -23,6 +23,27 @@
     clippy::multiple_crate_versions,
     clippy::must_use_candidate
 )]
+// Some from restriction lint-group
+#![warn(
+    clippy::clone_on_ref_ptr,
+    clippy::create_dir,
+    clippy::dbg_macro,
+    clippy::empty_structs_with_brackets,
+    clippy::exit,
+    clippy::let_underscore_must_use,
+    clippy::lossy_float_literal,
+    clippy::print_stdout,
+    clippy::rc_buffer,
+    clippy::rc_mutex,
+    clippy::rest_pat_in_fully_bound_structs,
+    clippy::separated_literal_suffix,
+    clippy::str_to_string,
+    clippy::string_add,
+    clippy::string_to_string,
+    clippy::try_err,
+    clippy::unnecessary_self_imports,
+    clippy::wildcard_enum_match_arm
+)]
 
 use std::fs::File;
 use std::io::BufWriter;

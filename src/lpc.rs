@@ -739,10 +739,7 @@ mod tests {
     }
 
     #[rstest]
-    fn qlpc_recovery(
-        #[values(2, 12, 24)]
-        lpc_order: usize
-    ) {
+    fn qlpc_recovery(#[values(2, 12, 24)] lpc_order: usize) {
         let coef_prec: usize = 12;
         let signal = test_helper::sinusoid_plus_noise(1024, 32, 30000.0, 128);
 
@@ -969,10 +966,7 @@ mod tests {
     }
 
     #[rstest]
-    fn comparing_mse_vs_mae(
-        #[values(256, 512, 1024, 2048, 4096)]
-        block_size: usize,
-    ) {
+    fn comparing_mse_vs_mae(#[values(256, 512, 1024, 2048, 4096)] block_size: usize) {
         let lpc_order: usize = 16;
         let mut signal = test_helper::test_signal("sus109", 0);
 
