@@ -19,18 +19,12 @@ use std::path::Path;
 
 use once_cell::sync::Lazy;
 use sndfile::ReadOptions;
+use sndfile::SndFileError;
 use sndfile::SndFileIO;
 use sndfile::SubtypeFormat;
 
-#[derive(Clone, Debug)]
-pub struct OpenError;
-
-#[derive(Clone, Debug)]
-pub enum ReadError {
-    InvalidBuffer,
-    #[allow(dead_code)]
-    OutOfRange,
-}
+use super::error::SourceError;
+use super::error::SourceErrorReason;
 
 /// Reorder interleaved samples into a deinterleaved pattern.
 pub fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
@@ -139,7 +133,7 @@ pub trait Source {
     fn sample_rate(&self) -> usize;
     /// Reads samples to the buffer.
     #[allow(clippy::missing_errors_doc)]
-    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, ReadError>;
+    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, SourceError>;
     /// Returns length of source if it's defined.
     fn len_hint(&self) -> Option<usize> {
         None
@@ -157,8 +151,11 @@ pub trait Seekable: Source {
 
     /// Seeks to the specified offset from the beginning.
     #[allow(clippy::missing_errors_doc)]
-    fn read_samples_from(&mut self, offset: usize, dest: &mut FrameBuf)
-        -> Result<usize, ReadError>;
+    fn read_samples_from(
+        &mut self,
+        offset: usize,
+        dest: &mut FrameBuf,
+    ) -> Result<usize, SourceError>;
 }
 
 /// A map from `SubtypeFormat` to bits-per-sample.
@@ -178,6 +175,17 @@ pub struct PreloadedSignal {
     sample_rate: usize,
     samples: Vec<i32>,
     read_head: usize,
+}
+
+#[allow(clippy::enum_glob_use)]
+const fn convert_open_err(e: &SndFileError) -> SourceError {
+    use SndFileError::*;
+    use SourceErrorReason::*;
+    match e {
+        SystemError(_) | InternalError(_) | IOError(_) => SourceError::by_reason(Open),
+        UnrecognisedFormat(_) | MalformedFile(_) => SourceError::by_reason(InvalidFormat),
+        UnsupportedEncoding(_) | InvalidParameter(_) => SourceError::by_reason(UnsupportedFormat),
+    }
 }
 
 impl PreloadedSignal {
@@ -204,15 +212,19 @@ impl PreloadedSignal {
     ///
     /// If the input file cannot be opened for some reasons (e.g. file not found
     /// or file format is corrupted), then an error is returned.
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, OpenError> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, SourceError> {
         let mut snd = sndfile::OpenOptions::ReadOnly(ReadOptions::Auto)
-            .from_path(path)
-            .map_err(|_e| OpenError)?;
+            .from_path(&path)
+            .map_err(|e| convert_open_err(&e).set_path(&path))?;
         let bits_per_sample = SNDFORMAT_TO_BPS
             .get(&(snd.get_subtype_format() as i32))
             .copied()
-            .ok_or(OpenError)?;
-        let mut samples: Vec<i32> = snd.read_all_to_vec().map_err(|_e| OpenError)?;
+            .ok_or_else(|| {
+                SourceError::by_reason(SourceErrorReason::UnsupportedFormat).set_path(&path)
+            })?;
+        let mut samples: Vec<i32> = snd
+            .read_all_to_vec()
+            .map_err(|_| SourceError::from_unknown())?;
         let shift = 32 - bits_per_sample;
         for psample in &mut samples {
             *psample >>= shift;
@@ -245,7 +257,7 @@ impl Source for PreloadedSignal {
         self.sample_rate
     }
 
-    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, ReadError> {
+    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, SourceError> {
         self.read_samples_from(self.read_head, dest)
     }
 
@@ -263,9 +275,9 @@ impl Seekable for PreloadedSignal {
         &mut self,
         offset: usize,
         dest: &mut FrameBuf,
-    ) -> Result<usize, ReadError> {
+    ) -> Result<usize, SourceError> {
         if dest.channels() != self.channels {
-            return Err(ReadError::InvalidBuffer);
+            return Err(SourceError::by_reason(SourceErrorReason::InvalidBuffer));
         }
         let to_read = dest.size() * self.channels;
         let begin = std::cmp::min(offset * self.channels, self.samples.len());

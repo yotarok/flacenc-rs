@@ -31,10 +31,10 @@ use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
 use super::constant::BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER;
+use super::error::SourceError;
 use super::lpc;
 use super::rice;
 use super::source::FrameBuf;
-use super::source::ReadError;
 use super::source::Seekable;
 use super::source::Source;
 
@@ -448,12 +448,12 @@ pub fn encode_fixed_size_frame(
 ///
 /// # Errors
 ///
-/// This function returns `ReadError` when it failed to read samples from `src`.
+/// This function returns `SourceError` when it failed to read samples from `src`.
 pub fn encode_with_fixed_block_size<T: Source>(
     config: &config::Encoder,
     mut src: T,
     block_size: usize,
-) -> Result<Stream, ReadError> {
+) -> Result<Stream, SourceError> {
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let channels = src.channels();
     let mut framebuf = FrameBuf::with_size(channels, block_size);
@@ -499,14 +499,14 @@ impl Hyp {
     ///
     /// # Error
     ///
-    /// Returns `ReadError` when it failed to read from `src`.
+    /// Returns `SourceError` when it failed to read from `src`.
     pub fn new<T: Seekable>(
         src: &mut T,
         block_size: usize,
         config: &config::Encoder,
         stream_info: &StreamInfo,
         back_pointer: Option<Arc<Self>>,
-    ) -> Result<Arc<Self>, ReadError> {
+    ) -> Result<Arc<Self>, SourceError> {
         // OPTIMIZE ME: Heap allocation done for each hyp.
         let mut framebuf = FrameBuf::with_size(stream_info.channels(), block_size);
         let offset = back_pointer.as_ref().map_or(0, |h| h.next_offset());
@@ -561,7 +561,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
         config: &'a config::Encoder,
         stream_info: &'a StreamInfo,
         src: &'a mut T,
-    ) -> Result<Self, ReadError> {
+    ) -> Result<Self, SourceError> {
         let beam_width = config
             .block_size_search_beam_width
             .unwrap_or(config.block_sizes.len() * BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER);
@@ -580,7 +580,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
         Ok(ret)
     }
 
-    pub fn extend_all(&mut self) -> Result<(), ReadError> {
+    pub fn extend_all(&mut self) -> Result<(), SourceError> {
         self.next_hyps.clear();
         let current_hyps = self.current_hyps.clone();
         for hyp in &current_hyps {
@@ -620,7 +620,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
         }
     }
 
-    fn extend_one(&mut self, back_pointer: &Option<Arc<Hyp>>) -> Result<(), ReadError> {
+    fn extend_one(&mut self, back_pointer: &Option<Arc<Hyp>>) -> Result<(), SourceError> {
         for &bs in &self.config.block_sizes {
             let hyp = Hyp::new(
                 self.src,
@@ -661,12 +661,12 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
 ///
 /// # Errors
 ///
-/// This function returns `ReadError` when it failed to read samples from `src`.
+/// This function returns `SourceError` when it failed to read samples from `src`.
 #[allow(clippy::missing_panics_doc)]
 pub fn encode_with_multiple_block_sizes<T: Seekable>(
     config: &config::Encoder,
     mut src: T,
-) -> Result<Stream, ReadError> {
+) -> Result<Stream, SourceError> {
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let stream_info = stream.stream_info();
     let mut beam_search = BeamSearch::new(config, stream_info, &mut src)?;

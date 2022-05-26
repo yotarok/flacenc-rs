@@ -16,6 +16,8 @@
 
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
+use std::rc::Rc;
 
 /// Enum of errors that can be returned in the encoder.
 #[derive(Clone, Debug)]
@@ -128,7 +130,7 @@ impl fmt::Display for VerifyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Verification error: `{}` is not valid. Reason: {}",
+            "verification error: `{}` is not valid. reason: {}",
             self.path(),
             self.reason
         )
@@ -142,4 +144,94 @@ pub trait Verify {
     ///
     /// Returns `VerifyError` if there's an invalid variable.
     fn verify(&self) -> Result<(), VerifyError>;
+}
+
+#[derive(Clone, Debug)]
+#[allow(clippy::module_name_repetitions)]
+pub struct SourceError {
+    source_name: Option<String>,
+    reason: SourceErrorReason,
+}
+
+impl SourceError {
+    pub const fn by_reason(reason: SourceErrorReason) -> Self {
+        Self {
+            source_name: None,
+            reason,
+        }
+    }
+
+    pub const fn from_unknown() -> Self {
+        Self {
+            source_name: None,
+            reason: SourceErrorReason::IO(None),
+        }
+    }
+    pub fn from_io_error<E: Error + 'static>(e: E) -> Self {
+        Self {
+            source_name: None,
+            reason: SourceErrorReason::IO(Some(Rc::new(e))),
+        }
+    }
+
+    #[must_use]
+    pub fn set_path<P: AsRef<Path>>(self, path: P) -> Self {
+        Self {
+            source_name: Some(path.as_ref().to_string_lossy().to_string()),
+            ..self
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum SourceErrorReason {
+    Open,
+    InvalidBuffer,
+    InvalidFormat,
+    UnsupportedFormat,
+    IO(Option<Rc<dyn Error + 'static>>),
+}
+
+impl Error for SourceError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for SourceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "error occured while reading {}. reason: {}.",
+            self.source_name
+                .as_ref()
+                .map_or("<unknown>", String::as_str),
+            self.reason
+        )
+    }
+}
+
+impl fmt::Display for SourceErrorReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceErrorReason::Open => {
+                write!(f, "cannot open file")
+            }
+            SourceErrorReason::InvalidBuffer => {
+                write!(f, "buffer is invalid")
+            }
+            SourceErrorReason::InvalidFormat => {
+                write!(f, "source format is invalid")
+            }
+            SourceErrorReason::UnsupportedFormat => {
+                write!(f, "source format is not supported")
+            }
+            SourceErrorReason::IO(Some(cause)) => {
+                write!(f, "I/O error: {}", cause)
+            }
+            SourceErrorReason::IO(None) => {
+                write!(f, "unknown I/O error")
+            }
+        }
+    }
 }
