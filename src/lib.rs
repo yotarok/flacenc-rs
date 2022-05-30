@@ -67,21 +67,32 @@ mod test_helper;
 mod test {
     // end-to-end, but transparent test.
     use super::*;
-    use component::BitRepr;
-    use source::Seekable;
-    use source::Source;
-
-    use std::io::Write;
-
-    use bitvec::prelude::BitVec;
-    use bitvec::prelude::Msb0;
     use rstest::rstest;
-    use tempfile::NamedTempFile;
+
+    const FIXED_BLOCK_CONFIGS: [&str; 4] = [
+        "",
+        r#"
+block_sizes = [512]
+        "#,
+        r#"
+block_sizes = [123]
+        "#,
+        r#"
+block_sizes = [1024]
+[subframe_coding.qlpc]
+use_direct_mse = true
+mae_optimization_steps = 2
+        "#,
+    ];
 
     #[rstest]
     fn e2e_with_generated_sinusoids(
         #[values(1, 2, 3, 5, 8)] channels: usize,
-        #[values(512, 1024)] block_size: usize,
+        #[values(FIXED_BLOCK_CONFIGS[0],
+                 FIXED_BLOCK_CONFIGS[1],
+                 FIXED_BLOCK_CONFIGS[2],
+                 FIXED_BLOCK_CONFIGS[3])]
+        config: &str,
     ) {
         let signal_len = 16123;
         let bits_per_sample = 16;
@@ -100,55 +111,16 @@ mod test {
                 signal.push(s[t]);
             }
         }
+        let config = toml::from_str(config).expect("config parsing error");
         let source =
             source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
 
-        let stream =
-            coding::encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
-                .expect("Source error");
-
-        let bits = stream.count_bits();
-        let comp_rate = bits as f64 / (signal.len() * bits_per_sample) as f64;
-        eprintln!(
-            "Compressed {} samples ({} bits) to {} bits. Compression Rate = {}",
-            signal.len(),
-            signal.len() * bits_per_sample,
-            bits,
-            comp_rate
+        test_helper::integrity_test(
+            |s| {
+                coding::encode_with_fixed_block_size(&config, s, config.block_sizes[0])
+                    .expect("source error")
+            },
+            &source,
         );
-
-        // It should be okay to assume that compression rates for sinusoidal
-        // signal are always lower than 0.8 :)
-        assert!(comp_rate < 0.8);
-
-        let mut file = NamedTempFile::new().expect("Failed to create temp file.");
-        let mut bv: BitVec<u8, Msb0> = BitVec::with_capacity(stream.count_bits());
-        stream.write(&mut bv).expect("Bitstream formatting failed.");
-        file.write_all(bv.as_raw_slice())
-            .expect("File write failed.");
-
-        let flac_path = file.into_temp_path();
-
-        // Use sndfile (i.e. libflac) decoder for integrity check.
-        let loaded = source::PreloadedSignal::from_path(&flac_path).expect("Failed to decode.");
-        assert_eq!(loaded.channels(), channels);
-        assert_eq!(loaded.sample_rate(), sample_rate);
-        assert_eq!(loaded.bits_per_sample(), bits_per_sample);
-        assert_eq!(loaded.len(), signal_len);
-
-        for t in 0..signal_len {
-            for ch in 0..channels {
-                assert_eq!(
-                    loaded.as_raw_slice()[t * channels + ch],
-                    signal[t * channels + ch],
-                    "Failed at t={} of ch={} (block={}, in-block-t={})\n{:?}",
-                    t,
-                    ch,
-                    t / block_size,
-                    t % block_size,
-                    stream.frame(t / block_size).subframe(ch)
-                );
-            }
-        }
     }
 }

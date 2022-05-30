@@ -14,10 +14,20 @@
 
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
+use std::io::Write;
 
+use bitvec::prelude::BitVec;
+use bitvec::prelude::Msb0;
 use once_cell::sync::Lazy;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
+use tempfile::NamedTempFile;
+
+use super::component::BitRepr;
+use super::component::Stream;
+use super::source::PreloadedSignal;
+use super::source::Seekable;
+use super::source::Source;
 
 #[macro_export]
 macro_rules! assert_close {
@@ -121,4 +131,55 @@ pub fn test_signal(src: &str, ch: usize) -> Vec<i32> {
         .copied()
         .map(i32::from)
         .collect()
+}
+
+pub fn integrity_test<Enc>(encoder: Enc, src: &PreloadedSignal) -> Stream
+where
+    Enc: Fn(PreloadedSignal) -> Stream,
+{
+    let stream = encoder(src.clone());
+
+    let mut file = NamedTempFile::new().expect("Failed to create temp file.");
+    let mut bv: BitVec<u8, Msb0> = BitVec::with_capacity(stream.count_bits());
+    stream.write(&mut bv).expect("Bitstream formatting failed.");
+    file.write_all(bv.as_raw_slice())
+        .expect("File write failed.");
+
+    let flac_path = file.into_temp_path();
+
+    let loaded = PreloadedSignal::from_path(&flac_path).expect("Failed to decode.");
+    assert_eq!(loaded.channels(), src.channels());
+    assert_eq!(loaded.sample_rate(), src.sample_rate());
+    assert_eq!(loaded.bits_per_sample(), src.bits_per_sample());
+    assert_eq!(loaded.len(), src.len());
+
+    let mut offsets: Vec<usize> = vec![];
+    let mut offset = 0;
+    for frame in stream.frames() {
+        offsets.push(offset);
+        offset += frame.header().block_size();
+    }
+    offsets.push(offset);
+
+    let mut head = 0;
+    for t in 0..loaded.len() {
+        if t >= offsets[head] {
+            head += 1;
+        }
+        let current_offset = offsets[head - 1];
+
+        for ch in 0..loaded.channels() {
+            assert_eq!(
+                loaded.as_raw_slice()[t * loaded.channels() + ch],
+                src.as_raw_slice()[t * loaded.channels() + ch],
+                "Failed at t={} of ch={} (block={}, in-block-t={})\n{:?}",
+                t,
+                ch,
+                head,
+                t - current_offset,
+                stream.frame(head).subframe(ch)
+            );
+        }
+    }
+    stream
 }

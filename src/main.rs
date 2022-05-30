@@ -91,6 +91,7 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
 }
 
 #[allow(clippy::expect_used)]
+#[allow(clippy::exit)]
 fn main() {
     let args = Args::parse();
 

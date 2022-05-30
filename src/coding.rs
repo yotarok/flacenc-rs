@@ -227,34 +227,26 @@ pub fn estimated_qlpc(
     bits_per_sample: u8,
 ) -> SubFrame {
     let mut errors = vec![0i32; signal.len()];
-    let qlpc = if config.qlpc.use_direct_mse {
+    let lpc_order = config.qlpc.lpc_order;
+    let lpc_coefs = if config.qlpc.use_direct_mse {
         if config.qlpc.mae_optimization_steps > 0 {
-            lpc::qlpc_mae(
-                config.qlpc.lpc_order,
-                config.qlpc.quant_precision,
+            lpc::lpc_with_irls_mae(
                 signal,
                 &config.qlpc.window,
-                &mut errors,
+                lpc_order,
                 config.qlpc.mae_optimization_steps,
             )
         } else {
-            lpc::qlpc_direct_mse(
-                config.qlpc.lpc_order,
-                config.qlpc.quant_precision,
-                signal,
-                &config.qlpc.window,
-                &mut errors,
-            )
+            lpc::lpc_with_direct_mse(signal, &config.qlpc.window, lpc_order)
         }
     } else {
-        lpc::qlpc_autocorr(
-            config.qlpc.lpc_order,
-            config.qlpc.quant_precision,
-            signal,
-            &config.qlpc.window,
-            &mut errors,
-        )
+        lpc::lpc_from_autocorr(signal, &config.qlpc.window, lpc_order)
     };
+
+    let qlpc =
+        lpc::QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
+    qlpc.compute_error(signal, &mut errors);
+
     let residual = encode_residual(&config.prc, &errors, qlpc.order());
     Lpc::new(
         &signal[0..qlpc.order()],

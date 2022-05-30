@@ -169,6 +169,7 @@ static SNDFORMAT_TO_BPS: Lazy<BTreeMap<i32, usize>> = Lazy::new(|| {
 });
 
 /// Source with preloaded samples.
+#[derive(Clone, Debug)]
 pub struct PreloadedSignal {
     channels: usize,
     bits_per_sample: usize,

@@ -20,7 +20,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::constant::MAX_LPC_ORDER;
-use super::constant::MAX_LPC_ORDER_PLUS_1;
 use super::constant::QLPC_MAX_SHIFT;
 use super::constant::QLPC_MIN_SHIFT;
 
@@ -464,7 +463,7 @@ impl LpcEstimator {
     }
 
     /// Optimizes LPC with Mean-Absolute-Error criterion.
-    pub fn lpc_mae(
+    pub fn lpc_with_irls_mae(
         &mut self,
         signal: &[i32],
         window: &Window,
@@ -566,87 +565,47 @@ thread_local! {
     static LPC_ESTIMATOR: RefCell<LpcEstimator> = RefCell::new(LpcEstimator::new());
 }
 
-/// Estimates the optimal LPC coefficients and populates error signal.
-///
-/// # Panics
-///
-/// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn qlpc_autocorr(
-    lpc_order: usize,
-    coef_prec: usize,
+/// Estimates LPC coefficients with auto-correlation method.
+#[allow(clippy::module_name_repetitions)]
+pub fn lpc_from_autocorr(
     signal: &[i32],
     window: &Window,
-    errors: &mut [i32],
-) -> QuantizedParameters {
-    // In fact `signal` only needs to be larger than `init_lpc_order`. But, this
-    // value is still subjected to change, and anyway we should have some margin
-    // to reliably estimate LPC coefficients.
-    assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
-
-    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+    lpc_order: usize,
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
             .lpc_from_auto_corr(signal, window, lpc_order)
-    });
-
-    // Note: qlpc may truncate zeroed coefficients and reduce the order.
-    //       `lpc_order` is no longer valid as the length of `qlpc`.
-    let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
-    qlpc.compute_error(signal, errors);
-    qlpc
+    })
 }
 
-/// Estimates the optimal LPC coefficients and populates error signal.
-///
-/// # Panics
-///
-/// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn qlpc_direct_mse(
-    lpc_order: usize,
-    coef_prec: usize,
+/// Estimates LPC coefficients with direct MSE method.
+#[allow(clippy::module_name_repetitions)]
+pub fn lpc_with_direct_mse(
     signal: &[i32],
     window: &Window,
-    errors: &mut [i32],
-) -> QuantizedParameters {
-    assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
-
-    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+    lpc_order: usize,
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
             .lpc_with_direct_mse(signal, window, lpc_order)
-    });
-
-    let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
-    qlpc.compute_error(signal, errors);
-    qlpc
+    })
 }
 
-/// Estimates the optimal LPC coefficients and populates error signal.
-///
-/// # Panics
-///
-/// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn qlpc_mae(
-    lpc_order: usize,
-    coef_prec: usize,
+/// Estimates LPC coefficients with IRLS-MAE method.
+#[allow(clippy::module_name_repetitions)]
+pub fn lpc_with_irls_mae(
     signal: &[i32],
     window: &Window,
-    errors: &mut [i32],
+    lpc_order: usize,
     steps: usize,
-) -> QuantizedParameters {
-    assert!(signal.len() > MAX_LPC_ORDER_PLUS_1);
-
-    let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
-            .lpc_mae(signal, window, lpc_order, steps)
-    });
-
-    // Note: qlpc may truncate zeroed coefficients and reduce the order.
-    //       `lpc_order` is no longer valid as the length of `qlpc`.
-    let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
-    qlpc.compute_error(signal, errors);
-    qlpc
+            .lpc_with_irls_mae(signal, window, lpc_order, steps)
+    })
 }
 
 #[cfg(test)]
@@ -984,7 +943,7 @@ mod tests {
         let coefs_mae = LPC_ESTIMATOR.with(|estimator| {
             estimator
                 .borrow_mut()
-                .lpc_mae(&signal, &Window::Rectangle, lpc_order, 4)
+                .lpc_with_irls_mae(&signal, &Window::Rectangle, lpc_order, 4)
         });
 
         compute_raw_errors(&signal, &coefs_mse, &mut errors_mse);

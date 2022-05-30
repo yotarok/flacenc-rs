@@ -188,6 +188,11 @@ impl Stream {
     pub fn frame(&self, n: usize) -> &Frame {
         &self.frames[n]
     }
+
+    #[cfg(test)]
+    pub fn frames(&self) -> &[Frame] {
+        &self.frames
+    }
 }
 
 impl BitRepr for Stream {
@@ -553,6 +558,12 @@ impl FrameHeader {
     /// Overwrites channel assignment information of the frame.
     pub fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
+    }
+
+    /// Returns block size.
+    #[cfg(test)]
+    pub const fn block_size(&self) -> usize {
+        self.block_size as usize
     }
 }
 
