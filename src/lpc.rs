@@ -15,6 +15,8 @@
 //! Algorithms for quantized linear-prediction coding (QLPC).
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -27,29 +29,49 @@ use super::constant::QLPC_MIN_SHIFT;
 ///
 /// This enum is `Serializable` and `Deserializable` because this will be
 /// directly used in config structs.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type")]
 pub enum Window {
     Rectangle,
     Tukey { alpha: f32 },
 }
 
+impl Eq for Window {}
+
+impl PartialOrd for Window {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(format!("{:?}", self).cmp(&format!("{:?}", other)))
+    }
+}
+
+impl Ord for Window {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other)
+            .expect("INTERNAL ERROR: This should not happen.")
+    }
+}
+
 impl Window {
     #[inline]
-    pub fn weight(&self, t: usize, len: usize) -> f32 {
-        let t = t as f32;
-        let max_t = len as f32 - 1.0;
+    pub fn weights(&self, len: usize) -> Vec<f32> {
         match *self {
-            Self::Rectangle => 1.0f32,
+            Self::Rectangle => vec![1.0f32; len],
             Self::Tukey { alpha } => {
+                let max_t = len as f32 - 1.0;
                 let alpha_len = alpha * max_t;
-                if t < alpha_len / 2.0 {
-                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * t / alpha_len).cos())
-                } else if t < max_t - alpha_len / 2.0 {
-                    1.0
-                } else {
-                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * (max_t - t) / alpha_len).cos())
+                let mut ret = Vec::with_capacity(len);
+                for t in 0..len {
+                    let t = t as f32;
+                    let w = if t < alpha_len / 2.0 {
+                        0.5 * (1.0 - (2.0 * std::f32::consts::PI * t / alpha_len).cos())
+                    } else if t < max_t - alpha_len / 2.0 {
+                        1.0
+                    } else {
+                        0.5 * (1.0 - (2.0 * std::f32::consts::PI * (max_t - t) / alpha_len).cos())
+                    };
+                    ret.push(w);
                 }
+                ret
             }
         }
     }
@@ -59,6 +81,28 @@ impl Default for Window {
     fn default() -> Self {
         Window::Tukey { alpha: 0.1 }
     }
+}
+
+type WindowMap = BTreeMap<(usize, Window), Rc<[f32]>>;
+thread_local! {
+    static WINDOW_CACHE: RefCell<WindowMap> = RefCell::new(BTreeMap::new());
+}
+
+fn get_window(window: &Window, size: usize) -> Rc<[f32]> {
+    let key = (size, window.clone());
+    WINDOW_CACHE.with(|caches| {
+        if caches.borrow().get(&key).is_none() {
+            caches
+                .borrow_mut()
+                .insert(key.clone(), Rc::from(window.weights(size)));
+        }
+        Rc::clone(
+            caches
+                .borrow()
+                .get(&key)
+                .expect("INTERNAL ERROR: window cache was not properly populated"),
+        )
+    })
 }
 
 /// Finds shift parameter for quantizing the given set of coefficients.
@@ -413,11 +457,10 @@ impl LpcEstimator {
         }
     }
 
-    fn fill_windowed_signal(&mut self, signal: &[i32], window: &Window) {
+    fn fill_windowed_signal(&mut self, signal: &[i32], window: &[f32]) {
         self.windowed_signal.clear();
         for (t, &v) in signal.iter().enumerate() {
-            self.windowed_signal
-                .push(v as f32 * window.weight(t, signal.len()));
+            self.windowed_signal.push(v as f32 * window[t]);
         }
     }
 
@@ -437,7 +480,7 @@ impl LpcEstimator {
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
         self.corr_coefs.resize(lpc_order + 1, 0.0);
         self.corr_coefs.fill(0f32);
-        self.fill_windowed_signal(signal, window);
+        self.fill_windowed_signal(signal, &get_window(window, signal.len()));
 
         weighted_auto_correlation(
             lpc_order + 1,
@@ -510,7 +553,7 @@ impl LpcEstimator {
         self.corr_coefs.resize(lpc_order + 1, 0.0);
         self.corr_coefs.fill(0f32);
 
-        self.fill_windowed_signal(signal, window);
+        self.fill_windowed_signal(signal, &get_window(window, signal.len()));
 
         self.delay_sum.fill(0.0f32);
         self.delay_sum.resize_mut(lpc_order, lpc_order, 0.0f32);
@@ -804,8 +847,9 @@ mod tests {
             0.1098376, 0.,
         ];
         let win = Window::Tukey { alpha: 0.3 };
+        let win_vec = get_window(&win, reference.len());
         for (t, &expected_w) in reference.iter().enumerate() {
-            assert_close!(win.weight(t, reference.len()), expected_w);
+            assert_close!(win_vec[t], expected_w);
         }
     }
 
