@@ -53,13 +53,13 @@ use bitvec::prelude::BitVec;
 use bitvec::prelude::Msb0;
 use clap::Parser;
 
-use flacenc_rs::coding;
-use flacenc_rs::component::BitRepr;
-use flacenc_rs::component::Stream;
-use flacenc_rs::config;
-use flacenc_rs::constant::ExitCode;
-use flacenc_rs::error::Verify;
-use flacenc_rs::source;
+use flacenc::coding;
+use flacenc::component::BitRepr;
+use flacenc::component::Stream;
+use flacenc::config;
+use flacenc::constant::ExitCode;
+use flacenc::error::Verify;
+use flacenc::source;
 
 /// FLAC encoder.
 #[derive(Parser, Debug)]

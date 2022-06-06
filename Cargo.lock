@@ -402,7 +402,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flacenc-rs"
+name = "flacenc"
 version = "0.1.0"
 dependencies = [
  "bitvec",
