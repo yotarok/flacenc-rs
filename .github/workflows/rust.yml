@@ -22,6 +22,8 @@ jobs:
         toolchain: nightly
         override: true
         components: rustfmt, clippy
+    - name: Install external dependencies
+      run: sudo apt-get install -y libsndfile1-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
