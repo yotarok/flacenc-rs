@@ -16,6 +16,11 @@
 
 use std::cell::RefCell;
 
+use std::simd::SimdUint;
+
+use std::simd::SimdPartialEq;
+use std::simd::SimdPartialOrd;
+
 use seq_macro::seq;
 
 use super::constant::MAX_RICE_PARAMETER;
@@ -40,7 +45,7 @@ impl PrcBitTable {
         debug_assert!(max_p <= MAX_RICE_PARAMETER);
         Self {
             p_to_bits: ZEROS,
-            mask: INDEX.lanes_le(std::simd::u32x16::splat(max_p as u32)),
+            mask: INDEX.simd_le(std::simd::u32x16::splat(max_p as u32)),
         }
     }
 
@@ -77,7 +82,7 @@ impl PrcBitTable {
         let ret_bits = self.mask.select(self.p_to_bits, MAXES).reduce_min();
         let ret_p = self
             .p_to_bits
-            .lanes_eq(std::simd::u32x16::splat(ret_bits))
+            .simd_eq(std::simd::u32x16::splat(ret_bits))
             .select(INDEX, ZEROS)
             .reduce_max();
 
