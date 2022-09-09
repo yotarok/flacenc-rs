@@ -2,7 +2,10 @@
 
 FLAC (Free Lossless Audio Codec) encoder for rustaceans.
 See [the auto-generated report](report/report.md) for the characteristics of
-the encorder compared to [FLAC reference implementation](https://xiph.org/flac/download.html)
+the encoder compared to [FLAC reference implementation](https://xiph.org/flac/download.html)
+
+This encoder currently requires nightly rust for compilation because of
+`portable_simd` feature used.
 
 ## Contributing
 
