@@ -191,7 +191,6 @@ const fn convert_open_err(e: &SndFileError) -> SourceError {
 
 impl PreloadedSignal {
     /// Constructs `PreloadedSignal` from samples.
-    #[cfg(test)]
     pub fn from_samples(
         samples: &[i32],
         channels: usize,
