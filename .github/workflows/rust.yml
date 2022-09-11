@@ -1,4 +1,4 @@
-name: Rust
+name: Unittest
 
 on:
   push:
@@ -11,9 +11,7 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Install latest nightly
@@ -24,7 +22,35 @@ jobs:
         components: rustfmt, clippy
     - name: Install external dependencies
       run: sudo apt-get install -y libsndfile1-dev
-    - name: Build
-      run: cargo build --verbose
+    - name: Run cargo check
+      uses: actions-rs/cargo@v1
+      with:
+        command: check
     - name: Run tests
-      run: cargo test --verbose
+      uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --verbose
+
+  lints:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rustfmt, clippy
+    - name: Code format check
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --check
+    - name: Clippy
+      uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        args: --tests -- -D warnings
+    - name: Generate docs (for doc syntax checking)
+      run: cargo doc
