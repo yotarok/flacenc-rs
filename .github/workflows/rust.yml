@@ -1,6 +1,8 @@
 name: Unittest
 
 on:
+  schedule:
+    - cron: '0 4 * * *'  # runs at 4 AM UTC (13:00 JST)
   push:
     branches: [ "main", "dev" ]
   pull_request:
