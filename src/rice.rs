@@ -116,8 +116,7 @@ fn finest_partition_order(size: usize, min_part_size: usize) -> usize {
 /// Encodes the sign bit into its LSB (for Rice coding).
 #[inline]
 pub const fn encode_signbit(v: i32) -> u32 {
-    let is_negative = if v < 0 { 1 } else { 0 };
-    v.unsigned_abs() * 2 - is_negative
+    v.unsigned_abs() * 2 - (v < 0) as u32
 }
 
 /// Recovers a sign bit from its LSB.

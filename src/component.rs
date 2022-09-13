@@ -467,7 +467,7 @@ pub enum ChannelAssignment {
 impl ChannelAssignment {
     /// Returns the number of extra bit required to store the channel samples.
     pub const fn bits_per_sample_offset(&self, ch: usize) -> usize {
-        #[allow(clippy::match_same_arms)]
+        #[allow(clippy::match_same_arms, clippy::bool_to_int_with_if)]
         match *self {
             Self::Independent(_) => 0,
             Self::LeftSide => {
@@ -585,7 +585,7 @@ impl BitRepr for FrameHeader {
         {
             let dest = &mut header_buffer;
             // sync-code + reserved 1-bit + variable-block indicator
-            let header_word = 0xFFF8u16 + if self.variable_block_size { 1 } else { 0 };
+            let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
             dest.write_lsbs(header_word, 16);
 
             let (head, foot, footsize) = block_size_spec(self.block_size);
