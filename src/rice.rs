@@ -63,9 +63,9 @@ impl PrcBitTable {
         });
 
         for v in signal.iter().map(|x| encode_signbit(*x)) {
-            let mut v = v;
+            let mut v: u32 = v;
             seq!(p in 0..15 {
-                p_to_bits[p] += v as u32;
+                p_to_bits[p] += v;
                 v >>= 1;
             });
         }
@@ -225,7 +225,7 @@ impl PrcParameterFinder {
         }
         self.min_ps.truncate(1usize << min_order);
         PrcParameter::new(
-            min_order as usize,
+            min_order,
             self.min_ps.iter().map(|x| *x as u8).collect(),
             min_bits,
         )
@@ -261,8 +261,8 @@ mod tests {
         let signal = test_helper::constant_plus_noise(64, 0, 4096);
         let table = PrcBitTable::from_signal(&signal, 14, 4);
         let (p, _bits) = table.minimizer();
-        eprintln!("Table = {:?}", table);
-        eprintln!("Found p = {}", p);
+        eprintln!("Table = {table:?}");
+        eprintln!("Found p = {p}");
         // assert at least there's some parameter smaller than verbatim coding.
         assert!(p < 13);
         // Also, must be better than unary coding.

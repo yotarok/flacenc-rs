@@ -71,13 +71,13 @@ impl Verify for Encoder {
         for (i, &bs) in self.block_sizes.iter().enumerate() {
             if bs > MAX_BLOCKSIZE_SUPPORTED {
                 return Err(VerifyError::new(
-                    &format!("block_sizes[{}]", i),
-                    &format!("Must be less than {}", MAX_BLOCKSIZE_SUPPORTED),
+                    &format!("block_sizes[{i}]"),
+                    &format!("Must be less than {MAX_BLOCKSIZE_SUPPORTED}"),
                 ));
             } else if bs < MIN_BLOCKSIZE_SUPPORTED {
                 return Err(VerifyError::new(
-                    &format!("block_sizes[{}]", i),
-                    &format!("Must be more than {}", MIN_BLOCKSIZE_SUPPORTED),
+                    &format!("block_sizes[{i}]"),
+                    &format!("Must be more than {MIN_BLOCKSIZE_SUPPORTED}"),
                 ));
             }
         }
@@ -178,7 +178,7 @@ impl Verify for Prc {
         if self.max_parameter > MAX_RICE_PARAMETER {
             return Err(VerifyError::new(
                 "max_parameter",
-                &format!("Must not exceed {}", MAX_RICE_PARAMETER),
+                &format!("Must not exceed {MAX_RICE_PARAMETER}"),
             ));
         }
         Ok(())
@@ -218,13 +218,13 @@ impl Verify for Qlpc {
         if self.lpc_order > MAX_LPC_ORDER {
             return Err(VerifyError::new(
                 "lpc_order",
-                &format!("Must not exceed {}", MAX_LPC_ORDER),
+                &format!("Must not exceed {MAX_LPC_ORDER}"),
             ));
         }
         if self.quant_precision > QLPC_MAX_PRECISION {
             return Err(VerifyError::new(
                 "quant_precision",
-                &format!("Must not exceed {}", QLPC_MAX_PRECISION),
+                &format!("Must not exceed {QLPC_MAX_PRECISION}"),
             ));
         }
         if self.quant_precision == 0 {

@@ -728,7 +728,7 @@ mod tests {
         );
         eprint!("[");
         for &b in stream.stream_info().md5() {
-            eprint!("0x{:02X}, ", b);
+            eprint!("0x{b:02X}, ");
         }
         eprintln!("]");
         assert_eq!(

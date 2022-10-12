@@ -59,7 +59,7 @@ fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeErr
     } else {
         // capacity = n * 6 + 6 - n = n * 5 + 6
         // n = ceil(capacity - 6 / 5)
-        let trailing_bytes = (code_bits - 2) / 5;
+        let trailing_bytes: usize = (code_bits - 2) / 5;
         assert!(trailing_bytes >= 1);
         assert!(trailing_bytes <= 6);
         let capacity = trailing_bytes * 6 + 6 - trailing_bytes;
@@ -68,7 +68,7 @@ fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeErr
         let mut val_bv: BitVec = BitVec::new();
         val_bv.extend_from_bitslice(&val.view_bits::<Msb0>()[val_size - capacity..]);
 
-        dest.write_lsbs(0xFFu8, trailing_bytes as usize);
+        dest.write_lsbs(0xFFu8, trailing_bytes);
         dest.write_bitslice(bits![1, 0]);
         let first_bits = 6 - trailing_bytes;
         let mut off = 0;
@@ -117,7 +117,7 @@ const fn block_size_spec(block_size: u16) -> (u8, u16, usize) {
                 (0x06, footer as u16, 8)
             } else {
                 // block_size is always < 65536 as it is u16.
-                let footer: u16 = (block_size - 1) as u16;
+                let footer: u16 = block_size - 1;
                 (0x07, footer, 16)
             }
         }
@@ -807,7 +807,7 @@ impl Lpc {
 
 impl BitRepr for Lpc {
     fn count_bits(&self) -> usize {
-        let warm_up_bits = self.bits_per_sample as usize * self.order() as usize;
+        let warm_up_bits = self.bits_per_sample as usize * self.order();
         8 + warm_up_bits
             + 4
             + 5
@@ -820,7 +820,7 @@ impl BitRepr for Lpc {
         dest.write(head_byte);
 
         for i in 0..self.order() {
-            dest.write_twoc(self.warm_up[i as usize], self.bits_per_sample as usize);
+            dest.write_twoc(self.warm_up[i], self.bits_per_sample as usize);
         }
 
         assert!((self.parameters.precision() as u8) < 16u8);
@@ -898,8 +898,9 @@ impl BitRepr for Residual {
         }
         let mut remainder_bits: usize = 0;
         for p in 0..nparts {
-            let part_len = self.block_size / nparts - if p == 0 { self.warmup_length } else { 0 };
-            remainder_bits += self.rice_params[p] as usize * part_len as usize;
+            let part_len: usize =
+                self.block_size / nparts - if p == 0 { self.warmup_length } else { 0 };
+            remainder_bits += self.rice_params[p] as usize * part_len;
         }
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }

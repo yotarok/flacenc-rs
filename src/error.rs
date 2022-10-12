@@ -63,7 +63,7 @@ impl RangeError {
         Self {
             var: var.to_owned(),
             reason: reason.to_owned(),
-            actual: format!("{}", actual),
+            actual: format!("{actual}"),
         }
     }
 }
@@ -227,7 +227,7 @@ impl fmt::Display for SourceErrorReason {
                 write!(f, "source format is not supported")
             }
             SourceErrorReason::IO(Some(cause)) => {
-                write!(f, "I/O error: {}", cause)
+                write!(f, "I/O error: {cause}")
             }
             SourceErrorReason::IO(None) => {
                 write!(f, "unknown I/O error")

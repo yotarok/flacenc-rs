@@ -42,7 +42,7 @@ impl Eq for Window {}
 
 impl PartialOrd for Window {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(format!("{:?}", self).cmp(&format!("{:?}", other)))
+        Some(format!("{self:?}").cmp(&format!("{other:?}")))
     }
 }
 
@@ -257,7 +257,7 @@ impl QuantizedParameters {
             }
 
             let shifted: i32 = (pred >> self.shift) as i32;
-            errors[t] = (signal[t] - shifted) as i32;
+            errors[t] = signal[t] - shifted;
 
             // shift window
             shift_lanes_right(
@@ -334,7 +334,7 @@ where
     for t in (order - 1)..signal.len() {
         let w = weight_fn(t);
         for tau in 0..order {
-            let v: f32 = (signal[t] * signal[t - tau]) as f32 * w;
+            let v: f32 = signal[t] * signal[t - tau] * w;
             dest[tau] += v;
         }
     }
@@ -418,7 +418,7 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
             .zip(forward.iter())
             .map(|(x, y)| x * y)
             .sum();
-        let alpha: f32 = 1.0 / (1.0 - error * error);
+        let alpha: f32 = 1.0 / error.mul_add(-error, 1.0);
         let beta: f32 = -alpha * error;
         for d in 0..=n {
             forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);

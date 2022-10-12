@@ -327,8 +327,8 @@ mod tests {
         let channels = 3;
         for t in 0..total_size {
             for ch in 0..channels {
-                let sign = if ch == 0 { 1 } else { -1 };
-                signal.push(sign * t as i32);
+                let sign: i32 = if ch == 0 { 1 } else { -1 };
+                signal.push(sign * t);
             }
         }
 

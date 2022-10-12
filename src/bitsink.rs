@@ -47,7 +47,7 @@ pub trait BitSink: Sized {
     #[inline]
     fn write_twoc<T: Into<i64>>(&mut self, val: T, bits_per_sample: usize) {
         let shifted = (val.into() << (64 - bits_per_sample)) as u64;
-        self.write_msbs(shifted, bits_per_sample as usize);
+        self.write_msbs(shifted, bits_per_sample);
     }
 }
 
