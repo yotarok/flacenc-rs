@@ -395,13 +395,30 @@ fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
 ///
 /// # Panics
 ///
-/// Panics if `dest` or `coefs` is shorter than `ys`.
+/// Panics if `dest` or `coefs` is shorter than `ys`. In addition to that,
+/// the following preconditions are checked.
+/// 1. Signal energy `coefs[0]` is non-negative.
+/// 2. If signal-energy is zero, all `coefs` and `ys` must be zero.
 pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32]) {
     assert!(dest.len() >= ys.len());
     assert!(coefs.len() >= ys.len());
 
     for p in dest.iter_mut() {
         *p = 0.0;
+    }
+
+    // coefs[0] is energy of the signal, so must be non-negative.
+    assert!(coefs[0] >= 0.0);
+    if coefs[0] == 0.0 {
+        let allzero = ys
+            .iter()
+            .chain(coefs.iter())
+            .fold(true, |f, &v| f & (v == 0.0));
+        assert!(
+            allzero,
+            "If signal is digital silence, all coefficients must be zero."
+        );
+        return;
     }
 
     let order = ys.len();
@@ -418,8 +435,17 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
             .zip(forward.iter())
             .map(|(x, y)| x * y)
             .sum();
-        let alpha: f32 = 1.0 / error.mul_add(-error, 1.0);
-        let beta: f32 = -alpha * error;
+        let denom = error.mul_add(-error, 1.0);
+        let (alpha, beta): (f32, f32) = if denom == 0.0 {
+            // TODO: check if this is mathematically sound.  From the definition of
+            //       levinson-recurssion, when error^2 == 1.0, we can only say
+            //       alpha + beta = 1.0, or alpha - beta = 1.0 (depending on sign(error)).
+            //       due to rank deficiency.
+            (1.0, 0.0)
+        } else {
+            let a = 1.0 / denom;
+            (a, -a * error)
+        };
         for d in 0..=n {
             forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);
         }
@@ -490,11 +516,17 @@ impl LpcEstimator {
             &mut self.corr_coefs,
             weight_fn,
         );
+        for &v in &self.corr_coefs {
+            assert!(v.is_normal() || v == 0.0);
+        }
         symmetric_levinson_recursion(
             &self.corr_coefs[0..lpc_order],
             &self.corr_coefs[1..lpc_order + 1],
             &mut ret,
         );
+        for &v in &ret {
+            assert!(v.is_normal() || v == 0.0);
+        }
         ret
     }
 
@@ -658,6 +690,7 @@ pub fn lpc_with_irls_mae(
 mod tests {
     use super::*;
     use crate::assert_close;
+    use crate::assert_finite;
     use crate::test_helper;
 
     use rstest::rstest;
@@ -754,10 +787,14 @@ mod tests {
                 lpc_order,
             )
         });
+        assert_finite!(lpc_coefs);
         let mut errors = vec![0i32; signal.len()];
         eprintln!("{:?}", signal);
         let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
-        assert_eq!(qlpc.coefs().len(), lpc_order);
+
+        // QLPC coefs can be shorter than the specified order because it truncates tail
+        // zeroes.
+        assert!(qlpc.coefs().len() <= lpc_order);
         eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
         qlpc.compute_error(&signal, &mut errors);
 

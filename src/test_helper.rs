@@ -42,6 +42,21 @@ macro_rules! assert_close {
     }};
 }
 
+#[macro_export]
+macro_rules! assert_finite {
+    ($result:expr) => {{
+        for (i, &value) in $result.iter().enumerate() {
+            assert!(
+                value.is_normal() || value == 0.0,
+                "{}-th element in a vector is not finite ({}), x={:?}.",
+                i,
+                value,
+                $result
+            );
+        }
+    }};
+}
+
 /// Generates a test signal with sinusoid and uniform-white noise.
 #[allow(dead_code)]
 pub fn sinusoid_plus_noise(
