@@ -15,7 +15,7 @@
 // Note that clippy attributes should be in sync with those declared in "lib.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 #![allow(
-    clippy::use_self,
+    clippy::missing_const_for_fn,
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,

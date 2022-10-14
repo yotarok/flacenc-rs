@@ -281,13 +281,13 @@ enum MetadataBlockData {
 impl BitRepr for MetadataBlockData {
     fn count_bits(&self) -> usize {
         match self {
-            MetadataBlockData::StreamInfo(info) => info.count_bits(),
+            Self::StreamInfo(info) => info.count_bits(),
         }
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         match self {
-            MetadataBlockData::StreamInfo(info) => info.write(dest)?,
+            Self::StreamInfo(info) => info.write(dest)?,
         }
         Ok(())
     }
@@ -623,44 +623,44 @@ pub enum SubFrame {
 
 impl From<Constant> for SubFrame {
     fn from(c: Constant) -> Self {
-        SubFrame::Constant(c)
+        Self::Constant(c)
     }
 }
 
 impl From<Verbatim> for SubFrame {
     fn from(c: Verbatim) -> Self {
-        SubFrame::Verbatim(c)
+        Self::Verbatim(c)
     }
 }
 
 impl From<FixedLpc> for SubFrame {
     fn from(c: FixedLpc) -> Self {
-        SubFrame::FixedLpc(c)
+        Self::FixedLpc(c)
     }
 }
 
 impl From<Lpc> for SubFrame {
     fn from(c: Lpc) -> Self {
-        SubFrame::Lpc(c)
+        Self::Lpc(c)
     }
 }
 
 impl BitRepr for SubFrame {
     fn count_bits(&self) -> usize {
         match self {
-            SubFrame::Verbatim(c) => c.count_bits(),
-            SubFrame::Constant(c) => c.count_bits(),
-            SubFrame::FixedLpc(c) => c.count_bits(),
-            SubFrame::Lpc(c) => c.count_bits(),
+            Self::Verbatim(c) => c.count_bits(),
+            Self::Constant(c) => c.count_bits(),
+            Self::FixedLpc(c) => c.count_bits(),
+            Self::Lpc(c) => c.count_bits(),
         }
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         match self {
-            SubFrame::Verbatim(c) => c.write(dest),
-            SubFrame::Constant(c) => c.write(dest),
-            SubFrame::FixedLpc(c) => c.write(dest),
-            SubFrame::Lpc(c) => c.write(dest),
+            Self::Verbatim(c) => c.write(dest),
+            Self::Constant(c) => c.write(dest),
+            Self::FixedLpc(c) => c.write(dest),
+            Self::Lpc(c) => c.write(dest),
         }
     }
 }

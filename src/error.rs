@@ -35,14 +35,14 @@ impl Error for EncodeError {
 impl fmt::Display for EncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EncodeError::Range(err) => err.fmt(f),
+            Self::Range(err) => err.fmt(f),
         }
     }
 }
 
 impl From<RangeError> for EncodeError {
     fn from(e: RangeError) -> Self {
-        EncodeError::Range(e)
+        Self::Range(e)
     }
 }
 
@@ -214,22 +214,22 @@ impl fmt::Display for SourceError {
 impl fmt::Display for SourceErrorReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SourceErrorReason::Open => {
+            Self::Open => {
                 write!(f, "cannot open file")
             }
-            SourceErrorReason::InvalidBuffer => {
+            Self::InvalidBuffer => {
                 write!(f, "buffer is invalid")
             }
-            SourceErrorReason::InvalidFormat => {
+            Self::InvalidFormat => {
                 write!(f, "source format is invalid")
             }
-            SourceErrorReason::UnsupportedFormat => {
+            Self::UnsupportedFormat => {
                 write!(f, "source format is not supported")
             }
-            SourceErrorReason::IO(Some(cause)) => {
+            Self::IO(Some(cause)) => {
                 write!(f, "I/O error: {cause}")
             }
-            SourceErrorReason::IO(None) => {
+            Self::IO(None) => {
                 write!(f, "unknown I/O error")
             }
         }

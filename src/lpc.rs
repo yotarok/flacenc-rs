@@ -81,7 +81,7 @@ impl Window {
 
 impl Default for Window {
     fn default() -> Self {
-        Window::Tukey { alpha: 0.1 }
+        Self::Tukey { alpha: 0.1 }
     }
 }
 

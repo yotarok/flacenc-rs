@@ -18,9 +18,9 @@
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
 // ad-hoc exceptions.
 #![allow(
-    // Reactivate "use_self" once false-positive issue is gone.
-    // https://github.com/rust-lang/rust-clippy/issues/6902
-    clippy::use_self,
+    // "missing_const_for_fn" is useful but currently this emits a lot of false-
+    // positives.
+    clippy::missing_const_for_fn,
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
