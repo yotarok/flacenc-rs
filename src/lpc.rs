@@ -732,7 +732,7 @@ mod tests {
         let mut xs: [f32; 4] = [0.0; 4];
 
         symmetric_levinson_recursion(&coefs, &ys, &mut xs);
-        eprintln!("Found solution = {:?}", xs);
+        eprintln!("Found solution = {xs:?}");
         assert_eq!(xs, expect_xs);
 
         let coefs: [f32; 5] = [1.0, -0.5, -1.0, -0.5, 0.5];
@@ -742,7 +742,7 @@ mod tests {
         let mut xs: [f32; 5] = [0.0; 5];
 
         symmetric_levinson_recursion(&coefs, &ys, &mut xs);
-        eprintln!("Found solution = {:?}", xs);
+        eprintln!("Found solution = {xs:?}");
         for (x, expected_x) in xs.iter().zip(expect_xs.iter()) {
             assert_close!(x, expected_x);
         }
@@ -759,11 +759,11 @@ mod tests {
     #[test]
     fn parameter_quantizer() {
         let qp = QuantizedParameters::with_coefs(&[0.0, 0.5, 0.1], 4);
-        eprintln!("{:?}", qp);
+        eprintln!("{qp:?}");
         assert_eq!(qp.coefs(), vec![0i16, 7i16, 2i16]);
 
         let qp = QuantizedParameters::with_coefs(&[1.0, -0.5, 0.5], 2);
-        eprintln!("{:?}", qp);
+        eprintln!("{qp:?}");
         assert_eq!(qp.coefs(), vec![1, -1, 1]);
         assert_eq!(qp.dequantized(), vec![0.5, -0.5, 0.5]);
     }
@@ -789,7 +789,7 @@ mod tests {
         });
         assert_finite!(lpc_coefs);
         let mut errors = vec![0i32; signal.len()];
-        eprintln!("{:?}", signal);
+        eprintln!("{signal:?}");
         let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
 
         // QLPC coefs can be shorter than the specified order because it truncates tail
@@ -818,7 +818,7 @@ mod tests {
                 pred += i64::from(signal[t - tau - 1]) * i64::from(*ref_qcoef)
             }
             pred >>= qlpc.shift();
-            assert_eq!(errors[t] + (pred as i32), signal[t], "Failed at t={}", t);
+            assert_eq!(errors[t] + (pred as i32), signal[t], "Failed at t={t}");
         }
     }
 
@@ -859,7 +859,7 @@ mod tests {
                 lpc_order,
             )
         });
-        eprintln!("{:?}", coefs);
+        eprintln!("{coefs:?}");
         // Actual auto-correlation function is not Toeplitz due to boundaries.
         assert!(coefs[0] > 0.0);
         assert!(coefs[1] < 0.0);
@@ -870,7 +870,7 @@ mod tests {
                 .borrow_mut()
                 .lpc_with_direct_mse(&signal, &Window::Rectangle, lpc_order)
         });
-        eprintln!("{:?}", coefs);
+        eprintln!("{coefs:?}");
         // Direct MSE can recover the oracle more accurately
         assert!(0.9 < coefs[0] && coefs[0] < 1.1);
         assert!(-1.1 < coefs[1] && coefs[1] < -0.9);
@@ -978,10 +978,10 @@ mod tests {
         let snr_autocorr = 10.0 * (signal_energy / error_energy_autocorr).log10();
         let snr_direct_mse = 10.0 * (signal_energy / error_energy_direct_mse).log10();
 
-        eprintln!("SNR of auto-correlation method = {} dB", snr_autocorr);
-        eprintln!("coefs_autocorr = {:?}", coefs_autocorr);
-        eprintln!("SNR of direct MSE method = {} dB", snr_direct_mse);
-        eprintln!("coefs_direct_mse = {:?}", coefs_direct_mse);
+        eprintln!("SNR of auto-correlation method = {snr_autocorr} dB");
+        eprintln!("coefs_autocorr = {coefs_autocorr:?}");
+        eprintln!("SNR of direct MSE method = {snr_direct_mse} dB");
+        eprintln!("coefs_direct_mse = {coefs_direct_mse:?}");
         assert!(snr_autocorr < snr_direct_mse);
     }
 
@@ -991,7 +991,7 @@ mod tests {
         let signal = vec![4.0, -4.0, 3.0, -3.0, 2.0, -2.0, 1.0, -1.0];
         let mut result = nalgebra::DMatrix::zeros(2, 2);
         delay_sum(2, &signal, &mut result);
-        eprintln!("{:?}", result);
+        eprintln!("{result:?}");
         assert_eq!(
             result[(0, 0)],
             (-4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1 + -1 * -1) as f32
@@ -1041,8 +1041,8 @@ mod tests {
             .map(|&x| x.abs() / signal.len() as f32)
             .sum();
 
-        eprintln!("MAE of MSE-estimated parameters: {}", mae_mse);
-        eprintln!("MAE of MAE-estimated parameters: {}", mae_mae);
+        eprintln!("MAE of MSE-estimated parameters: {mae_mse}");
+        eprintln!("MAE of MAE-estimated parameters: {mae_mae}");
         assert!(mae_mse >= mae_mae);
     }
 }
