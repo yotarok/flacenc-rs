@@ -40,6 +40,10 @@ static INDEX: std::simd::u32x16 =
     std::simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 static MAXES: std::simd::u32x16 = std::simd::u32x16::from_array([u32::MAX; 16]);
 
+// max value of p_to_bits is chosen so that the estimates doesn't overflow
+// after added 2^4 = 16 times at maximum.
+static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
+
 impl PrcBitTable {
     pub fn zero(max_p: usize) -> Self {
         debug_assert!(max_p <= MAX_RICE_PARAMETER);
@@ -65,7 +69,7 @@ impl PrcBitTable {
         for v in signal.iter().map(|x| encode_signbit(*x)) {
             let mut v: u32 = v;
             seq!(p in 0..15 {
-                p_to_bits[p] += v;
+                p_to_bits[p] = (v + p_to_bits[p]).min(MAX_P_TO_BITS);
                 v >>= 1;
             });
         }
