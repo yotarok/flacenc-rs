@@ -510,7 +510,7 @@ impl Hyp {
         let prev_bits = back_pointer.as_ref().map_or(0, |h| h.bits);
         let mut md5_context = back_pointer
             .as_ref()
-            .map_or(md5::Context::new(), |h| h.md5_context.clone());
+            .map_or_else(md5::Context::new, |h| h.md5_context.clone());
         framebuf.update_md5(
             stream_info.bits_per_sample(),
             frame_samples,
@@ -722,10 +722,7 @@ mod tests {
             source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
         let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
             .expect("Source read error");
-        eprintln!(
-            "MD5 of DC signal ({}) with len={} and ch={} was",
-            constant, signal_len, channels
-        );
+        eprintln!("MD5 of DC signal ({constant}) with len={signal_len} and ch={channels} was",);
         eprint!("[");
         for &b in stream.stream_info().md5() {
             eprint!("0x{b:02X}, ");
