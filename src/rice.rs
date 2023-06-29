@@ -15,11 +15,9 @@
 //! Functions for partitioned rice coding (PRC).
 
 use std::cell::RefCell;
-
-use std::simd::SimdUint;
-
 use std::simd::SimdPartialEq;
 use std::simd::SimdPartialOrd;
+use std::simd::SimdUint;
 
 use seq_macro::seq;
 
@@ -214,7 +212,7 @@ impl PrcParameterFinder {
             self.tables.push(table);
         }
         let mut min_bits = eval_partitions(&self.tables, &mut self.min_ps);
-        let mut min_order = partition_order;
+        let mut min_order: usize = partition_order;
 
         while nparts > 1 {
             nparts = merge_partitions(&mut self.tables[0..nparts]);
