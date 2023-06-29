@@ -14,11 +14,10 @@
 
 //! Algorithms for quantized linear-prediction coding (QLPC).
 
-use std::simd::SimdInt;
-
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use std::simd::SimdInt;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -136,7 +135,11 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
 
 const QLPC_SIMD_LANES: usize = 16usize;
 const MAX_COEF_VECTORS: usize = (MAX_LPC_ORDER + (QLPC_SIMD_LANES - 1)) / QLPC_SIMD_LANES;
+
+const LOW_WORD_MASK: std::simd::i32x16 = std::simd::i32x16::from_array([0x0000_FFFFi32; 16]);
+const LOW_WORD_DENOM: std::simd::i32x16 = std::simd::i32x16::from_array([0x0001_0000i32; 16]);
 #[allow(dead_code)]
+const HIGH_WORD_SHIFT: std::simd::i32x16 = std::simd::i32x16::from_array([16i32; 16]);
 
 /// Shifts elements in a vector of `T` represented as a slice of `Simd<T, N>`.
 #[inline]
@@ -223,9 +226,6 @@ impl QuantizedParameters {
         }
         let mut window_h = heapless::Vec::<std::simd::i32x16, MAX_COEF_VECTORS>::new();
         let mut window_l = heapless::Vec::<std::simd::i32x16, MAX_COEF_VECTORS>::new();
-        // TODO: Make these const again
-        let low_word_mask: std::simd::i32x16 = std::simd::i32x16::splat(0x0000_FFFFi32);
-        let low_word_denom: std::simd::i32x16 = std::simd::i32x16::splat(0x0001_0000i32);
 
         for i in 0..MAX_COEF_VECTORS {
             let tau: isize = (self.order() as isize - 1) - (i * QLPC_SIMD_LANES) as isize;
@@ -242,10 +242,10 @@ impl QuantizedParameters {
             }
 
             window_l
-                .push((v.abs() & low_word_mask) * v.signum())
+                .push((v.abs() & LOW_WORD_MASK) * v.signum())
                 .expect("INTERNAL ERROR: Couldn't push to window_l");
             window_h
-                .push(v.abs() / low_word_denom * v.signum())
+                .push(v.abs() / LOW_WORD_DENOM * v.signum())
                 .expect("INTERNAL ERROR: Couldn't push to window_h");
         }
 

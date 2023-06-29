@@ -586,6 +586,7 @@ impl BitRepr for FrameHeader {
             let dest = &mut header_buffer;
             // sync-code + reserved 1-bit + variable-block indicator
             let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
+            // ^ `from` converts true to 1 and false to 0.
             dest.write_lsbs(header_word, 16);
 
             let (head, foot, footsize) = block_size_spec(self.block_size);
