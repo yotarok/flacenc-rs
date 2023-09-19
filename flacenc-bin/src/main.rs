@@ -45,9 +45,11 @@
     clippy::wildcard_enum_match_arm
 )]
 
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
+use std::path::Path;
 
 use bitvec::prelude::BitVec;
 use bitvec::prelude::Msb0;
@@ -90,6 +92,45 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
         .expect("File write failed.");
 }
 
+/// Collect iterator of `Result`s, and returns values or the first error.
+fn collect_results<I, T, E>(iter: I) -> Result<Vec<T>, E>
+where
+    I: Iterator<Item = Result<T, E>>,
+    E: std::error::Error,
+    T: Debug,
+{
+    let mut error: Option<E> = None;
+    let mut samples = vec![];
+    for r in iter {
+        if let Ok(v) = r {
+            samples.push(v);
+        } else {
+            error = Some(r.unwrap_err());
+            break;
+        }
+    }
+    error.map_or_else(|| Ok(samples), Err)
+}
+
+/// Loads wave file and constructs `PreloadedSignal`.
+///
+/// # Errors
+///
+/// This function propagates errors emitted by the backend wave parser.
+pub fn load_input_wav<P: AsRef<Path>>(
+    path: P,
+) -> Result<source::PreloadedSignal, Box<dyn std::error::Error>> {
+    let mut reader = hound::WavReader::open(path).map_err(Box::new)?;
+    let spec = reader.spec();
+    let samples: Vec<i32> = collect_results(reader.samples())?;
+    Ok(source::PreloadedSignal::from_samples(
+        &samples,
+        spec.channels as usize,
+        spec.bits_per_sample as usize,
+        spec.sample_rate as usize,
+    ))
+}
+
 #[allow(clippy::expect_used)]
 #[allow(clippy::exit)]
 fn main() {
@@ -105,8 +146,7 @@ fn main() {
         std::process::exit(ExitCode::InvalidConfig as i32);
     }
 
-    let source =
-        source::PreloadedSignal::from_path(&args.source).expect("Failed to load input source.");
+    let source = load_input_wav(&args.source).expect("Failed to load input source.");
 
     let stream = if encoder_config.block_sizes.len() == 1 {
         let block_size = encoder_config.block_sizes[0];

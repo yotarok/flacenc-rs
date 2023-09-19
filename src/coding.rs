@@ -311,6 +311,10 @@ pub fn encode_frame_impl(
             (bits_per_sample + ch_info.bits_per_sample_offset(ch)) as u8,
         ));
     }
+
+    // for Claxon compatibility.
+    frame.header_mut().reset_sample_size(stream_info);
+
     frame
 }
 

@@ -167,6 +167,10 @@ pub struct QuantizedParameters {
 
 impl QuantizedParameters {
     /// Constructs `QuantizedParameters` from the parameters and precision.
+    ///
+    /// # Panics
+    ///
+    /// Only panics due to an internal error.
     pub fn with_coefs(coefs: &[f32], precision: usize) -> Self {
         let shift = find_shift(coefs, precision);
         let mut q_coefs = [0i32; MAX_LPC_ORDER];

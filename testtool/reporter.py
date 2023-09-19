@@ -29,7 +29,6 @@ INPUT_FILES = [
 ]
 REPORT_OUTPUT = "report"
 REFERENCE_ENCODER_OPTS = {
-    # "opt9lax": ["-f", "-9", "--lax"],  # This requires a customized binary.
     "opt8lax": ["-f", "-8", "--lax"],
     "opt8": ["-f", "-8"],
     "opt5": ["-f", "-5"],
@@ -231,7 +230,7 @@ def main():
     test_run_results = run_encoder(
         inputs,
         testenc_out_root,
-        str(project_root / "target" / "release" / "flacenc"),
+        str(project_root / "flacenc-bin" / "target" / "release" / "flacenc"),
         TEST_ENCODER_OPTS,
     )
 

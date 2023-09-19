@@ -14,15 +14,6 @@
 
 //! Module for input source handling.
 
-use std::collections::BTreeMap;
-use std::path::Path;
-
-use once_cell::sync::Lazy;
-use sndfile::ReadOptions;
-use sndfile::SndFileError;
-use sndfile::SndFileIO;
-use sndfile::SubtypeFormat;
-
 use super::error::SourceError;
 use super::error::SourceErrorReason;
 
@@ -158,35 +149,14 @@ pub trait Seekable: Source {
     ) -> Result<usize, SourceError>;
 }
 
-/// A map from `SubtypeFormat` to bits-per-sample.
-static SNDFORMAT_TO_BPS: Lazy<BTreeMap<i32, usize>> = Lazy::new(|| {
-    BTreeMap::from([
-        (SubtypeFormat::PCM_S8 as i32, 8),
-        (SubtypeFormat::PCM_16 as i32, 16),
-        (SubtypeFormat::PCM_24 as i32, 24),
-        (SubtypeFormat::PCM_32 as i32, 32),
-    ])
-});
-
 /// Source with preloaded samples.
 #[derive(Clone, Debug)]
 pub struct PreloadedSignal {
-    channels: usize,
-    bits_per_sample: usize,
-    sample_rate: usize,
-    samples: Vec<i32>,
-    read_head: usize,
-}
-
-#[allow(clippy::enum_glob_use)]
-const fn convert_open_err(e: &SndFileError) -> SourceError {
-    use SndFileError::*;
-    use SourceErrorReason::*;
-    match e {
-        SystemError(_) | InternalError(_) | IOError(_) => SourceError::by_reason(Open),
-        UnrecognisedFormat(_) | MalformedFile(_) => SourceError::by_reason(InvalidFormat),
-        UnsupportedEncoding(_) | InvalidParameter(_) => SourceError::by_reason(UnsupportedFormat),
-    }
+    pub channels: usize,
+    pub bits_per_sample: usize,
+    pub sample_rate: usize,
+    pub samples: Vec<i32>,
+    pub read_head: usize,
 }
 
 impl PreloadedSignal {
@@ -204,38 +174,6 @@ impl PreloadedSignal {
             samples: samples.to_owned(),
             read_head: 0,
         }
-    }
-
-    /// Constructs `PreloadedSignal` from the file using libsndfile.
-    ///
-    /// # Errors
-    ///
-    /// If the input file cannot be opened for some reasons (e.g. file not found
-    /// or file format is corrupted), then an error is returned.
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, SourceError> {
-        let mut snd = sndfile::OpenOptions::ReadOnly(ReadOptions::Auto)
-            .from_path(&path)
-            .map_err(|e| convert_open_err(&e).set_path(&path))?;
-        let bits_per_sample = SNDFORMAT_TO_BPS
-            .get(&(snd.get_subtype_format() as i32))
-            .copied()
-            .ok_or_else(|| {
-                SourceError::by_reason(SourceErrorReason::UnsupportedFormat).set_path(&path)
-            })?;
-        let mut samples: Vec<i32> = snd
-            .read_all_to_vec()
-            .map_err(|_| SourceError::from_unknown())?;
-        let shift = 32 - bits_per_sample;
-        for psample in &mut samples {
-            *psample >>= shift;
-        }
-        Ok(Self {
-            channels: snd.get_channels(),
-            bits_per_sample,
-            sample_rate: snd.get_samplerate(),
-            samples,
-            read_head: 0,
-        })
     }
 
     /// Returns sample buffer as a raw slice.

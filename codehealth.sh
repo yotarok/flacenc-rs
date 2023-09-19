@@ -23,4 +23,13 @@ cargo doc
 black --line-length=80 testtool
 pytype testtool
 flake8 testtool
+
+pushd flacenc-bin
+cargo build --release
+cargo test
+cargo fmt
+cargo clippy --tests
+cargo doc
+popd
+
 python3 ./testtool/reporter.py

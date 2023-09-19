@@ -1,4 +1,5 @@
 /target
+/flacenc-bin/target
 # Test materials
 /report/*_out
 /testwav
