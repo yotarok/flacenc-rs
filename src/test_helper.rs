@@ -162,11 +162,12 @@ where
 
     let flac_path = file.into_temp_path();
 
-    let loaded = PreloadedSignal::from_path(&flac_path).expect("Failed to decode.");
-    assert_eq!(loaded.channels(), src.channels());
-    assert_eq!(loaded.sample_rate(), src.sample_rate());
-    assert_eq!(loaded.bits_per_sample(), src.bits_per_sample());
-    assert_eq!(loaded.len(), src.len());
+    let mut reader = claxon::FlacReader::open(&flac_path).unwrap();
+    let streaminfo = reader.streaminfo();
+    assert_eq!(streaminfo.channels as usize, src.channels());
+    assert_eq!(streaminfo.sample_rate as usize, src.sample_rate());
+    assert_eq!(streaminfo.bits_per_sample as usize, src.bits_per_sample());
+    assert_eq!(streaminfo.samples, Some(src.len() as u64));
 
     let mut offsets: Vec<usize> = vec![];
     let mut offset = 0;
@@ -176,17 +177,19 @@ where
     }
     offsets.push(offset);
 
+    let channels = streaminfo.channels as usize;
+    let loaded = reader.samples().map(Result::unwrap).collect::<Vec<i32>>();
     let mut head = 0;
-    for t in 0..loaded.len() {
+    for t in 0..src.len() {
         if t >= offsets[head] {
             head += 1;
         }
         let current_offset = offsets[head - 1];
 
-        for ch in 0..loaded.channels() {
+        for ch in 0..channels {
             assert_eq!(
-                loaded.as_raw_slice()[t * loaded.channels() + ch],
-                src.as_raw_slice()[t * loaded.channels() + ch],
+                loaded.as_slice()[t * channels + ch],
+                src.as_raw_slice()[t * channels + ch],
                 "Failed at t={} of ch={} (block={}, in-block-t={})\n{:?}",
                 t,
                 ch,

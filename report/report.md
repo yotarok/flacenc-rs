@@ -8,27 +8,27 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
 ### Average compression rate
 
   - Reference
-    - opt8lax: 0.5359103118674589
-    - opt8: 0.5359103118674589
-    - opt5: 0.5438936999707933
+    - opt8lax: 0.5359108109154693
+    - opt8: 0.5359108109154693
+    - opt5: 0.5438954957635126
 
   - Ours
-    - default: 0.5442925866127969
+    - default: 0.5443052357800366
     - dmse: 0.5418910269181569
-    - bsbs: 0.5435152184327332
-    - mae: 0.5374017842276071
+    - bsbs: 0.5435087256676912
+    - mae: 0.5374008633412148
 
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 200.29690447329045
-    - opt8: 202.26163744914118
-    - opt5: 376.5449463523197
+    - opt8lax: 260.7505114888557
+    - opt8: 259.05776709564316
+    - opt5: 486.7077535022913
 
   - Ours
-    - default: 30.462883450790688
-    - dmse: 18.860237008673884
-    - bsbs: 6.42816956409864
-    - mae: 3.393886162415031
+    - default: 38.660201055046734
+    - dmse: 25.279040162624536
+    - bsbs: 6.247872867697993
+    - mae: 5.384105974647071
 
 

@@ -408,6 +408,11 @@ impl Frame {
         }
     }
 
+    /// Adds subframe.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the number of subframes added exceeded the `MAX_CHANNELS`.
     pub fn add_subframe(&mut self, subframe: SubFrame) {
         self.subframes
             .push(subframe)
@@ -444,7 +449,7 @@ impl BitRepr for Frame {
         let mut frame_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(self.count_bits());
 
         self.header.write(&mut frame_buffer)?;
-        for sub in self.subframes.iter() {
+        for sub in &self.subframes {
             sub.write(&mut frame_buffer)?;
         }
         frame_buffer.align_to_byte();
@@ -527,9 +532,8 @@ impl BitRepr for ChannelAssignment {
 pub struct FrameHeader {
     variable_block_size: bool, // must be same in all frames
     block_size: u16,           // encoded with special function
-    // frame-wise sample_rate field is not supported
     channel_assignment: ChannelAssignment,
-    // frame-wise sample_size in bits is not supported
+    sample_size: u8,          // if set, it must be consistent with StreamInfo
     frame_number: u32,        // written when variable_block_size == false
     start_sample_number: u64, // written when variable_block_size == true
 }
@@ -544,6 +548,7 @@ impl FrameHeader {
             variable_block_size: true,
             block_size: block_size as u16,
             channel_assignment,
+            sample_size: 0,
             frame_number: 0,
             start_sample_number: start_sample_number as u64,
         }
@@ -558,6 +563,22 @@ impl FrameHeader {
     /// Overwrites channel assignment information of the frame.
     pub fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
+    }
+
+    /// Resets `sample_size` field from `StreamInfo`.
+    ///
+    /// This field must be specified for Claxon compatibility.
+    pub fn reset_sample_size(&mut self, stream_info: &StreamInfo) {
+        let bits = match stream_info.bits_per_sample {
+            8 => 1,
+            12 => 2,
+            16 => 4,
+            20 => 5,
+            24 => 6,
+            32 => 7,
+            _ => 0,
+        };
+        self.sample_size = bits;
     }
 
     /// Returns block size.
@@ -594,8 +615,9 @@ impl BitRepr for FrameHeader {
             // sample rate must be declared in header, not here.
             dest.write_bitslice(bits![0, 0, 0, 0]);
             self.channel_assignment.write(dest)?;
-            // sample size must be declared in header not here.
-            dest.write_bitslice(bits![0, 0, 0, 0]); // and a reserved bit added
+
+            dest.write_lsbs(self.sample_size, 3);
+            dest.write_bitslice(bits![0]); // reserved
 
             if self.variable_block_size {
                 encode_to_utf8like(self.start_sample_number, dest)?;
@@ -733,6 +755,12 @@ pub struct FixedLpc {
 }
 
 impl FixedLpc {
+    /// Creates `FixedLpc`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `warm_up.len()`, i.e. the order of LPC, is larger than the
+    /// maximum fixed-LPC order (4).
     pub fn new(warm_up: &[i32], residual: Residual, bits_per_sample: usize) -> Self {
         let warm_up = heapless::Vec::from_slice(warm_up)
             .expect("Exceeded maximum order for FixedLPC component.");
@@ -757,7 +785,7 @@ impl BitRepr for FixedLpc {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let head_byte = 0x10u8 | (self.order() << 1) as u8;
         dest.write(head_byte);
-        for v in self.warm_up.iter() {
+        for v in &self.warm_up {
             dest.write_twoc(*v, self.bits_per_sample as usize);
         }
         self.residual.write(dest)?;

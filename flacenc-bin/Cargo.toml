@@ -1,0 +1,23 @@
+[package]
+name = "flacenc-bin"
+version = "0.1.1"
+description = "FLAC encoder written in Rust. CLI tool for encoding."
+readme = "README.md"
+license = "Apache-2.0"
+edition = "2021"
+keywords = ["flac", "lossless", "encoder", "audio"]
+categories = ["compression", "multimedia::audio", "multimedia::encoding"]
+repository = "https://github.com/yotarok/flacenc-rs/"
+
+[[bin]]
+name = "flacenc"
+path = "src/main.rs"
+
+[dependencies]
+bitvec = "1.0.0"
+clap = { version = "3.1.8", features = ["derive"] }
+hound = "3.5.0"
+toml = "0.5"
+
+[dependencies.flacenc]
+path = ".."
