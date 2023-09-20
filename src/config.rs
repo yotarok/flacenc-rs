@@ -35,6 +35,7 @@ pub struct Encoder {
     /// The possible block sizes encoder can use.
     pub block_sizes: Vec<usize>,
     /// Beam width for block-size search.
+    #[cfg(feature = "experimental")]
     pub block_size_search_beam_width: Option<usize>,
     /// Configuration for stereo-coding module.
     pub stereo_coding: StereoCoding,
@@ -49,6 +50,7 @@ impl Default for Encoder {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
             block_sizes: vec![4096usize],
+            #[cfg(feature = "experimental")]
             block_size_search_beam_width: None,
         }
     }
@@ -62,6 +64,7 @@ impl Verify for Encoder {
                 "Must specify at least one block size.",
             ));
         }
+        #[cfg(feature = "experimental")]
         if self.block_size_search_beam_width == Some(0) {
             return Err(VerifyError::new(
                 "block_size_search_beam_width",

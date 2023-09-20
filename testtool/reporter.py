@@ -230,7 +230,9 @@ def main():
     test_run_results = run_encoder(
         inputs,
         testenc_out_root,
-        str(project_root / "flacenc-bin" / "target" / "release" / "flacenc"),
+        str(
+            project_root / "flacenc-bin" / "target" / "release" / "flacenc-exp"
+        ),
         TEST_ENCODER_OPTS,
     )
 

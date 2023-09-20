@@ -15,7 +15,9 @@
 //! Controller connecting coding algorithms.
 
 use std::cell::RefCell;
+#[cfg(feature = "experimental")]
 use std::collections::BTreeSet;
+#[cfg(feature = "experimental")]
 use std::sync::Arc;
 
 use super::component::BitRepr;
@@ -30,11 +32,14 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
+#[cfg(feature = "experimental")]
 use super::constant::BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER;
+use super::constant::MAX_LPC_ORDER;
 use super::error::SourceError;
 use super::lpc;
 use super::rice;
 use super::source::FrameBuf;
+#[cfg(feature = "experimental")]
 use super::source::Seekable;
 use super::source::Source;
 
@@ -216,6 +221,35 @@ pub fn fixed_lpc(
     })
 }
 
+#[cfg(feature = "experimental")]
+fn perform_qlpc(
+    config: &config::SubFrameCoding,
+    signal: &[i32],
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    if config.qlpc.use_direct_mse {
+        if config.qlpc.mae_optimization_steps > 0 {
+            lpc::lpc_with_irls_mae(
+                signal,
+                &config.qlpc.window,
+                config.qlpc.lpc_order,
+                config.qlpc.mae_optimization_steps,
+            )
+        } else {
+            lpc::lpc_with_direct_mse(signal, &config.qlpc.window, config.qlpc.lpc_order)
+        }
+    } else {
+        lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
+    }
+}
+
+#[cfg(not(feature = "experimental"))]
+fn perform_qlpc(
+    config: &config::SubFrameCoding,
+    signal: &[i32],
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
+}
+
 /// Estimates the optimal LPC coefficients and returns `SubFrame`s with these.
 ///
 /// # Panics
@@ -228,21 +262,7 @@ pub fn estimated_qlpc(
 ) -> SubFrame {
     let mut errors = vec![0i32; signal.len()];
     let lpc_order = config.qlpc.lpc_order;
-    let lpc_coefs = if config.qlpc.use_direct_mse {
-        if config.qlpc.mae_optimization_steps > 0 {
-            lpc::lpc_with_irls_mae(
-                signal,
-                &config.qlpc.window,
-                lpc_order,
-                config.qlpc.mae_optimization_steps,
-            )
-        } else {
-            lpc::lpc_with_direct_mse(signal, &config.qlpc.window, lpc_order)
-        }
-    } else {
-        lpc::lpc_from_autocorr(signal, &config.qlpc.window, lpc_order)
-    };
-
+    let lpc_coefs = perform_qlpc(config, signal);
     let qlpc =
         lpc::QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
     qlpc.compute_error(signal, &mut errors);
@@ -479,6 +499,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
 }
 
 /// A hypothesis for block-size beam search.
+#[cfg(feature = "experimental")]
 struct Hyp {
     frame: Frame,
     offset: usize,
@@ -490,6 +511,7 @@ struct Hyp {
     md5_context: md5::Context,
 }
 
+#[cfg(feature = "experimental")]
 impl Hyp {
     /// Creates a new beam-search node connecting to the given `back_pointer`.
     ///
@@ -541,6 +563,7 @@ impl Hyp {
     }
 }
 
+#[cfg(feature = "experimental")]
 struct BeamSearch<'a, T: Seekable> {
     config: &'a config::Encoder,
     stream_info: &'a StreamInfo,
@@ -552,6 +575,7 @@ struct BeamSearch<'a, T: Seekable> {
     prune_markers: BTreeSet<usize>,
 }
 
+#[cfg(feature = "experimental")]
 impl<'a, T: Seekable> BeamSearch<'a, T> {
     pub fn new(
         config: &'a config::Encoder,
@@ -658,6 +682,7 @@ impl<'a, T: Seekable> BeamSearch<'a, T> {
 /// # Errors
 ///
 /// This function returns `SourceError` when it failed to read samples from `src`.
+#[cfg(feature = "experimental")]
 #[allow(clippy::missing_panics_doc)]
 pub fn encode_with_multiple_block_sizes<T: Seekable>(
     config: &config::Encoder,

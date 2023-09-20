@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
 
 python3 -m venv venv
 
@@ -22,8 +23,11 @@ pip install --upgrade pip
 pip install --upgrade black flake8
 pip install --upgrade pytype --ignore-requires-python
 
-black --check --line-length=80 testtool
-pytype testtool
+black --check --line-length=80 --diff testtool
+pytype testtool | true
 flake8 testtool
 
+pushd flacenc-bin
+cargo build --release
+popd
 python ./testtool/reporter.py

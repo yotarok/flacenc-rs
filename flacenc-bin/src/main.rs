@@ -60,6 +60,7 @@ use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
 use flacenc::constant::ExitCode;
+use flacenc::error::SourceError;
 use flacenc::error::Verify;
 use flacenc::source;
 
@@ -131,6 +132,28 @@ pub fn load_input_wav<P: AsRef<Path>>(
     ))
 }
 
+#[cfg(feature = "experimental")]
+fn run_encoder(
+    encoder_config: &config::Encoder,
+    source: source::PreloadedSignal,
+) -> Result<Stream, SourceError> {
+    if encoder_config.block_sizes.len() == 1 {
+        let block_size = encoder_config.block_sizes[0];
+        coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
+    } else {
+        coding::encode_with_multiple_block_sizes(&encoder_config, source)
+    }
+}
+
+#[cfg(not(feature = "experimental"))]
+fn run_encoder(
+    encoder_config: &config::Encoder,
+    source: source::PreloadedSignal,
+) -> Result<Stream, SourceError> {
+    let block_size = encoder_config.block_sizes[0];
+    coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
+}
+
 #[allow(clippy::expect_used)]
 #[allow(clippy::exit)]
 fn main() {
@@ -148,13 +171,7 @@ fn main() {
 
     let source = load_input_wav(&args.source).expect("Failed to load input source.");
 
-    let stream = if encoder_config.block_sizes.len() == 1 {
-        let block_size = encoder_config.block_sizes[0];
-        coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
-            .expect("Read error.")
-    } else {
-        coding::encode_with_multiple_block_sizes(&encoder_config, source).expect("Read error.")
-    };
+    let stream = run_encoder(&encoder_config, source).expect("Encoder error.");
 
     if let Some(path) = args.dump_config {
         let mut file = File::create(path).expect("Failed to create a file.");

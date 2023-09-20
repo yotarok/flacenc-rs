@@ -12,12 +12,20 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 [[bin]]
 name = "flacenc"
 path = "src/main.rs"
+default-features = []
+
+[[bin]]
+name = "flacenc-exp"
+path = "src/main.rs"
+default-features = ["experimental"]
+
 
 [dependencies]
 bitvec = "1.0.0"
 clap = { version = "3.1.8", features = ["derive"] }
+flacenc = { path = ".." }
 hound = "3.5.0"
 toml = "0.5"
 
-[dependencies.flacenc]
-path = ".."
+[features]
+experimental = ["flacenc/experimental"]
