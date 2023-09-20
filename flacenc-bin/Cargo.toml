@@ -23,7 +23,7 @@ default-features = ["experimental"]
 [dependencies]
 bitvec = "1.0.0"
 clap = { version = "3.1.8", features = ["derive"] }
-flacenc = { path = ".." }
+flacenc = { version = "0.1.1", path = ".." }
 hound = "3.5.0"
 toml = "0.5"
 
