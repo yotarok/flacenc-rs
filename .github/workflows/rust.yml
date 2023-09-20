@@ -24,17 +24,29 @@ jobs:
         override: true
         components: rustfmt, clippy
     - name: Install external dependencies
-      run: sudo apt-get install -y libsndfile1-dev
+      run: sudo apt-get update && sudo apt-get install -y libsndfile1-dev
     - name: Run cargo check
-      uses: actions-rs/cargo@v1
+      uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: check
+        args: --verbose --all-targets --all-features
     - name: Run tests
-      uses: actions-rs/cargo@v1
+      uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose
-
+        args: --verbose --all-targets --all-features
+    - name: Run cargo check (CLI)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: check
+        args: --verbose --all-targets --all-features
+        directory: flacenc-bin
+    - name: Run tests (CLI)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: test
+        args: --verbose --all-targets --all-features
+        directory: flacenc-bin
   lints:
     runs-on: ubuntu-latest
     steps:
@@ -47,14 +59,26 @@ jobs:
         override: true
         components: rustfmt, clippy
     - name: Code format check
-      uses: actions-rs/cargo@v1
+      uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: fmt
         args: --check
     - name: Clippy
-      uses: actions-rs/cargo@v1
+      uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: clippy
         args: --tests -- -D warnings
     - name: Generate docs (for doc syntax checking)
       run: cargo doc
+    - name: Code format check (CLI tools)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: fmt
+        args: --check
+        directory: flacenc-bin
+    - name: Clippy (CLI tools)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: clippy
+        args: --tests -- -D warnings
+        directory: flacenc-bin
