@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,19 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
 
-cargo build --release
-cargo test
-cargo fmt --check
-cargo clippy --tests
-cargo doc
+python3 -m venv venv
 
-pushd flacenc-bin
-cargo build --release
-cargo test
-cargo fmt --check
-cargo clippy --tests
-cargo doc
-popd
+source venv/bin/activate
 
+pip install --upgrade pip
+pip install --upgrade black flake8
+pip install --upgrade pytype --ignore-requires-python
+
+black --check --line-length=80 testtool
+pytype testtool
+flake8 testtool
+
+python ./testtool/reporter.py
