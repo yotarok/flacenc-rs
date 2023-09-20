@@ -318,6 +318,7 @@ pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
+#[cfg(feature = "experimental")]
 pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>) {
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
@@ -349,6 +350,7 @@ where
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
+#[cfg(feature = "experimental")]
 pub fn weighted_delay_sum<F>(
     order: usize,
     signal: &[f32],
@@ -381,6 +383,7 @@ pub fn weighted_delay_sum<F>(
 /// Computes raw errors from unquantized LPC coefficients.
 ///
 /// This function computes "prediction - signal" in floating-point numbers.
+#[allow(dead_code)] // Used either in experimental or tests of non-experimental.
 fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
     let lpc_order = lpc_coefs.len();
     for t in lpc_order..signal.len() {
@@ -474,8 +477,10 @@ struct LpcEstimator {
     /// Buffer for storing auto-correlation coefficients.
     corr_coefs: Vec<f32>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
+    #[cfg(feature = "experimental")]
     delay_sum: nalgebra::DMatrix<f32>,
     /// Weights for IRLS.
+    #[cfg(feature = "experimental")]
     weights: Vec<f32>,
 }
 
@@ -484,7 +489,9 @@ impl LpcEstimator {
         Self {
             windowed_signal: vec![],
             corr_coefs: vec![],
+            #[cfg(feature = "experimental")]
             delay_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
+            #[cfg(feature = "experimental")]
             weights: vec![],
         }
     }
@@ -544,6 +551,7 @@ impl LpcEstimator {
     }
 
     /// Optimizes LPC with Mean-Absolute-Error criterion.
+    #[cfg(feature = "experimental")]
     pub fn lpc_with_irls_mae(
         &mut self,
         signal: &[i32],
@@ -578,6 +586,7 @@ impl LpcEstimator {
         best_coefs.unwrap()
     }
 
+    #[cfg(feature = "experimental")]
     fn weighted_lpc_with_direct_mse<F>(
         &mut self,
         signal: &[i32],
@@ -631,6 +640,7 @@ impl LpcEstimator {
         ret
     }
 
+    #[cfg(feature = "experimental")]
     fn lpc_with_direct_mse(
         &mut self,
         signal: &[i32],
@@ -662,6 +672,7 @@ pub fn lpc_from_autocorr(
 
 /// Estimates LPC coefficients with direct MSE method.
 #[allow(clippy::module_name_repetitions)]
+#[cfg(feature = "experimental")]
 pub fn lpc_with_direct_mse(
     signal: &[i32],
     window: &Window,
@@ -676,6 +687,7 @@ pub fn lpc_with_direct_mse(
 
 /// Estimates LPC coefficients with IRLS-MAE method.
 #[allow(clippy::module_name_repetitions)]
+#[cfg(feature = "experimental")]
 pub fn lpc_with_irls_mae(
     signal: &[i32],
     window: &Window,
@@ -868,7 +880,16 @@ mod tests {
         assert!(coefs[0] > 0.0);
         assert!(coefs[1] < 0.0);
         assert!(coefs[2] > 0.0);
+    }
 
+    #[test]
+    #[cfg(feature = "experimental")]
+    fn lpc_with_known_coefs_dmse() {
+        let lpc_order: usize = 3;
+        let signal = vec![
+            0, -512, 0, 512, 256, -256, -256, 128, 256, 0, -192, -64, 128, 96, -64, -96, 16, 80,
+            16, -56, -32, 32, 36, -12,
+        ];
         let coefs = LPC_ESTIMATOR.with(|estimator| {
             estimator
                 .borrow_mut()
@@ -949,6 +970,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "experimental")]
     fn if_direct_mse_is_better_than_autocorr() {
         let lpc_order: usize = 24;
         let mut signal = test_helper::test_signal("sus109", 0);
@@ -991,6 +1013,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::identity_op, clippy::neg_multiply)]
+    #[cfg(feature = "experimental")]
     fn delay_sum_computation() {
         let signal = vec![4.0, -4.0, 3.0, -3.0, 2.0, -2.0, 1.0, -1.0];
         let mut result = nalgebra::DMatrix::zeros(2, 2);
@@ -1012,6 +1035,7 @@ mod tests {
     }
 
     #[rstest]
+    #[cfg(feature = "experimental")]
     fn comparing_mse_vs_mae(#[values(256, 512, 1024, 2048, 4096)] block_size: usize) {
         let lpc_order: usize = 16;
         let mut signal = test_helper::test_signal("sus109", 0);
