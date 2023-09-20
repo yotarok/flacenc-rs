@@ -151,7 +151,7 @@ fn run_encoder(
     source: source::PreloadedSignal,
 ) -> Result<Stream, SourceError> {
     let block_size = encoder_config.block_sizes[0];
-    coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
+    coding::encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
 #[allow(clippy::expect_used)]
