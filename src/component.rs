@@ -461,8 +461,8 @@ impl BitRepr for Frame {
             }
             frame_buffer.align_to_byte();
 
-            dest.write_bytes_aligned(&frame_buffer.bytes);
-            dest.write(crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(&frame_buffer.bytes));
+            dest.write_bytes_aligned(frame_buffer.as_byte_slice());
+            dest.write(crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(frame_buffer.as_byte_slice()));
             Ok(())
         })
     }
@@ -641,8 +641,10 @@ impl BitRepr for FrameHeader {
                 dest.write_lsbs(foot, footsize);
             }
 
-            dest.write_bytes_aligned(&header_buffer.borrow().bytes);
-            dest.write(crc::Crc::<u8>::new(&CRC_8_FLAC).checksum(&header_buffer.borrow().bytes));
+            dest.write_bytes_aligned(header_buffer.borrow().as_byte_slice());
+            dest.write(
+                crc::Crc::<u8>::new(&CRC_8_FLAC).checksum(header_buffer.borrow().as_byte_slice()),
+            );
             Ok(())
         })
     }

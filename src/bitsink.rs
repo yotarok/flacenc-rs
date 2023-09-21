@@ -113,8 +113,8 @@ impl<'a, L: BitSink, R: BitSink> BitSink for Tee<'a, L, R> {
 }
 
 pub struct ByteVec {
-    pub bytes: Vec<u8>,
-    pub bitlength: usize,
+    bytes: Vec<u8>,
+    bitlength: usize,
 }
 
 impl Default for ByteVec {
@@ -124,6 +124,7 @@ impl Default for ByteVec {
 }
 
 impl ByteVec {
+    /// Creates new `ByteVec` instance with the default capacity.
     pub fn new() -> Self {
         Self {
             bytes: vec![],
@@ -131,24 +132,28 @@ impl ByteVec {
         }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    /// Creates new `ByteVec` instance with the specified capacity (in bits).
+    pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity(capacity / 8 + 1),
+            bytes: Vec::with_capacity(capacity_in_bits / 8 + 1),
             bitlength: 0usize,
         }
     }
 
+    /// Clears the vector, removing all values.
     pub fn clear(&mut self) {
         self.bytes.clear();
         self.bitlength = 0;
     }
 
-    pub fn reserve(&mut self, capacity: usize) {
-        self.bytes.reserve(capacity / 8 + 1);
+    /// Reseerves capacity for at least `additional_in_bits` more bits.
+    pub fn reserve(&mut self, additional_in_bits: usize) {
+        self.bytes.reserve(additional_in_bits / 8 + 1);
     }
 
+    /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
-    pub fn rem_bits(&self) -> usize {
+    fn tail_len(&self) -> usize {
         let r = self.bitlength % 8;
         if r == 0 {
             0
@@ -157,7 +162,9 @@ impl ByteVec {
         }
     }
 
-    pub fn to_debug_bitstring(&self) -> String {
+    /// Returns bits in a string for tests.
+    #[cfg(test)]
+    fn to_debug_bitstring(&self) -> String {
         let mut ret = String::new();
         for b in &self.bytes {
             ret.push_str(&format!("{b:08b}_"));
@@ -166,12 +173,13 @@ impl ByteVec {
         ret
     }
 
+    /// Appends first `nbits` bits (from MSB) to the `ByteVec`.
     #[inline]
-    fn write_u64_msbs(&mut self, val: u64, nbits: usize) {
+    fn push_u64_msbs(&mut self, val: u64, nbits: usize) {
         let mut val: u64 = val;
         let mut nbits = nbits;
         let nbitlength = self.bitlength + nbits;
-        let r = self.rem_bits();
+        let r = self.tail_len();
 
         if r != 0 {
             let b: u8 = ((val >> (64 - r)) & ((1 << r) - 1)) as u8;
@@ -192,6 +200,10 @@ impl ByteVec {
         }
         self.bitlength = nbitlength;
     }
+
+    pub fn as_byte_slice(&self) -> &[u8] {
+        &self.bytes
+    }
 }
 
 impl BitSink for ByteVec {
@@ -206,8 +218,9 @@ impl BitSink for ByteVec {
         }
     }
 
+    #[inline]
     fn align_to_byte(&mut self) -> usize {
-        let r = self.rem_bits();
+        let r = self.tail_len();
         self.bitlength += r;
         r
     }
@@ -226,7 +239,7 @@ impl BitSink for ByteVec {
             return;
         }
         let initial_shift = 64 - (std::mem::size_of::<T>() * 8);
-        self.write_u64_msbs(val.into() << initial_shift, nbits);
+        self.push_u64_msbs(val.into() << initial_shift, nbits);
     }
 
     #[inline]
@@ -234,7 +247,7 @@ impl BitSink for ByteVec {
         if nbits == 0 {
             return;
         }
-        self.write_u64_msbs(val.into() << (64 - nbits), nbits);
+        self.push_u64_msbs(val.into() << (64 - nbits), nbits);
     }
 }
 
