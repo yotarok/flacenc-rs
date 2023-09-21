@@ -92,7 +92,9 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
     let mut bv = flacenc::bitsink::ByteVec::new();
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     let mut writer = BufWriter::new(file);
-    writer.write_all(&bv.bytes).expect("");
+    writer
+        .write_all(bv.as_byte_slice())
+        .expect("Failed to write a bitstream to the file.");
 }
 
 /// Collect iterator of `Result`s, and returns values or the first error.
