@@ -54,6 +54,8 @@ use std::path::Path;
 use bitvec::prelude::BitVec;
 use bitvec::prelude::Msb0;
 use clap::Parser;
+#[cfg(feature = "pprof")]
+use pprof::protos::Message;
 
 use flacenc::coding;
 use flacenc::component::BitRepr;
@@ -79,6 +81,10 @@ struct Args {
     /// If set, dump the config used to the specified path.
     #[clap(long)]
     dump_config: Option<String>,
+    /// If set, dump profiler output to the specified path.
+    #[cfg(feature = "pprof")]
+    #[clap(long)]
+    pprof_output: Option<String>,
 }
 
 /// Serializes `Stream` to a file.
@@ -154,11 +160,7 @@ fn run_encoder(
     coding::encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
-#[allow(clippy::expect_used)]
-#[allow(clippy::exit)]
-fn main() {
-    let args = Args::parse();
-
+fn main_body(args: Args) -> Result<(), i32> {
     let encoder_config = args.config.map_or_else(config::Encoder::default, |path| {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")
@@ -166,7 +168,7 @@ fn main() {
 
     if let Err(e) = encoder_config.verify() {
         eprintln!("Error: {}", e.within("encoder_config"));
-        std::process::exit(ExitCode::InvalidConfig as i32);
+        return Err(ExitCode::InvalidConfig as i32);
     }
 
     let source = load_input_wav(&args.source).expect("Failed to load input source.");
@@ -181,4 +183,46 @@ fn main() {
 
     let mut file = File::create(args.output).expect("Failed to create a file.");
     write_stream(&stream, &mut file);
+    Ok(())
+}
+
+#[cfg(feature = "pprof")]
+fn run_with_profiler_if_requested<F>(args: Args, body: F) -> Result<(), i32>
+where
+    F: FnOnce(Args) -> Result<(), i32>,
+{
+    if let Some(ref profiler_out) = args.pprof_output {
+        let profiler_out = profiler_out.clone();
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(1000)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+        let result = body(args);
+        if let Ok(report) = guard.report().build() {
+            let mut file = File::create(&profiler_out).unwrap();
+            let profile = report.pprof().unwrap();
+
+            let mut content = Vec::new();
+            profile.write_to_vec(&mut content).unwrap();
+            file.write_all(&content).unwrap();
+        };
+        result
+    } else {
+        body(args)
+    }
+}
+
+#[cfg(not(feature = "pprof"))]
+#[inline]
+fn run_with_profiler_if_requested<F>(args: Args, body: F) -> Result<(), i32>
+where
+    F: FnOnce(Args) -> Result<(), i32>,
+{
+    body(args)
+}
+
+#[allow(clippy::expect_used)]
+fn main() -> Result<(), i32> {
+    run_with_profiler_if_requested(Args::parse(), main_body)
 }

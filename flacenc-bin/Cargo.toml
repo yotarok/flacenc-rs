@@ -9,15 +9,15 @@ keywords = ["flac", "lossless", "encoder", "audio"]
 categories = ["compression", "multimedia::audio", "multimedia::encoding"]
 repository = "https://github.com/yotarok/flacenc-rs/"
 
+
+# This is for enabling use of profilers with a release build.
+[profile.release]
+debug = 1
+
+
 [[bin]]
 name = "flacenc"
 path = "src/main.rs"
-default-features = []
-
-[[bin]]
-name = "flacenc-exp"
-path = "src/main.rs"
-default-features = ["experimental"]
 
 
 [dependencies]
@@ -25,7 +25,10 @@ bitvec = "1.0.0"
 clap = { version = "3.1.8", features = ["derive"] }
 flacenc = { path = ".." }
 hound = "3.5.0"
+pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 toml = "0.5"
 
+
 [features]
+pprof = [ "dep:pprof" ]
 experimental = ["flacenc/experimental"]
