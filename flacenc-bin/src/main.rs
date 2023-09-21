@@ -89,12 +89,6 @@ struct Args {
 #[allow(clippy::expect_used)]
 fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
     eprintln!("{} bits to be written", stream.count_bits());
-    // let mut bv: BitVec<u8, Msb0> = BitVec::with_capacity(stream.count_bits());
-    // stream.write(&mut bv).expect("Bitstream formatting failed.");
-    // let mut writer = BufWriter::new(file);
-    // writer
-    //     .write_all(bv.as_raw_slice())
-    //     .expect("File write failed.");
     let mut bv = flacenc::bitsink::ByteVec::new();
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     let mut writer = BufWriter::new(file);
