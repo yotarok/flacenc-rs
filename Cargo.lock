@@ -305,7 +305,7 @@ checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
 
 [[package]]
 name = "flacenc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bitvec",
  "claxon",
