@@ -14,6 +14,7 @@
 
 //! Components to be written in the output file.
 
+use std::cell::RefCell;
 use std::cmp::max;
 use std::cmp::min;
 
@@ -24,6 +25,7 @@ use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
 
 use super::bitsink::BitSink;
+use super::bitsink::ByteVec;
 use super::constant::MAX_CHANNELS;
 use super::constant::MAX_LPC_ORDER;
 use super::error::EncodeError;
@@ -248,11 +250,9 @@ impl BitRepr for MetadataBlock {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         let block_type = self.block_type as u32 + if self.is_last { 0x80 } else { 0x00 };
         dest.write_lsbs(block_type, 8);
-        let mut data_buf: BitVec<usize> = BitVec::with_capacity(self.data.count_bits());
-        self.data.write(&mut data_buf)?;
-        let data_size: u32 = (data_buf.len() / 8) as u32;
+        let data_size: u32 = (self.data.count_bits() / 8) as u32;
         dest.write_lsbs(data_size, 24);
-        dest.write_bitslice(&data_buf);
+        self.data.write(dest)?;
         Ok(())
     }
 }
@@ -435,6 +435,10 @@ impl Frame {
     }
 }
 
+thread_local! {
+    static FRAME_CRC_BUFFER: RefCell<ByteVec> = RefCell::new(ByteVec::new());
+}
+
 impl BitRepr for Frame {
     fn count_bits(&self) -> usize {
         let header = self.header.count_bits();
@@ -446,17 +450,21 @@ impl BitRepr for Frame {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        let mut frame_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(self.count_bits());
+        FRAME_CRC_BUFFER.with(|frame_buffer| {
+            let frame_buffer: &mut ByteVec = &mut frame_buffer.borrow_mut();
+            frame_buffer.clear();
+            frame_buffer.reserve(self.count_bits());
 
-        self.header.write(&mut frame_buffer)?;
-        for sub in &self.subframes {
-            sub.write(&mut frame_buffer)?;
-        }
-        frame_buffer.align_to_byte();
+            self.header.write(frame_buffer)?;
+            for sub in &self.subframes {
+                sub.write(frame_buffer)?;
+            }
+            frame_buffer.align_to_byte();
 
-        dest.write_bitslice(&frame_buffer);
-        dest.write(crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(frame_buffer.as_raw_slice()));
-        Ok(())
+            dest.write_bytes_aligned(&frame_buffer.bytes);
+            dest.write(crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(&frame_buffer.bytes));
+            Ok(())
+        })
     }
 }
 
@@ -514,13 +522,13 @@ impl BitRepr for ChannelAssignment {
                 dest.write_lsbs(ch - 1, 4);
             }
             Self::LeftSide => {
-                dest.write_bitslice(bits![1, 0, 0, 0]);
+                dest.write_lsbs(0x8u64, 4);
             }
             Self::RightSide => {
-                dest.write_bitslice(bits![1, 0, 0, 1]);
+                dest.write_lsbs(0x9u64, 4);
             }
             Self::MidSide => {
-                dest.write_bitslice(bits![1, 0, 1, 0]);
+                dest.write_lsbs(0xAu64, 4);
             }
         }
         Ok(())
@@ -588,6 +596,10 @@ impl FrameHeader {
     }
 }
 
+thread_local! {
+    static HEADER_CRC_BUFFER: RefCell<ByteVec> = RefCell::new(ByteVec::new());
+}
+
 impl BitRepr for FrameHeader {
     fn count_bits(&self) -> usize {
         let mut ret = 40;
@@ -602,35 +614,37 @@ impl BitRepr for FrameHeader {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        let mut header_buffer: BitVec<u8, Msb0> = BitVec::with_capacity(128 * 8);
-        {
-            let dest = &mut header_buffer;
-            // sync-code + reserved 1-bit + variable-block indicator
-            let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
-            // ^ `from` converts true to 1 and false to 0.
-            dest.write_lsbs(header_word, 16);
+        HEADER_CRC_BUFFER.with(|header_buffer| {
+            {
+                let dest: &mut ByteVec = &mut header_buffer.borrow_mut();
+                dest.clear();
+                dest.reserve(self.count_bits());
 
-            let (head, foot, footsize) = block_size_spec(self.block_size);
-            dest.write_lsbs(head, 4);
-            // sample rate must be declared in header, not here.
-            dest.write_bitslice(bits![0, 0, 0, 0]);
-            self.channel_assignment.write(dest)?;
+                // sync-code + reserved 1-bit + variable-block indicator
+                let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
+                // ^ `from` converts true to 1 and false to 0.
+                dest.write_lsbs(header_word, 16);
 
-            dest.write_lsbs(self.sample_size, 3);
-            dest.write_bitslice(bits![0]); // reserved
+                let (head, foot, footsize) = block_size_spec(self.block_size);
+                // head + 4-bit sample rate specifier.
+                dest.write_lsbs(head << 4, 8);
+                self.channel_assignment.write(dest)?;
 
-            if self.variable_block_size {
-                encode_to_utf8like(self.start_sample_number, dest)?;
-            } else {
-                encode_to_utf8like(u64::from(self.frame_number), dest)?;
+                // sample size specifier + 1-bit reserved (zero)
+                dest.write_lsbs(self.sample_size << 1, 4);
+
+                if self.variable_block_size {
+                    encode_to_utf8like(self.start_sample_number, dest)?;
+                } else {
+                    encode_to_utf8like(u64::from(self.frame_number), dest)?;
+                }
+                dest.write_lsbs(foot, footsize);
             }
-            dest.write_lsbs(foot, footsize);
-        }
 
-        dest.write_bitslice(&header_buffer);
-        dest.write(crc::Crc::<u8>::new(&CRC_8_FLAC).checksum(header_buffer.as_raw_slice()));
-
-        Ok(())
+            dest.write_bytes_aligned(&header_buffer.borrow().bytes);
+            dest.write(crc::Crc::<u8>::new(&CRC_8_FLAC).checksum(&header_buffer.borrow().bytes));
+            Ok(())
+        })
     }
 }
 

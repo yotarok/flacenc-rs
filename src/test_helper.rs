@@ -16,13 +16,12 @@ use std::collections::BTreeMap;
 use std::f32::consts::PI;
 use std::io::Write;
 
-use bitvec::prelude::BitVec;
-use bitvec::prelude::Msb0;
 use once_cell::sync::Lazy;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use tempfile::NamedTempFile;
 
+use super::bitsink::ByteVec;
 use super::component::BitRepr;
 use super::component::Stream;
 use super::source::PreloadedSignal;
@@ -155,10 +154,16 @@ where
     let stream = encoder(src.clone());
 
     let mut file = NamedTempFile::new().expect("Failed to create temp file.");
+    /*
     let mut bv: BitVec<u8, Msb0> = BitVec::with_capacity(stream.count_bits());
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     file.write_all(bv.as_raw_slice())
         .expect("File write failed.");
+    */
+
+    let mut bv: ByteVec = ByteVec::with_capacity(stream.count_bits());
+    stream.write(&mut bv).expect("Bitstream formatting failed.");
+    file.write_all(&bv.bytes).expect("File write failed.");
 
     let flac_path = file.into_temp_path();
 
