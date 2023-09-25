@@ -371,7 +371,7 @@ impl BitRepr for StreamInfo {
         dest.write_lsbs(self.channels - 1, 3);
         dest.write_lsbs(self.bits_per_sample - 1, 5);
         dest.write_lsbs(self.total_samples, 36);
-        dest.write(self.md5);
+        dest.write_bytes_aligned(&self.md5);
         Ok(())
     }
 }
