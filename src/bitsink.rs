@@ -16,12 +16,6 @@
 
 use std::ops::Shl;
 
-use bitvec::prelude::BitOrder;
-use bitvec::prelude::BitSlice;
-use bitvec::prelude::BitStore;
-use bitvec::prelude::BitVec;
-use bitvec::prelude::Msb0;
-use bitvec::view::BitView;
 use num_traits::ToBytes;
 
 /// Alias trait for the bit-addressible integers.
@@ -37,8 +31,6 @@ impl<T: ToBytes + Into<u64> + Shl<usize, Output = T> + Copy> PackedBits for T {}
 /// `bitvec::BitVec` or `ByteVec` (in this module) and covert the contents to
 /// a desired type.
 pub trait BitSink: Sized {
-    fn write_bitslice<T: BitStore, O: BitOrder>(&mut self, other: &BitSlice<T, O>);
-
     /// Puts zeros to `BitSink` until the length aligns to the byte boundaries.
     ///
     /// # Returns
@@ -56,28 +48,13 @@ pub trait BitSink: Sized {
     }
 
     /// Writes `n` LSBs to the sink.
-    #[inline]
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
-        let val: u64 = val.into();
-        self.write_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
-    }
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize);
 
     /// Writes `n` MSBs to the sink.
-    #[inline]
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
-        let val: u64 = val.into();
-        self.write_bitslice(&val.view_bits::<Msb0>()[0..n]);
-    }
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize);
 
     /// Writes all bits in `val: PackedBits`.
-    #[inline]
-    fn write<T: PackedBits>(&mut self, val: T) {
-        let bytes: T::Bytes = val.to_be_bytes();
-        for b in bytes.as_ref() {
-            let b: &u8 = b;
-            self.write_bitslice(b.view_bits::<Msb0>());
-        }
-    }
+    fn write<T: PackedBits>(&mut self, val: T);
 
     /// Writes `val` in two's coplement format.
     #[inline]
@@ -85,27 +62,6 @@ pub trait BitSink: Sized {
         let val: i64 = val.into();
         let shifted = (val << (64 - bits_per_sample)) as u64;
         self.write_msbs(shifted, bits_per_sample);
-    }
-}
-
-impl<T2, O2> BitSink for BitVec<T2, O2>
-where
-    T2: BitStore,
-    O2: BitOrder,
-{
-    #[inline]
-    fn write_bitslice<T: BitStore, O: BitOrder>(&mut self, other: &BitSlice<T, O>) {
-        self.extend_from_bitslice(other);
-    }
-
-    #[inline]
-    fn align_to_byte(&mut self) -> usize {
-        let npad = 8 - self.len() % 8;
-        if npad == 8 {
-            return 0;
-        }
-        self.write_lsbs(0u8, npad);
-        npad
     }
 }
 
@@ -122,9 +78,19 @@ impl<'a, L: BitSink, R: BitSink> Tee<'a, L, R> {
 }
 
 impl<'a, L: BitSink, R: BitSink> BitSink for Tee<'a, L, R> {
-    fn write_bitslice<T: BitStore, O: BitOrder>(&mut self, other: &BitSlice<T, O>) {
-        self.primary.write_bitslice(other);
-        self.secondary.write_bitslice(other);
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        self.primary.write_msbs(val, n);
+        self.secondary.write_msbs(val, n);
+    }
+
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        self.primary.write_lsbs(val, n);
+        self.secondary.write_lsbs(val, n);
+    }
+
+    fn write<T: PackedBits>(&mut self, val: T) {
+        self.primary.write(val);
+        self.secondary.write(val);
     }
 
     fn align_to_byte(&mut self) -> usize {
@@ -230,17 +196,6 @@ impl ByteVec {
 
 impl BitSink for ByteVec {
     #[inline]
-    fn write_bitslice<T: BitStore, O: BitOrder>(&mut self, other: &BitSlice<T, O>) {
-        let mut bv: BitVec<u64, Msb0> = BitVec::with_capacity(other.len());
-        bv.extend_from_bitslice(other);
-        let mut size = bv.len();
-        for elem in bv.as_raw_slice() {
-            self.write_msbs(*elem, std::cmp::min(64, size));
-            size = if size > 64 { size - 64 } else { 0 };
-        }
-    }
-
-    #[inline]
     fn write<T: PackedBits>(&mut self, val: T) {
         let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
         let tail = self.tail_len();
@@ -294,7 +249,42 @@ mod tests {
     use super::*;
 
     use bitvec::prelude::bits;
+    use bitvec::prelude::BitOrder;
+    use bitvec::prelude::BitStore;
+    use bitvec::prelude::BitVec;
     use bitvec::prelude::Lsb0;
+    use bitvec::prelude::Msb0;
+    use bitvec::view::BitView;
+
+    impl<T2, O2> BitSink for BitVec<T2, O2>
+    where
+        T2: BitStore,
+        O2: BitOrder,
+    {
+        #[inline]
+        fn align_to_byte(&mut self) -> usize {
+            let npad = 8 - self.len() % 8;
+            if npad == 8 {
+                return 0;
+            }
+            self.write_lsbs(0u8, npad);
+            npad
+        }
+
+        fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
+            let val: u64 = val.into();
+            self.extend_from_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
+        }
+
+        fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
+            let val: u64 = val.into();
+            self.extend_from_bitslice(&val.view_bits::<Msb0>()[0..n]);
+        }
+
+        fn write<T: PackedBits>(&mut self, val: T) {
+            self.write_lsbs(val, std::mem::size_of::<T>() * 8);
+        }
+    }
 
     #[test]
     fn align_to_byte_with_bitvec() {
