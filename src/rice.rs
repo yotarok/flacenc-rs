@@ -15,11 +15,10 @@
 //! Functions for partitioned rice coding (PRC).
 
 use std::cell::RefCell;
+use std::simd::SimdOrd;
 use std::simd::SimdPartialEq;
 use std::simd::SimdPartialOrd;
 use std::simd::SimdUint;
-
-use seq_macro::seq;
 
 use super::constant::MAX_RICE_PARAMETER;
 use super::constant::MAX_RICE_PARTITIONS;
@@ -36,11 +35,14 @@ struct PrcBitTable {
 static ZEROS: std::simd::u32x16 = std::simd::u32x16::from_array([0u32; 16]);
 static INDEX: std::simd::u32x16 =
     std::simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+static INDEX1: std::simd::u32x16 =
+    std::simd::u32x16::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
 static MAXES: std::simd::u32x16 = std::simd::u32x16::from_array([u32::MAX; 16]);
 
 // max value of p_to_bits is chosen so that the estimates doesn't overflow
 // after added 2^4 = 16 times at maximum.
 static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
+static MAX_P_TO_BITS_VEC: std::simd::u32x16 = std::simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
 
 impl PrcBitTable {
     pub fn zero(max_p: usize) -> Self {
@@ -51,27 +53,43 @@ impl PrcBitTable {
         }
     }
 
-    pub fn from_signal(signal: &[i32], max_p: usize, offset: usize) -> Self {
+    pub fn from_errors(errors: &[u32], max_p: usize, offset: usize) -> Self {
         let mut ret = Self::zero(max_p);
-        ret.init_with_signal(signal, offset);
+        ret.init_with_errors(errors, offset);
         ret
     }
 
+    /// Initializes PRC bit table from the error signal.
     #[allow(unused_assignments, clippy::identity_op)]
-    fn init_with_signal(&mut self, signal: &[i32], offset: usize) {
-        let mut p_to_bits: [u32; 16] = [0u32; 16];
-        seq!(p in 0..15 {
-            p_to_bits[p] = (offset + signal.len() * (p + 1)) as u32;
-        });
+    fn init_with_errors(&mut self, errors: &[u32], offset: usize) {
+        let mut p_to_bits = std::simd::u32x16::splat(offset as u32)
+            + std::simd::u32x16::splat(errors.len() as u32) * INDEX1;
 
-        for v in signal.iter().map(|x| encode_signbit(*x)) {
-            let mut v: u32 = v;
-            seq!(p in 0..15 {
-                p_to_bits[p] = (v + p_to_bits[p]).min(MAX_P_TO_BITS);
-                v >>= 1;
-            });
+        for v in errors {
+            // Below is faster than doing:
+            //   vs = splat(*v) >> INDEX;
+            // Perhaps due to smaller memory footprint by avoiding `splat`?
+            let vs = std::simd::u32x16::from_array([
+                *v,
+                *v >> 1,
+                *v >> 2,
+                *v >> 3,
+                *v >> 4,
+                *v >> 5,
+                *v >> 6,
+                *v >> 7,
+                *v >> 8,
+                *v >> 9,
+                *v >> 10,
+                *v >> 11,
+                *v >> 12,
+                *v >> 13,
+                *v >> 14,
+                *v >> 15,
+            ]);
+            p_to_bits = (vs + p_to_bits).simd_min(MAX_P_TO_BITS_VEC);
         }
-        self.p_to_bits = std::simd::u32x16::from_array(p_to_bits);
+        self.p_to_bits = p_to_bits;
     }
 
     #[cfg(test)]
@@ -180,6 +198,7 @@ impl PrcParameter {
 
 /// Helper object that holds pre-allocated buffer for PRC optimization.
 struct PrcParameterFinder {
+    pub errors: Vec<u32>,
     pub tables: Vec<PrcBitTable>,
     pub ps: Vec<usize>,
     pub min_ps: Vec<usize>,
@@ -188,6 +207,7 @@ struct PrcParameterFinder {
 impl PrcParameterFinder {
     pub const fn new() -> Self {
         Self {
+            errors: Vec::new(),
             tables: Vec::new(),
             ps: Vec::new(),
             min_ps: Vec::new(),
@@ -203,12 +223,15 @@ impl PrcParameterFinder {
 
         self.tables.clear();
         self.min_ps.resize(nparts, 0);
+        self.errors.clear();
+        self.errors
+            .extend(signal.iter().map(|v| encode_signbit(*v)));
 
         let part_size = signal.len() / nparts;
         for p in 0..nparts {
             let start = std::cmp::max(p * part_size, warmup_length);
             let end = (p + 1) * part_size;
-            let table = PrcBitTable::from_signal(&signal[start..end], max_p, 4);
+            let table = PrcBitTable::from_errors(&self.errors[start..end], max_p, 4);
             self.tables.push(table);
         }
         let mut min_bits = eval_partitions(&self.tables, &mut self.min_ps);
@@ -253,7 +276,7 @@ mod tests {
 
     #[test]
     fn bit_table_initialization() {
-        let table = PrcBitTable::from_signal(&[3, 4, 5, 6], 2, 4);
+        let table = PrcBitTable::from_errors(&[6, 8, 10, 12], 2, 4);
         assert_eq!(table.bits(0), 3 * 2 + 4 * 2 + 5 * 2 + 6 * 2 + 8);
         assert_eq!(table.bits(1), 3 + 4 + 5 + 6 + 8 + 4);
     }
@@ -261,7 +284,8 @@ mod tests {
     #[test]
     fn prc_parameter_search() {
         let signal = test_helper::constant_plus_noise(64, 0, 4096);
-        let table = PrcBitTable::from_signal(&signal, 14, 4);
+        let errors: Vec<u32> = signal.iter().map(|v| encode_signbit(*v)).collect();
+        let table = PrcBitTable::from_errors(&errors, 14, 4);
         let (p, _bits) = table.minimizer();
         eprintln!("Table = {table:?}");
         eprintln!("Found p = {p}");
@@ -286,8 +310,9 @@ mod tests {
         let signal_left = test_helper::constant_plus_noise(64, 0, 2048);
         let signal_right = test_helper::constant_plus_noise(64, 0, 12);
         let signal = [signal_left, signal_right].concat();
+        let errors: Vec<u32> = signal.iter().map(|v| encode_signbit(*v)).collect();
         let (_single_param, single_bits) =
-            PrcBitTable::from_signal(&signal[4..], 14, 4).minimizer();
+            PrcBitTable::from_errors(&errors[4..], 14, 4).minimizer();
         let prc_p = super::find_partitioned_rice_parameter(&signal, 4, 14);
 
         assert!(prc_p.code_bits <= single_bits);
