@@ -18,12 +18,6 @@ use std::cell::RefCell;
 use std::cmp::max;
 use std::cmp::min;
 
-use bitvec::bits;
-use bitvec::prelude::BitVec;
-use bitvec::prelude::Lsb0;
-use bitvec::prelude::Msb0;
-use bitvec::view::BitView;
-
 use super::bitsink::BitSink;
 use super::bitsink::ByteVec;
 use super::constant::MAX_CHANNELS;
@@ -48,7 +42,7 @@ pub trait BitRepr {
 
 /// Encodes the given integer into UTF-8-like byte sequence.
 fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeError> {
-    let val_size = usize::BITS as usize;
+    let val_size = u64::BITS as usize;
     let code_bits: usize = val_size - val.leading_zeros() as usize;
     if code_bits <= 7 {
         dest.write_lsbs(val, 8);
@@ -67,20 +61,17 @@ fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeErr
         let capacity = trailing_bytes * 6 + 6 - trailing_bytes;
         assert!(capacity >= code_bits);
 
-        let mut val_bv: BitVec = BitVec::new();
-        val_bv.extend_from_bitslice(&val.view_bits::<Msb0>()[val_size - capacity..]);
+        let mut val = val << (val_size - capacity);
 
-        dest.write_lsbs(0xFFu8, trailing_bytes);
-        dest.write_bitslice(bits![1, 0]);
+        dest.write_lsbs(0xFEu8, trailing_bytes + 2);
         let first_bits = 6 - trailing_bytes;
-        let mut off = 0;
-        dest.write_bitslice(&val_bv[off..first_bits]);
+        dest.write_msbs(val, first_bits);
+        val <<= first_bits;
 
-        off = first_bits;
         for _i in 0..trailing_bytes {
-            dest.write_bitslice(bits![1, 0]);
-            dest.write_bitslice(&val_bv[off..off + 6]);
-            off += 6;
+            dest.write_lsbs(0x02u8, 2);
+            dest.write_msbs(val, 6);
+            val <<= 6;
         }
     }
     Ok(())
@@ -726,7 +717,7 @@ impl BitRepr for Constant {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        dest.write_bitslice(bits![0, 0, 0, 0, 0, 0, 0, 0]);
+        dest.write(0u8);
         dest.write_twoc(self.dc_offset, self.bits_per_sample as usize);
         Ok(())
     }
@@ -754,7 +745,7 @@ impl BitRepr for Verbatim {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        dest.write_bitslice(bits![0, 0, 0, 0, 0, 0, 1, 0]);
+        dest.write(0x02u8);
         for i in 0..self.data.len() {
             dest.write_twoc(self.data[i], self.bits_per_sample as usize);
         }
@@ -979,6 +970,10 @@ impl BitRepr for Residual {
 mod tests {
     use super::*;
     use crate::test_helper;
+
+    use bitvec::bits;
+    use bitvec::prelude::BitVec;
+    use bitvec::prelude::Lsb0;
 
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;

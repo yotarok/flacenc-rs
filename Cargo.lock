@@ -314,6 +314,7 @@ dependencies = [
  "hound",
  "md5",
  "nalgebra",
+ "num-traits",
  "once_cell",
  "rand",
  "rstest",
