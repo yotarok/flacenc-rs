@@ -14,14 +14,28 @@
 
 //! Abstract interface for bit-based output.
 
+use std::ops::Shl;
+
 use bitvec::prelude::BitOrder;
 use bitvec::prelude::BitSlice;
 use bitvec::prelude::BitStore;
 use bitvec::prelude::BitVec;
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
+use num_traits::ToBytes;
+
+/// Alias trait for the bit-addressible integers.
+pub trait PackedBits: ToBytes + Into<u64> + Shl<usize, Output = Self> + Copy {}
+
+impl<T: ToBytes + Into<u64> + Shl<usize, Output = T> + Copy> PackedBits for T {}
 
 /// Storage-agnostic interface trait for bit-based output.
+///
+/// `BitSink` API is unstable and will be subjected to change in a minor
+/// version up. Therefore, it is not recommended to derive this trait for
+/// supporting new output types. Rather, it is recommended to use
+/// `bitvec::BitVec` or `ByteVec` (in this module) and covert the contents to
+/// a desired type.
 pub trait BitSink: Sized {
     fn write_bitslice<T: BitStore, O: BitOrder>(&mut self, other: &BitSlice<T, O>);
 
@@ -41,27 +55,35 @@ pub trait BitSink: Sized {
         ret
     }
 
-    // Type signature may change. Don't override.
+    /// Writes `n` LSBs to the sink.
     #[inline]
-    fn write_lsbs<T: Into<u64>>(&mut self, val: T, nbits: usize) {
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
         let val: u64 = val.into();
-        self.write_bitslice(&val.view_bits::<Msb0>()[64 - nbits..]);
+        self.write_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
     }
 
+    /// Writes `n` MSBs to the sink.
     #[inline]
-    fn write_msbs<T: Into<u64>>(&mut self, val: T, nbits: usize) {
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
         let val: u64 = val.into();
-        self.write_bitslice(&val.view_bits::<Msb0>()[0..nbits]);
+        self.write_bitslice(&val.view_bits::<Msb0>()[0..n]);
     }
 
+    /// Writes all bits in `val: PackedBits`.
     #[inline]
-    fn write<T: BitView>(&mut self, val: T) {
-        self.write_bitslice(val.view_bits::<Msb0>());
+    fn write<T: PackedBits>(&mut self, val: T) {
+        let bytes: T::Bytes = val.to_be_bytes();
+        for b in bytes.as_ref() {
+            let b: &u8 = b;
+            self.write_bitslice(b.view_bits::<Msb0>());
+        }
     }
 
+    /// Writes `val` in two's coplement format.
     #[inline]
     fn write_twoc<T: Into<i64>>(&mut self, val: T, bits_per_sample: usize) {
-        let shifted = (val.into() << (64 - bits_per_sample)) as u64;
+        let val: i64 = val.into();
+        let shifted = (val << (64 - bits_per_sample)) as u64;
         self.write_msbs(shifted, bits_per_sample);
     }
 }
@@ -173,12 +195,12 @@ impl ByteVec {
         ret
     }
 
-    /// Appends first `nbits` bits (from MSB) to the `ByteVec`.
+    /// Appends first `n` bits (from MSB) to the `ByteVec`.
     #[inline]
-    fn push_u64_msbs(&mut self, val: u64, nbits: usize) {
+    fn push_u64_msbs(&mut self, val: u64, n: usize) {
         let mut val: u64 = val;
-        let mut nbits = nbits;
-        let nbitlength = self.bitlength + nbits;
+        let mut n = n;
+        let nbitlength = self.bitlength + n;
         let r = self.tail_len();
 
         if r != 0 {
@@ -186,16 +208,16 @@ impl ByteVec {
             let tail = self.bytes.len() - 1;
             self.bytes[tail] |= b;
             val <<= r;
-            nbits = if nbits > r { nbits - r } else { 0 };
+            n = if n > r { n - r } else { 0 };
         }
-        while nbits >= 8 {
+        while n >= 8 {
             let b: u8 = (val >> (64 - 8) & 0xFFu64) as u8;
             self.bytes.push(b);
             val <<= 8;
-            nbits -= 8;
+            n -= 8;
         }
-        if nbits > 0 {
-            let b: u8 = ((val >> (64 - nbits)) << (8 - nbits)) as u8;
+        if n > 0 {
+            let b: u8 = ((val >> (64 - n)) << (8 - n)) as u8;
             self.bytes.push(b);
         }
         self.bitlength = nbitlength;
@@ -219,6 +241,19 @@ impl BitSink for ByteVec {
     }
 
     #[inline]
+    fn write<T: PackedBits>(&mut self, val: T) {
+        let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
+        let tail = self.tail_len();
+        if tail > 0 {
+            self.write_msbs(val, tail);
+        }
+        let val = val << tail;
+        let bytes: T::Bytes = val.to_be_bytes();
+        self.bytes.extend_from_slice(bytes.as_ref());
+        self.bitlength = nbitlength;
+    }
+
+    #[inline]
     fn align_to_byte(&mut self) -> usize {
         let r = self.tail_len();
         self.bitlength += r;
@@ -230,24 +265,27 @@ impl BitSink for ByteVec {
         let ret = self.align_to_byte();
         self.align_to_byte();
         self.bytes.extend_from_slice(bytes);
+        self.bitlength += 8 * bytes.len();
         ret
     }
 
     #[inline]
-    fn write_msbs<T: Into<u64>>(&mut self, val: T, nbits: usize) {
-        if nbits == 0 {
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        if n == 0 {
             return;
         }
         let initial_shift = 64 - (std::mem::size_of::<T>() * 8);
-        self.push_u64_msbs(val.into() << initial_shift, nbits);
+        let val: u64 = val.into();
+        self.push_u64_msbs(val << initial_shift, n);
     }
 
     #[inline]
-    fn write_lsbs<T: Into<u64>>(&mut self, val: T, nbits: usize) {
-        if nbits == 0 {
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        if n == 0 {
             return;
         }
-        self.push_u64_msbs(val.into() << (64 - nbits), nbits);
+        let val: u64 = val.into();
+        self.push_u64_msbs(val << (64 - n), n);
     }
 }
 
