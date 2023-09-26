@@ -44,7 +44,6 @@ use super::error::SourceError;
 use super::lpc;
 use super::rice;
 use super::source::FrameBuf;
-#[cfg(feature = "experimental")]
 use super::source::Seekable;
 use super::source::Source;
 
@@ -226,7 +225,6 @@ pub fn fixed_lpc(
     })
 }
 
-#[cfg(feature = "experimental")]
 fn perform_qlpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
@@ -245,14 +243,6 @@ fn perform_qlpc(
     } else {
         lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
     }
-}
-
-#[cfg(not(feature = "experimental"))]
-fn perform_qlpc(
-    config: &config::SubFrameCoding,
-    signal: &[i32],
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
-    lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
 }
 
 /// Estimates the optimal LPC coefficients and returns `SubFrame`s with these.
@@ -467,11 +457,15 @@ pub fn encode_fixed_size_frame(
 
 /// Parallel version of `encode_with_fixed_block_size`.
 ///
+/// This function is internally called by `encode_with_fixed_block_size`
+/// when `config.multithread == true`. However, one can explicitly call this
+/// function and disable single-threaded mode.
+///
 /// # Errors
 ///
 /// This function returns `SourceError` when it failed to read samples from `src`.
 #[cfg(feature = "par")]
-pub fn par_encode_with_fixed_block_size<T: Source>(
+pub fn parallel_encode_with_fixed_block_size<T: Source>(
     config: &config::Encoder,
     mut src: T,
     block_size: usize,
@@ -510,15 +504,6 @@ pub fn par_encode_with_fixed_block_size<T: Source>(
     Ok(stream)
 }
 
-#[cfg(not(feature = "par"))]
-pub fn par_encode_with_fixed_block_size<T: Source>(
-    config: &config::Encoder,
-    mut src: T,
-    block_size: usize,
-) -> Result<Stream, SourceError> {
-    unimplemented!("This binay is not built with \"par\" feature enabled.")
-}
-
 /// Encoder entry function for fixed block-size encoding.
 ///
 /// # Errors
@@ -529,6 +514,9 @@ pub fn encode_with_fixed_block_size<T: Source>(
     mut src: T,
     block_size: usize,
 ) -> Result<Stream, SourceError> {
+    if cfg!(feature = "par") && config.multithread {
+        return parallel_encode_with_fixed_block_size(config, src, block_size);
+    }
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let channels = src.channels();
     let mut framebuf = FrameBuf::with_size(channels, block_size);
@@ -761,6 +749,15 @@ pub fn encode_with_multiple_block_sizes<T: Seekable>(
     stream.stream_info_mut().set_total_samples(src.len());
 
     Ok(stream)
+}
+
+#[cfg(not(feature = "experimental"))]
+#[allow(unused_mut, clippy::missing_errors_doc)]
+pub fn encode_with_multiple_block_sizes<T: Seekable>(
+    _config: &config::Encoder,
+    mut _src: T,
+) -> Result<Stream, SourceError> {
+    unimplemented!("Multiple block-size is only supported when flacenc is built with \"experimental\" feature enabled.")
 }
 
 #[cfg(test)]

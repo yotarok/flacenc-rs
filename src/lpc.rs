@@ -685,6 +685,16 @@ pub fn lpc_with_direct_mse(
     })
 }
 
+#[allow(clippy::module_name_repetitions)]
+#[cfg(not(feature = "experimental"))]
+pub fn lpc_with_direct_mse(
+    _signal: &[i32],
+    _window: &Window,
+    _lpc_order: usize,
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    unimplemented!("not built with \"experimental\" feature flag.")
+}
+
 /// Estimates LPC coefficients with IRLS-MAE method.
 #[allow(clippy::module_name_repetitions)]
 #[cfg(feature = "experimental")]
@@ -699,6 +709,17 @@ pub fn lpc_with_irls_mae(
             .borrow_mut()
             .lpc_with_irls_mae(signal, window, lpc_order, steps)
     })
+}
+
+#[allow(clippy::module_name_repetitions)]
+#[cfg(not(feature = "experimental"))]
+pub fn lpc_with_irls_mae(
+    _signal: &[i32],
+    _window: &Window,
+    _lpc_order: usize,
+    _steps: usize,
+) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    unimplemented!("not built with \"experimental\" feature flag.")
 }
 
 #[cfg(test)]

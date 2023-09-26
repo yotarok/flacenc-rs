@@ -22,7 +22,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "3.1.8", features = ["derive"] }
-flacenc = { version = "0.1.1", path = ".." }
+flacenc = { version = "0.1.1", path = "..", features = ["experimental"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 toml = "0.5"
@@ -30,4 +30,3 @@ toml = "0.5"
 
 [features]
 pprof = [ "dep:pprof" ]
-experimental = ["flacenc/experimental"]
