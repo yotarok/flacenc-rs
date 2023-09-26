@@ -35,6 +35,7 @@ REFERENCE_ENCODER_OPTS = {
 }
 TEST_ENCODER_OPTS = {
     "default": [],
+    "st": ["-c", "report/st.config.toml"],
     "dmse": ["-c", "report/dmse.config.toml"],
     "bsbs": ["-c", "report/bsbs.config.toml"],
     "mae": ["-c", "report/mae.config.toml"],
