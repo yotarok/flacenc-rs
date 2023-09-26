@@ -20,6 +20,11 @@ use std::collections::BTreeSet;
 #[cfg(feature = "experimental")]
 use std::sync::Arc;
 
+#[cfg(feature = "par")]
+use rayon::iter::IntoParallelIterator;
+#[cfg(feature = "par")]
+use rayon::iter::ParallelIterator;
+
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
 use super::component::Constant;
@@ -458,6 +463,60 @@ pub fn encode_fixed_size_frame(
     let mut ret = encode_frame(config, framebuf, 0, stream_info);
     ret.header_mut().enter_fixed_size_mode(frame_number as u32);
     ret
+}
+
+/// Parallel version of `encode_with_fixed_block_size`.
+///
+/// # Errors
+///
+/// This function returns `SourceError` when it failed to read samples from `src`.
+#[cfg(feature = "par")]
+pub fn par_encode_with_fixed_block_size<T: Source>(
+    config: &config::Encoder,
+    mut src: T,
+    block_size: usize,
+) -> Result<Stream, SourceError> {
+    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
+    let channels = src.channels();
+    let mut md5_context = md5::Context::new();
+    let mut offset: usize = 0;
+    let mut frame_number: usize = 0;
+    let mut framebufs = vec![];
+    loop {
+        let mut framebuf = FrameBuf::with_size(channels, block_size);
+        let read_samples = src.read_samples(&mut framebuf)?;
+        if read_samples == 0 {
+            break;
+        }
+        framebuf.update_md5(src.bits_per_sample(), block_size, &mut md5_context);
+        framebufs.push((frame_number, framebuf));
+        frame_number += 1;
+        offset += read_samples;
+    }
+    let stream_info = stream.stream_info();
+    let frames = framebufs.into_par_iter().map(|(frame_number, framebuf)| {
+        encode_fixed_size_frame(config, &framebuf, frame_number, stream_info)
+    });
+
+    for frame in &frames.collect::<Vec<_>>() {
+        stream.add_frame(frame.clone());
+    }
+    stream
+        .stream_info_mut()
+        .set_total_samples(src.len_hint().unwrap_or(offset));
+    stream
+        .stream_info_mut()
+        .set_md5_digest(&md5_context.compute().into());
+    Ok(stream)
+}
+
+#[cfg(not(feature = "par"))]
+pub fn par_encode_with_fixed_block_size<T: Source>(
+    config: &config::Encoder,
+    mut src: T,
+    block_size: usize,
+) -> Result<Stream, SourceError> {
+    unimplemented!("This binay is not built with \"par\" feature enabled.")
 }
 
 /// Encoder entry function for fixed block-size encoding.

@@ -14,7 +14,9 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 debug = 1
 
 [features]
+default = ["par"]
 experimental = ["dep:nalgebra"]
+par = ["dep:rayon"]
 
 [dependencies]
 crc = "2.1"
@@ -23,6 +25,7 @@ md5 = "0.7.0"
 nalgebra = { version = "0.31", optional = true }
 num-traits = "0.2"
 once_cell = "1.10.0"
+rayon = { version = "1.8", optional = true }
 seq-macro = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
