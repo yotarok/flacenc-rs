@@ -143,7 +143,7 @@ fn run_encoder(
 ) -> Result<Stream, SourceError> {
     if encoder_config.block_sizes.len() == 1 {
         let block_size = encoder_config.block_sizes[0];
-        coding::encode_with_fixed_block_size(&encoder_config, source, block_size)
+        coding::par_encode_with_fixed_block_size(&encoder_config, source, block_size)
     } else {
         coding::encode_with_multiple_block_sizes(&encoder_config, source)
     }
@@ -155,7 +155,7 @@ fn run_encoder(
     source: source::PreloadedSignal,
 ) -> Result<Stream, SourceError> {
     let block_size = encoder_config.block_sizes[0];
-    coding::encode_with_fixed_block_size(encoder_config, source, block_size)
+    coding::par_encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
 fn main_body(args: Args) -> Result<(), i32> {
