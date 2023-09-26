@@ -111,7 +111,14 @@ mae_optimization_steps = 2
                 signal.push(s[t]);
             }
         }
-        let config = toml::from_str(config).expect("config parsing error");
+        let mut config: config::Encoder = toml::from_str(config).expect("config parsing error");
+
+        if !cfg!(feature = "experimental") {
+            // disable experimental features
+            config.subframe_coding.qlpc.use_direct_mse = false;
+            config.subframe_coding.qlpc.mae_optimization_steps = 0;
+        }
+
         let source =
             source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
 

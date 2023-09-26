@@ -35,8 +35,9 @@ pub struct Encoder {
     /// The possible block sizes encoder can use.
     pub block_sizes: Vec<usize>,
     /// Beam width for block-size search.
-    #[cfg(feature = "experimental")]
     pub block_size_search_beam_width: Option<usize>,
+    /// Whether encoder runs on multi-thread mode.
+    pub multithread: bool,
     /// Configuration for stereo-coding module.
     pub stereo_coding: StereoCoding,
     /// Configuration for individual channels.
@@ -50,8 +51,8 @@ impl Default for Encoder {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
             block_sizes: vec![4096usize],
-            #[cfg(feature = "experimental")]
             block_size_search_beam_width: None,
+            multithread: cfg!(feature = "par"),
         }
     }
 }
@@ -64,7 +65,12 @@ impl Verify for Encoder {
                 "Must specify at least one block size.",
             ));
         }
-        #[cfg(feature = "experimental")]
+        if !cfg!(feature = "experimental") && self.block_sizes.len() > 1 {
+            return Err(VerifyError::new(
+                "block_sizes",
+                "Multiple blocksize mode is only allowed when \"experimental\" feature is enabled.",
+            ));
+        }
         if self.block_size_search_beam_width == Some(0) {
             return Err(VerifyError::new(
                 "block_size_search_beam_width",
@@ -233,6 +239,18 @@ impl Verify for Qlpc {
         if self.quant_precision == 0 {
             return Err(VerifyError::new("quant_precision", "Must not be zero"));
         }
+        if cfg!(not(feature = "experimental")) && self.use_direct_mse {
+            return Err(VerifyError::new(
+                "use_direct_mse",
+                "Can only be used when \"experimental\" feature enabled",
+            ));
+        }
+        if cfg!(not(feature = "experimental")) && self.mae_optimization_steps > 0 {
+            return Err(VerifyError::new(
+                "mae_optimization_steps",
+                "Can only be used when \"experimental\" feature enabled",
+            ));
+        }
 
         Ok(())
     }
@@ -244,9 +262,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serialization() {
+    fn serialization() -> Result<(), toml::ser::Error> {
         let config = Encoder::default();
-        assert!(toml::to_string(&config).is_ok());
+        toml::to_string(&config)?;
+        Ok(())
     }
 
     #[test]
