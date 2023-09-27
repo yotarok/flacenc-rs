@@ -17,7 +17,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
-use std::simd::SimdInt;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -25,6 +24,10 @@ use serde::Serialize;
 use super::constant::MAX_LPC_ORDER;
 use super::constant::QLPC_MAX_SHIFT;
 use super::constant::QLPC_MIN_SHIFT;
+
+use std::simd;
+
+use simd::SimdInt;
 
 /// Analysis window descriptor.
 ///
@@ -136,17 +139,17 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
 const QLPC_SIMD_LANES: usize = 16usize;
 const MAX_COEF_VECTORS: usize = (MAX_LPC_ORDER + (QLPC_SIMD_LANES - 1)) / QLPC_SIMD_LANES;
 
-const LOW_WORD_MASK: std::simd::i32x16 = std::simd::i32x16::from_array([0x0000_FFFFi32; 16]);
-const LOW_WORD_DENOM: std::simd::i32x16 = std::simd::i32x16::from_array([0x0001_0000i32; 16]);
+const LOW_WORD_MASK: simd::i32x16 = simd::i32x16::from_array([0x0000_FFFFi32; 16]);
+const LOW_WORD_DENOM: simd::i32x16 = simd::i32x16::from_array([0x0001_0000i32; 16]);
 #[allow(dead_code)]
-const HIGH_WORD_SHIFT: std::simd::i32x16 = std::simd::i32x16::from_array([16i32; 16]);
+const HIGH_WORD_SHIFT: simd::i32x16 = simd::i32x16::from_array([16i32; 16]);
 
 /// Shifts elements in a vector of `T` represented as a slice of `Simd<T, N>`.
 #[inline]
-fn shift_lanes_right<T, const N: usize>(val: T, vecs: &mut [std::simd::Simd<T, N>])
+fn shift_lanes_right<T, const N: usize>(val: T, vecs: &mut [simd::Simd<T, N>])
 where
-    T: std::simd::SimdElement,
-    std::simd::LaneCount<N>: std::simd::SupportedLaneCount,
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     let mut carry = val;
     for v in vecs {
@@ -159,7 +162,7 @@ where
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
 pub struct QuantizedParameters {
-    coefs: heapless::Vec<std::simd::i32x16, MAX_COEF_VECTORS>,
+    coefs: heapless::Vec<simd::i32x16, MAX_COEF_VECTORS>,
     order: usize,
     shift: i8,
     precision: usize,
@@ -198,7 +201,7 @@ impl QuantizedParameters {
 
         let mut coefs_v = heapless::Vec::new();
         for arr in q_coefs.chunks(QLPC_SIMD_LANES) {
-            let mut v = std::simd::i32x16::splat(0);
+            let mut v = simd::i32x16::splat(0);
             v.as_mut_array()[0..arr.len()].copy_from_slice(arr);
             coefs_v
                 .push(v)
@@ -228,15 +231,15 @@ impl QuantizedParameters {
         for p in errors.iter_mut().take(self.order()) {
             *p = 0;
         }
-        let mut window_h = heapless::Vec::<std::simd::i32x16, MAX_COEF_VECTORS>::new();
-        let mut window_l = heapless::Vec::<std::simd::i32x16, MAX_COEF_VECTORS>::new();
+        let mut window_h = heapless::Vec::<simd::i32x16, MAX_COEF_VECTORS>::new();
+        let mut window_l = heapless::Vec::<simd::i32x16, MAX_COEF_VECTORS>::new();
 
         for i in 0..MAX_COEF_VECTORS {
             let tau: isize = (self.order() as isize - 1) - (i * QLPC_SIMD_LANES) as isize;
             if tau < 0 {
                 break;
             }
-            let mut v = std::simd::i32x16::splat(0);
+            let mut v = simd::i32x16::splat(0);
             for j in 0..QLPC_SIMD_LANES {
                 let j = j as isize;
                 if tau - j < 0 {

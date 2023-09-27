@@ -17,6 +17,7 @@
 use std::cell::RefCell;
 #[cfg(feature = "experimental")]
 use std::collections::BTreeSet;
+use std::simd;
 #[cfg(feature = "experimental")]
 use std::sync::Arc;
 
@@ -93,15 +94,13 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
 }
 
 /// Pack scalars into `Vec` of `Simd`s.
-pub fn pack_into_simd_vec<T, const LANES: usize>(
-    src: &[T],
-    dest: &mut Vec<std::simd::Simd<T, LANES>>,
-) where
-    T: std::simd::SimdElement + From<i8>,
-    std::simd::LaneCount<LANES>: std::simd::SupportedLaneCount,
+pub fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
+where
+    T: simd::SimdElement + From<i8>,
+    simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
     dest.clear();
-    let mut v = std::simd::Simd::<T, LANES>::splat(0i8.into());
+    let mut v = simd::Simd::<T, LANES>::splat(0i8.into());
     for slice in src.chunks(LANES) {
         if slice.len() < LANES {
             v.as_mut_array()[0..slice.len()].copy_from_slice(slice);
@@ -114,10 +113,10 @@ pub fn pack_into_simd_vec<T, const LANES: usize>(
 }
 
 /// Unpack slice of `Simd` into `Vec` of elements.
-pub fn unpack_simds<T, const LANES: usize>(src: &[std::simd::Simd<T, LANES>], dest: &mut Vec<T>)
+pub fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
 where
-    T: std::simd::SimdElement + From<i8>,
-    std::simd::LaneCount<LANES>: std::simd::SupportedLaneCount,
+    T: simd::SimdElement + From<i8>,
+    simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
     dest.resize(src.len() * LANES, 0i8.into());
     let mut offset = 0;
@@ -130,7 +129,7 @@ where
 
 /// Helper struct holding working memory for fixed LPC.
 struct FixedLpcEncoder {
-    errors: Vec<std::simd::i32x16>,
+    errors: Vec<simd::i32x16>,
     /// Length of errors in the number of samples (scalars).
     error_len_in_samples: usize,
     /// Temporary buffer for unpacked error signal.
