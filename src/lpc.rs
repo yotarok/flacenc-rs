@@ -25,6 +25,9 @@ use super::constant::MAX_LPC_ORDER;
 use super::constant::QLPC_MAX_SHIFT;
 use super::constant::QLPC_MIN_SHIFT;
 
+#[cfg(feature = "fakesimd")]
+use super::fakesimd as simd;
+#[cfg(not(feature = "fakesimd"))]
 use std::simd;
 
 use simd::SimdInt;
