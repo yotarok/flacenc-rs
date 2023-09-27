@@ -221,7 +221,7 @@ def main():
 
     # build
     logged(subprocess.check_call)(
-        ["bash", "-c", f"cd {project_root}; cargo build --release"]
+        ["bash", "-c", f"cd {project_root}/flacenc-bin; cargo build --release"]
     )
     print("Running reference encoder.")
     ref_run_results = run_encoder(
