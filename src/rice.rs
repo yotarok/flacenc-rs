@@ -15,42 +15,45 @@
 //! Functions for partitioned rice coding (PRC).
 
 use std::cell::RefCell;
-use std::simd::SimdPartialEq;
-use std::simd::SimdPartialOrd;
-use std::simd::SimdUint;
 
 use super::constant::MAX_RICE_PARAMETER;
 use super::constant::MAX_RICE_PARTITIONS;
 use super::constant::MAX_RICE_PARTITION_ORDER;
 use super::constant::MIN_RICE_PARTITION_SIZE;
 
+use std::simd;
+
+use simd::SimdPartialEq;
+use simd::SimdPartialOrd;
+use simd::SimdUint;
+
 /// Table that contains the numbers of bits needed for a partition.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 struct PrcBitTable {
-    p_to_bits: std::simd::u32x16,
-    mask: std::simd::Mask<<u32 as std::simd::SimdElement>::Mask, 16>,
+    p_to_bits: simd::u32x16,
+    mask: simd::Mask<<u32 as simd::SimdElement>::Mask, 16>,
 }
 
-static ZEROS: std::simd::u32x16 = std::simd::u32x16::from_array([0u32; 16]);
-static INDEX: std::simd::u32x16 =
-    std::simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-static INDEX1: std::simd::u32x16 =
-    std::simd::u32x16::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-static MAXES: std::simd::u32x16 = std::simd::u32x16::from_array([u32::MAX; 16]);
+static ZEROS: simd::u32x16 = simd::u32x16::from_array([0u32; 16]);
+static INDEX: simd::u32x16 =
+    simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+static INDEX1: simd::u32x16 =
+    simd::u32x16::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 
 // max value of p_to_bits is chosen so that the estimates doesn't overflow
 // after added 2^4 = 16 times at maximum.
 // The current version exploits the fact that `MAX_P_TO_BITS` is actually a bit mask, i.e.
 // can be written as 2^N - 1 for faster processing. Do not use arbitrary value here.
 static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
-static MAX_P_TO_BITS_VEC: std::simd::u32x16 = std::simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
+static MAX_P_TO_BITS_VEC: simd::u32x16 = simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
 
 impl PrcBitTable {
     pub fn zero(max_p: usize) -> Self {
         debug_assert!(max_p <= MAX_RICE_PARAMETER);
         Self {
             p_to_bits: ZEROS,
-            mask: INDEX.simd_le(std::simd::u32x16::splat(max_p as u32)),
+            mask: INDEX.simd_le(simd::u32x16::splat(max_p as u32)),
         }
     }
 
@@ -63,18 +66,18 @@ impl PrcBitTable {
     /// Initializes PRC bit table from the error signal.
     #[allow(unused_assignments, clippy::identity_op)]
     fn init_with_errors(&mut self, errors: &[u32], offset: usize) {
-        let mut p_to_bits = std::simd::u32x16::splat(offset as u32)
-            + std::simd::u32x16::splat(errors.len() as u32) * INDEX1;
+        let mut p_to_bits =
+            simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
 
         for v in errors {
             // Below is faster than doing:
             //   vs = splat(*v) >> INDEX;
             // or
-            //   vs = std::simd::u32x16::from_array(std::array::from_fn(
+            //   vs = simd::u32x16::from_array(std::array::from_fn(
             //       |i| v >> i));
             // Perhaps due to smaller memory footprint by avoiding `splat`?
             let v = *v;
-            let vs = std::simd::u32x16::from_array([
+            let vs = simd::u32x16::from_array([
                 v,
                 v >> 1,
                 v >> 2,
@@ -107,7 +110,7 @@ impl PrcBitTable {
         let ret_bits = self.mask.select(self.p_to_bits, MAXES).reduce_min();
         let ret_p = self
             .p_to_bits
-            .simd_eq(std::simd::u32x16::splat(ret_bits))
+            .simd_eq(simd::u32x16::splat(ret_bits))
             .select(INDEX, ZEROS)
             .reduce_max();
 
@@ -117,7 +120,7 @@ impl PrcBitTable {
     #[allow(unused_comparisons)]
     #[inline]
     pub fn merge(&self, other: &Self, offset: usize) -> Self {
-        let offset = std::simd::u32x16::splat(offset as u32);
+        let offset = simd::u32x16::splat(offset as u32);
         let offset = self.mask.select(offset, ZEROS);
         Self {
             p_to_bits: self.p_to_bits + other.p_to_bits - offset,
