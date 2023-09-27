@@ -17,7 +17,6 @@
 use std::cell::RefCell;
 #[cfg(feature = "experimental")]
 use std::collections::BTreeSet;
-use std::simd;
 #[cfg(feature = "experimental")]
 use std::sync::Arc;
 
@@ -47,6 +46,11 @@ use super::rice;
 use super::source::FrameBuf;
 use super::source::Seekable;
 use super::source::Source;
+
+#[cfg(feature = "fakesimd")]
+use super::fakesimd as simd;
+#[cfg(not(feature = "fakesimd"))]
+use std::simd;
 
 /// Returns true if samples are all same.
 pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {

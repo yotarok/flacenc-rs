@@ -21,6 +21,9 @@ use super::constant::MAX_RICE_PARTITIONS;
 use super::constant::MAX_RICE_PARTITION_ORDER;
 use super::constant::MIN_RICE_PARTITION_SIZE;
 
+#[cfg(feature = "fakesimd")]
+use super::fakesimd as simd;
+#[cfg(not(feature = "fakesimd"))]
 use std::simd;
 
 use simd::SimdPartialEq;

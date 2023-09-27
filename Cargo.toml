@@ -17,6 +17,7 @@ debug = 1
 default = ["par"]
 experimental = ["dep:nalgebra"]
 par = ["dep:rayon"]
+fakesimd = []
 
 [dependencies]
 crc = "2.1"
