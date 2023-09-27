@@ -71,18 +71,18 @@ mod test {
 
     const FIXED_BLOCK_CONFIGS: [&str; 4] = [
         "",
-        r#"
+        r"
 block_sizes = [512]
-        "#,
-        r#"
+        ",
+        r"
 block_sizes = [123]
-        "#,
-        r#"
+        ",
+        r"
 block_sizes = [1024]
 [subframe_coding.qlpc]
 use_direct_mse = true
 mae_optimization_steps = 2
-        "#,
+        ",
     ];
 
     #[rstest]
