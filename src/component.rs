@@ -69,8 +69,8 @@ fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeErr
         val <<= first_bits;
 
         for _i in 0..trailing_bytes {
-            dest.write_lsbs(0x02u8, 2);
-            dest.write_msbs(val, 6);
+            let b = 0x80u8 | (val >> 58) as u8;
+            dest.write(b);
             val <<= 6;
         }
     }
@@ -201,7 +201,7 @@ impl BitRepr for Stream {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        dest.write_lsbs(0x66_4c_61_43u32, 32); // fLaC
+        dest.write_bytes_aligned(&[0x66, 0x4c, 0x61, 0x43]); // fLaC
         self.stream_info.write(dest)?;
         for elem in &self.metadata {
             elem.write(dest)?;
@@ -239,8 +239,8 @@ impl BitRepr for MetadataBlock {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        let block_type = self.block_type as u32 + if self.is_last { 0x80 } else { 0x00 };
-        dest.write_lsbs(block_type, 8);
+        let block_type: u8 = self.block_type as u8 + if self.is_last { 0x80 } else { 0x00 };
+        dest.write(block_type);
         let data_size: u32 = (self.data.count_bits() / 8) as u32;
         dest.write_lsbs(data_size, 24);
         self.data.write(dest)?;
