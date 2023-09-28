@@ -170,7 +170,7 @@ impl ByteVec {
         let r = self.tail_len();
 
         if r != 0 {
-            let b: u8 = ((val >> (64 - r)) & ((1 << r) - 1)) as u8;
+            let b: u8 = (val >> (64 - r)) as u8;
             let tail = self.bytes.len() - 1;
             self.bytes[tail] |= b;
             val <<= r;
