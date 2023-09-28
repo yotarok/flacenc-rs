@@ -13,18 +13,81 @@
 // limitations under the License.
 
 //! Fake SIMD module is a minimal subset of std::simd of "portable_simd"
-//! feature in a nightly rust.
+//! feature in a nightly rust. This module only implement the functions
+//! that are used in flacenc.
 
 use std::array;
 
+// ===
+// TYPE DEFINITION
+// ===
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Simd<T: SimdElement, const LANES: usize>([T; LANES]);
+
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Mask<T: SimdElement, const LANES: usize> {
     mask: [bool; LANES],
     phantom_data: std::marker::PhantomData<T>,
 }
 
+// ===
+// SIMD ELEMENT TRAITS and `SupportedLaneCount`
+// ===
+pub trait SimdElement: Copy + std::fmt::Debug {
+    type Mask;
+}
+
+impl SimdElement for i32 {
+    type Mask = i32;
+}
+
+impl SimdElement for u32 {
+    type Mask = u32;
+}
+
+pub trait SupportedLaneCount {}
+pub struct LaneCount<const LANES: usize>();
+impl SupportedLaneCount for LaneCount<16> {}
+impl SupportedLaneCount for LaneCount<32> {}
+
+// ===
+// SIMD OP TRAITS
+// ===
+pub trait SimdUint {
+    type Scalar;
+    fn reduce_max(self) -> Self::Scalar;
+    fn reduce_min(self) -> Self::Scalar;
+}
+
+pub trait SimdInt {
+    type Scalar;
+    fn abs(self) -> Self;
+    fn signum(self) -> Self;
+    fn reduce_sum(self) -> Self::Scalar;
+}
+
+pub trait SimdPartialEq {
+    type Mask;
+    fn simd_eq(self, other: Self) -> Self::Mask;
+}
+
+pub trait SimdPartialOrd {
+    type Mask;
+    fn simd_le(self, other: Self) -> Self::Mask;
+}
+
+// ===
+// TYPE ALIASES
+// ===
+#[allow(non_camel_case_types)]
+pub type i32x16 = Simd<i32, 16>;
+
+#[allow(non_camel_case_types)]
+pub type u32x16 = Simd<u32, 16>;
+
+// ===
+// IMPLEMENTATION OF `fakesimd::Simd` (non-trait methods)
+// ===
 impl<T, const N: usize> Simd<T, N>
 where
     T: SimdElement,
@@ -55,48 +118,9 @@ where
     }
 }
 
-#[allow(non_camel_case_types)]
-pub type i32x16 = Simd<i32, 16>;
-
-#[allow(non_camel_case_types)]
-pub type u32x16 = Simd<u32, 16>;
-
-pub trait SimdUint {
-    type Scalar;
-    fn reduce_max(self) -> Self::Scalar;
-    fn reduce_min(self) -> Self::Scalar;
-}
-
-pub trait SimdInt {
-    type Scalar;
-    fn abs(self) -> Self;
-    fn signum(self) -> Self;
-    fn reduce_sum(self) -> Self::Scalar;
-}
-pub trait SimdPartialEq {
-    type Mask;
-    fn simd_eq(self, other: Self) -> Self::Mask;
-}
-pub trait SimdPartialOrd {
-    type Mask;
-    fn simd_le(self, other: Self) -> Self::Mask;
-}
-
-pub trait SimdElement: Copy + std::fmt::Debug {
-    type Mask;
-}
-impl SimdElement for i32 {
-    type Mask = i32;
-}
-impl SimdElement for u32 {
-    type Mask = u32;
-}
-
-pub trait SupportedLaneCount {}
-pub struct LaneCount<const LANES: usize>();
-impl SupportedLaneCount for LaneCount<16> {}
-impl SupportedLaneCount for LaneCount<32> {}
-
+// ===
+// IMPLEMENTATION OF `fakesimd::Mask`
+// ===
 impl<T, const N: usize> Mask<T, N>
 where
     T: SimdElement,
@@ -113,6 +137,9 @@ where
     }
 }
 
+// ===
+// IMPLEMENTATION OF SIMD-SPECIFIC OPS
+// ===
 impl<T, const N: usize> SimdInt for Simd<T, N>
 where
     T: SimdElement + num_traits::PrimInt + num_traits::Signed + std::iter::Sum,
@@ -183,6 +210,9 @@ where
     }
 }
 
+// ===
+// IMPLEMENTATION OF OPERATOR OVERRIDES
+// ===
 impl<T, const N: usize> std::convert::AsRef<[T; N]> for Simd<T, N>
 where
     T: SimdElement,
@@ -202,8 +232,6 @@ where
         t.0
     }
 }
-
-// arithmatic ops
 
 impl<I, T, const N: usize> std::ops::Index<I> for Simd<T, N>
 where
