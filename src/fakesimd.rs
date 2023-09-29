@@ -216,6 +216,28 @@ where
 // ===
 // IMPLEMENTATION OF OPERATOR OVERRIDES
 // ===
+macro_rules! def_binop {
+    ($trait_name:ident, $fn_name:ident, $expr:expr) => {
+        impl<T, const N: usize> std::ops::$trait_name<Self> for Simd<T, N>
+        where
+            T: SimdElement + std::ops::$trait_name<T, Output = T>,
+        {
+            type Output = Self;
+            #[allow(clippy::redundant_closure_call)]
+            #[inline]
+            fn $fn_name(self, rhs: Self) -> Self::Output {
+                Self(array::from_fn(|i| ($expr)(self.0[i], rhs.0[i])))
+            }
+        }
+    };
+}
+
+def_binop!(Add, add, |x, y| x + y);
+def_binop!(Sub, sub, |x, y| x - y);
+def_binop!(Mul, mul, |x, y| x * y);
+def_binop!(Div, div, |x, y| x / y);
+def_binop!(BitAnd, bitand, |x, y| x & y);
+
 impl<T, const N: usize> std::convert::AsRef<[T; N]> for Simd<T, N>
 where
     T: SimdElement,
@@ -256,61 +278,6 @@ where
     #[inline]
     fn index_mut(&mut self, index: I) -> &mut <I as std::slice::SliceIndex<[T]>>::Output {
         &mut self.as_mut_array()[index]
-    }
-}
-
-impl<T, const N: usize> std::ops::Add<Self> for Simd<T, N>
-where
-    T: SimdElement + std::ops::Add<T, Output = T>,
-{
-    type Output = Self;
-    #[inline]
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(array::from_fn(|i| self.0[i] + rhs.0[i]))
-    }
-}
-
-impl<T, const N: usize> std::ops::Sub<Self> for Simd<T, N>
-where
-    T: SimdElement + std::ops::Sub<T, Output = T>,
-{
-    type Output = Self;
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(array::from_fn(|i| self.0[i] - rhs.0[i]))
-    }
-}
-
-impl<T, const N: usize> std::ops::Mul<Self> for Simd<T, N>
-where
-    T: SimdElement + std::ops::Mul<T, Output = T>,
-{
-    type Output = Self;
-    #[inline]
-    fn mul(self, rhs: Self) -> Self::Output {
-        Self(array::from_fn(|i| self.0[i] * rhs.0[i]))
-    }
-}
-
-impl<T, const N: usize> std::ops::Div<Self> for Simd<T, N>
-where
-    T: SimdElement + std::ops::Div<T, Output = T>,
-{
-    type Output = Self;
-    #[inline]
-    fn div(self, rhs: Self) -> Self::Output {
-        Self(array::from_fn(|i| self.0[i] / rhs.0[i]))
-    }
-}
-
-impl<T, const N: usize> std::ops::BitAnd<Self> for Simd<T, N>
-where
-    T: SimdElement + std::ops::BitAnd<T, Output = T>,
-{
-    type Output = Self;
-    #[inline]
-    fn bitand(self, rhs: Self) -> Self::Output {
-        Self(array::from_fn(|i| self.0[i] & rhs.0[i]))
     }
 }
 
