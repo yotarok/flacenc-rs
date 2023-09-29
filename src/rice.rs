@@ -73,31 +73,8 @@ impl PrcBitTable {
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
 
         for v in errors {
-            // Below is faster than doing:
-            //   vs = splat(*v) >> INDEX;
-            // or
-            //   vs = simd::u32x16::from_array(std::array::from_fn(
-            //       |i| v >> i));
-            // Perhaps due to smaller memory footprint by avoiding `splat`?
             let v = *v;
-            let vs = simd::u32x16::from_array([
-                v,
-                v >> 1,
-                v >> 2,
-                v >> 3,
-                v >> 4,
-                v >> 5,
-                v >> 6,
-                v >> 7,
-                v >> 8,
-                v >> 9,
-                v >> 10,
-                v >> 11,
-                v >> 12,
-                v >> 13,
-                v >> 14,
-                v >> 15,
-            ]);
+            let vs = simd::u32x16::splat(v) >> INDEX;
             p_to_bits = (vs + p_to_bits) & MAX_P_TO_BITS_VEC;
         }
         self.p_to_bits = p_to_bits;
