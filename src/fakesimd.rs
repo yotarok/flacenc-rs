@@ -225,6 +225,7 @@ macro_rules! def_binop {
             type Output = Self;
             #[allow(clippy::redundant_closure_call)]
             #[inline]
+            #[allow(clippy::redundant_closure_call)]
             fn $fn_name(self, rhs: Self) -> Self::Output {
                 Self(array::from_fn(|i| ($expr)(self.0[i], rhs.0[i])))
             }
@@ -237,6 +238,7 @@ def_binop!(Sub, sub, |x, y| x - y);
 def_binop!(Mul, mul, |x, y| x * y);
 def_binop!(Div, div, |x, y| x / y);
 def_binop!(BitAnd, bitand, |x, y| x & y);
+def_binop!(Shr, shr, |x, y| x >> y);
 
 impl<T, const N: usize> std::convert::AsRef<[T; N]> for Simd<T, N>
 where

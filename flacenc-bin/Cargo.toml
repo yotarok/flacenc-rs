@@ -13,7 +13,8 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 # This is for enabling use of profilers with a release build.
 [profile.release]
 debug = 1
-
+panic = "abort"
+lto = "fat"
 
 [[bin]]
 name = "flacenc"
