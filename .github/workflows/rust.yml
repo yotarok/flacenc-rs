@@ -82,3 +82,8 @@ jobs:
         command: clippy
         args: --tests -- -D warnings
         directory: flacenc-bin
+    - name: Clippy (with fakesimd feature)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: clippy
+        args: --tests --features "fakesimd" -- -D warnings
