@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Fake SIMD module is a minimal subset of std::simd of "portable_simd"
-//! feature in a nightly rust. This module only implement the functions
-//! that are used in flacenc.
+//! Fake SIMD module is a minimal subset of `std::simd` of `portable_simd`
+//! feature in a nightly rust. This module only implement the functions that
+//! are used in flacenc.
 
 use std::array;
 
 // ===
 // TYPE DEFINITION
 // ===
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Simd<T: SimdElement, const LANES: usize>([T; LANES]);
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
 pub struct Mask<T: SimdElement, const LANES: usize> {
     mask: [bool; LANES],
     phantom_data: std::marker::PhantomData<T>,
@@ -38,11 +38,11 @@ pub trait SimdElement: Copy + std::fmt::Debug {
 }
 
 impl SimdElement for i32 {
-    type Mask = i32;
+    type Mask = Self;
 }
 
 impl SimdElement for u32 {
-    type Mask = u32;
+    type Mask = Self;
 }
 
 pub trait SupportedLaneCount {}
@@ -61,7 +61,9 @@ pub trait SimdUint {
 
 pub trait SimdInt {
     type Scalar;
+    #[allow(clippy::return_self_not_must_use)]
     fn abs(self) -> Self;
+    #[allow(clippy::return_self_not_must_use)]
     fn signum(self) -> Self;
     fn reduce_sum(self) -> Self::Scalar;
 }
@@ -112,6 +114,7 @@ where
         Self([v; N])
     }
 
+    #[allow(clippy::return_self_not_must_use)]
     #[inline]
     pub fn rotate_lanes_right<const OFFSET: usize>(self) -> Self {
         Self(array::from_fn(|i| self.0[(i + N - OFFSET) % N]))
@@ -147,12 +150,12 @@ where
     type Scalar = T;
     #[inline]
     fn abs(self) -> Self {
-        Simd(array::from_fn(|i| num_traits::sign::abs(self.0[i])))
+        Self(array::from_fn(|i| num_traits::sign::abs(self.0[i])))
     }
 
     #[inline]
     fn signum(self) -> Self {
-        Simd(array::from_fn(|i| num_traits::sign::signum(self.0[i])))
+        Self(array::from_fn(|i| num_traits::sign::signum(self.0[i])))
     }
 
     #[inline]
@@ -256,65 +259,65 @@ where
     }
 }
 
-impl<T, const N: usize> std::ops::Add<Simd<T, N>> for Simd<T, N>
+impl<T, const N: usize> std::ops::Add<Self> for Simd<T, N>
 where
     T: SimdElement + std::ops::Add<T, Output = T>,
 {
-    type Output = Simd<T, N>;
+    type Output = Self;
     #[inline]
-    fn add(self, rhs: Simd<T, N>) -> Self::Output {
-        Simd(array::from_fn(|i| self.0[i] + rhs.0[i]))
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(array::from_fn(|i| self.0[i] + rhs.0[i]))
     }
 }
 
-impl<T, const N: usize> std::ops::Sub<Simd<T, N>> for Simd<T, N>
+impl<T, const N: usize> std::ops::Sub<Self> for Simd<T, N>
 where
     T: SimdElement + std::ops::Sub<T, Output = T>,
 {
-    type Output = Simd<T, N>;
+    type Output = Self;
     #[inline]
-    fn sub(self, rhs: Simd<T, N>) -> Self::Output {
-        Simd(array::from_fn(|i| self.0[i] - rhs.0[i]))
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(array::from_fn(|i| self.0[i] - rhs.0[i]))
     }
 }
 
-impl<T, const N: usize> std::ops::Mul<Simd<T, N>> for Simd<T, N>
+impl<T, const N: usize> std::ops::Mul<Self> for Simd<T, N>
 where
     T: SimdElement + std::ops::Mul<T, Output = T>,
 {
-    type Output = Simd<T, N>;
+    type Output = Self;
     #[inline]
-    fn mul(self, rhs: Simd<T, N>) -> Self::Output {
-        Simd(array::from_fn(|i| self.0[i] * rhs.0[i]))
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(array::from_fn(|i| self.0[i] * rhs.0[i]))
     }
 }
 
-impl<T, const N: usize> std::ops::Div<Simd<T, N>> for Simd<T, N>
+impl<T, const N: usize> std::ops::Div<Self> for Simd<T, N>
 where
     T: SimdElement + std::ops::Div<T, Output = T>,
 {
-    type Output = Simd<T, N>;
+    type Output = Self;
     #[inline]
-    fn div(self, rhs: Simd<T, N>) -> Self::Output {
-        Simd(array::from_fn(|i| self.0[i] / rhs.0[i]))
+    fn div(self, rhs: Self) -> Self::Output {
+        Self(array::from_fn(|i| self.0[i] / rhs.0[i]))
     }
 }
 
-impl<T, const N: usize> std::ops::BitAnd<Simd<T, N>> for Simd<T, N>
+impl<T, const N: usize> std::ops::BitAnd<Self> for Simd<T, N>
 where
     T: SimdElement + std::ops::BitAnd<T, Output = T>,
 {
-    type Output = Simd<T, N>;
+    type Output = Self;
     #[inline]
-    fn bitand(self, rhs: Simd<T, N>) -> Self::Output {
-        Simd(array::from_fn(|i| self.0[i] & rhs.0[i]))
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self(array::from_fn(|i| self.0[i] & rhs.0[i]))
     }
 }
 
 impl<U, T, const N: usize> std::ops::SubAssign<U> for Simd<T, N>
 where
     T: SimdElement,
-    Simd<T, N>: std::ops::Sub<U, Output = Simd<T, N>>,
+    Self: std::ops::Sub<U, Output = Self>,
 {
     #[inline]
     fn sub_assign(&mut self, rhs: U) {

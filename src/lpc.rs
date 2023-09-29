@@ -339,7 +339,7 @@ where
     F: Fn(usize) -> f32,
 {
     assert!(dest.len() >= order);
-    for p in dest.iter_mut() {
+    for p in &mut *dest {
         *p = 0.0;
     }
     for t in (order - 1)..signal.len() {
@@ -416,7 +416,7 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
     assert!(dest.len() >= ys.len());
     assert!(coefs.len() >= ys.len());
 
-    for p in dest.iter_mut() {
+    for p in &mut *dest {
         *p = 0.0;
     }
 

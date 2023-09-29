@@ -15,17 +15,23 @@
 
 set -e
 
+rustup default nightly
+cargo rustc --release -- -D warnings
 cargo build --release
 cargo test
 cargo fmt --check
-cargo clippy --tests
+cargo clippy --tests -- -D warnings
 cargo doc
 
 pushd flacenc-bin
-cargo build --release
 cargo test
 cargo fmt --check
-cargo clippy --tests
-cargo doc
+cargo clippy --tests -- -D warnings
 popd
 
+rustup default stable
+cargo rustc --release --features "fakesimd" -- -D warnings
+cargo build --release --features "fakesimd"
+cargo clippy --tests --features "fakesimd"
+cargo test --features "fakesimd"
+rustup default nightly
