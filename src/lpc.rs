@@ -329,6 +329,41 @@ pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
 
+#[inline]
+#[allow(clippy::needless_range_loop)] // for readability
+#[allow(dead_code)] // not used in "fakesimd" but should still be compilable.
+fn weighted_auto_correlation_simd<F>(order: usize, signal: &[f32], dest: &mut [f32], weight_fn: F)
+where
+    F: Fn(usize) -> f32,
+{
+    assert!(dest.len() >= order);
+
+    let mut lagged = simd::f32x32::splat(0f32);
+    // acc0 is computed separately for better SIMD alignment.
+    let mut acc0 = 0.0f32;
+    let mut acc = simd::f32x32::splat(0f32);
+    for tau in 0..order - 1 {
+        lagged[tau] = signal[order - 2 - tau];
+    }
+    for t in (order - 1)..signal.len() {
+        let w = weight_fn(t);
+        let y = signal[t];
+        acc0 += w * y * y;
+        acc += simd::f32x32::splat(w * y) * lagged;
+        lagged = lagged.rotate_lanes_right::<1>();
+        lagged[0] = y;
+    }
+    for (tau, mut_p) in dest.iter_mut().enumerate() {
+        *mut_p = if tau == 0 {
+            acc0
+        } else if tau < order {
+            acc[tau - 1]
+        } else {
+            0.0
+        };
+    }
+}
+
 /// Compute weighted auto-correlation coefficients.
 ///
 /// # Panics
@@ -338,15 +373,24 @@ pub fn weighted_auto_correlation<F>(order: usize, signal: &[f32], dest: &mut [f3
 where
     F: Fn(usize) -> f32,
 {
-    assert!(dest.len() >= order);
-    for p in &mut *dest {
-        *p = 0.0;
+    #[cfg(not(feature = "fakesimd"))]
+    {
+        // The current implementation is inefficient with fakesimd when order
+        // is low. So, here we still have a scalar version of it.
+        weighted_auto_correlation_simd(order, signal, dest, weight_fn);
     }
-    for t in (order - 1)..signal.len() {
-        let w = weight_fn(t);
-        for tau in 0..order {
-            let v: f32 = signal[t] * signal[t - tau] * w;
-            dest[tau] += v;
+    #[cfg(feature = "fakesimd")]
+    {
+        assert!(dest.len() >= order);
+        for p in &mut *dest {
+            *p = 0.0;
+        }
+        for t in (order - 1)..signal.len() {
+            let w = weight_fn(t);
+            for tau in 0..order {
+                let v: f32 = signal[t] * signal[t - tau] * w;
+                dest[tau] += v;
+            }
         }
     }
 }
