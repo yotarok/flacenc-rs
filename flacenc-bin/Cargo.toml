@@ -22,7 +22,7 @@ path = "src/main.rs"
 
 
 [dependencies]
-clap = { version = "3.1.8", features = ["derive"] }
+clap = { version = "4.4.6", features = ["derive"] }
 flacenc = { version = "0.1.1", path = "..", features = ["experimental"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
