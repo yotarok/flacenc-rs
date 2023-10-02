@@ -488,7 +488,10 @@ pub fn parallel_encode_with_fixed_block_size<T: Source>(
     }
     let stream_info = stream.stream_info();
     let frames = framebufs.into_par_iter().map(|(frame_number, framebuf)| {
-        encode_fixed_size_frame(config, &framebuf, frame_number, stream_info)
+        let mut f = encode_fixed_size_frame(config, &framebuf, frame_number, stream_info);
+        // It's safe to ignore the error here.
+        f.precompute_bitstream().unwrap_or_default();
+        f
     });
 
     for frame in &frames.collect::<Vec<_>>() {

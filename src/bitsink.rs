@@ -160,6 +160,12 @@ impl ByteVec {
         }
     }
 
+    /// Consumes `ByteVec` and returns the internal buffer.
+    #[inline]
+    pub fn bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+
     /// Returns bits in a string for tests.
     #[cfg(test)]
     fn to_debug_bitstring(&self) -> String {

@@ -372,6 +372,7 @@ impl BitRepr for StreamInfo {
 pub struct Frame {
     header: FrameHeader,
     subframes: heapless::Vec<SubFrame, MAX_CHANNELS>,
+    precomputed_bitstream: Option<Vec<u8>>,
 }
 
 impl Frame {
@@ -385,6 +386,7 @@ impl Frame {
         Self {
             header,
             subframes: heapless::Vec::new(),
+            precomputed_bitstream: None,
         }
     }
 
@@ -396,6 +398,7 @@ impl Frame {
         Self {
             header,
             subframes: subframes.collect(),
+            precomputed_bitstream: None,
         }
     }
 
@@ -424,6 +427,28 @@ impl Frame {
     pub fn subframe(&self, ch: usize) -> &SubFrame {
         &self.subframes[ch]
     }
+
+    /// Allocates precomputed bitstream buffer, and precomputes.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors from `self.write`. It's safe to ignore error
+    /// as it doesn't change the state when `self.write` failed. The same error
+    /// will again produced when you later called `self.write` again.
+    pub fn precompute_bitstream(&mut self) -> Result<(), EncodeError> {
+        if self.precomputed_bitstream.is_some() {
+            return Ok(());
+        }
+        let mut dest = ByteVec::with_capacity(self.count_bits());
+        self.write(&mut dest)?;
+        self.precomputed_bitstream = Some(dest.bytes());
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn is_bitstream_precomputed(&self) -> bool {
+        self.precomputed_bitstream.is_some()
+    }
 }
 
 thread_local! {
@@ -441,21 +466,28 @@ impl BitRepr for Frame {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
-        FRAME_CRC_BUFFER.with(|frame_buffer| {
-            let frame_buffer: &mut ByteVec = &mut frame_buffer.borrow_mut();
-            frame_buffer.clear();
-            frame_buffer.reserve(self.count_bits());
-
-            self.header.write(frame_buffer)?;
-            for sub in &self.subframes {
-                sub.write(frame_buffer)?;
-            }
-            frame_buffer.align_to_byte();
-
-            dest.write_bytes_aligned(frame_buffer.as_byte_slice());
-            dest.write(crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(frame_buffer.as_byte_slice()));
+        if let Some(ref bytes) = &self.precomputed_bitstream {
+            dest.write_bytes_aligned(bytes);
             Ok(())
-        })
+        } else {
+            FRAME_CRC_BUFFER.with(|frame_buffer| {
+                let frame_buffer: &mut ByteVec = &mut frame_buffer.borrow_mut();
+                frame_buffer.clear();
+                frame_buffer.reserve(self.count_bits());
+
+                self.header.write(frame_buffer)?;
+                for sub in &self.subframes {
+                    sub.write(frame_buffer)?;
+                }
+                frame_buffer.align_to_byte();
+
+                dest.write_bytes_aligned(frame_buffer.as_byte_slice());
+                dest.write(
+                    crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(frame_buffer.as_byte_slice()),
+                );
+                Ok(())
+            })
+        }
     }
 }
 
@@ -1195,6 +1227,26 @@ mod tests {
         residual.write(&mut bv)?;
 
         assert_eq!(residual.count_bits(), bv.len());
+        Ok(())
+    }
+
+    #[test]
+    fn frame_bitstream_precomputataion() -> Result<(), EncodeError> {
+        let stream_info = StreamInfo::new(44100, 2, 16);
+        let samples = test_helper::sinusoid_plus_noise(256 * 2, 128, 200.0, 100);
+        let mut frame = make_frame(&stream_info, &samples, 0);
+        let mut bv_ref: BitVec<usize> = BitVec::new();
+        let frame_cloned = frame.clone();
+        frame_cloned.write(&mut bv_ref)?;
+        assert!(bv_ref.len() % 8 == 0); // frame must be byte-aligned.
+
+        frame.precompute_bitstream()?;
+        assert!(frame.is_bitstream_precomputed());
+        assert!(!frame_cloned.is_bitstream_precomputed());
+
+        let mut bv: BitVec<usize> = BitVec::new();
+        frame.write(&mut bv)?;
+        assert_eq!(bv, bv_ref);
         Ok(())
     }
 }
