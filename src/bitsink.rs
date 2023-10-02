@@ -14,14 +14,24 @@
 
 //! Abstract interface for bit-based output.
 
-use std::ops::Shl;
-
+use num_traits::PrimInt;
 use num_traits::ToBytes;
 
 /// Alias trait for the bit-addressible integers.
-pub trait PackedBits: ToBytes + Into<u64> + Shl<usize, Output = Self> + Copy {}
+pub trait PackedBits:
+    ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>
+where
+    Self::Bytes: AsRef<[u8]>,
+{
+    const PACKED_BITS: usize;
+}
 
-impl<T: ToBytes + Into<u64> + Shl<usize, Output = T> + Copy> PackedBits for T {}
+impl<T: ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>> PackedBits for T
+where
+    <T as ToBytes>::Bytes: AsRef<[u8]>,
+{
+    const PACKED_BITS: usize = std::mem::size_of::<T>() * 8;
+}
 
 /// Storage-agnostic interface trait for bit-based output.
 ///
@@ -161,34 +171,6 @@ impl ByteVec {
         ret
     }
 
-    /// Appends first `n` bits (from MSB) to the `ByteVec`.
-    #[inline]
-    fn push_u64_msbs(&mut self, val: u64, n: usize) {
-        let mut val: u64 = val;
-        let mut n = n;
-        let nbitlength = self.bitlength + n;
-        let r = self.tail_len();
-
-        if r != 0 {
-            let b: u8 = (val >> (64 - r)) as u8;
-            let tail = self.bytes.len() - 1;
-            self.bytes[tail] |= b;
-            val <<= r;
-            n = if n > r { n - r } else { 0 };
-        }
-        while n >= 8 {
-            let b: u8 = (val >> (64 - 8) & 0xFFu64) as u8;
-            self.bytes.push(b);
-            val <<= 8;
-            n -= 8;
-        }
-        if n > 0 {
-            let b: u8 = ((val >> (64 - n)) << (8 - n)) as u8;
-            self.bytes.push(b);
-        }
-        self.bitlength = nbitlength;
-    }
-
     pub fn as_byte_slice(&self) -> &[u8] {
         &self.bytes
     }
@@ -229,9 +211,33 @@ impl BitSink for ByteVec {
         if n == 0 {
             return;
         }
-        let initial_shift = 64 - (std::mem::size_of::<T>() * 8);
-        let val: u64 = val.into();
-        self.push_u64_msbs(val << initial_shift, n);
+        let mut val: T = val;
+        let mut n = n;
+        let nbitlength = self.bitlength + n;
+        let r = self.tail_len();
+
+        if r != 0 {
+            let b = (val >> (T::PACKED_BITS - r)).to_u8().unwrap();
+            let tail = self.bytes.len() - 1;
+            self.bytes[tail] |= b;
+            val <<= r;
+            n = n.saturating_sub(r);
+        }
+        let bytes_to_write = n / 8;
+        if bytes_to_write > 0 {
+            let bytes = val.to_be_bytes();
+            self.bytes
+                .extend_from_slice(&bytes.as_ref()[0..bytes_to_write]);
+            n %= 8;
+        }
+        if n > 0 {
+            val <<= bytes_to_write * 8;
+            let mask = !((1 << (8 - n)) - 1);
+            let shifted = val >> (T::PACKED_BITS - 8) & mask.into();
+            let tail_byte = shifted.to_u8().unwrap();
+            self.bytes.push(tail_byte);
+        }
+        self.bitlength = nbitlength;
     }
 
     #[inline]
@@ -239,8 +245,7 @@ impl BitSink for ByteVec {
         if n == 0 {
             return;
         }
-        let val: u64 = val.into();
-        self.push_u64_msbs(val << (64 - n), n);
+        self.write_msbs(val << (T::PACKED_BITS - n), n);
     }
 }
 
