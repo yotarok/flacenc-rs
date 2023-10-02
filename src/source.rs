@@ -81,37 +81,91 @@ impl FrameBuf {
         &mut self.samples[ch * self.size..(ch + 1) * self.size]
     }
 
-    /// Updates MD5 context for input hash (checksum) computation.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `bits_per_sample > 32`.
-    pub fn update_md5(
-        &self,
-        bits_per_sample: usize,
-        block_size: usize,
-        md5_context: &mut md5::Context,
-    ) {
-        let bytes_per_sample = (bits_per_sample + 7) / 8;
-        assert!(bytes_per_sample <= 4);
-        let mut bytes: [u8; 4] = [0u8; 4];
-        // FIXME: It might be inefficient to interleave deinterleaved buffer
-        //   again here.
-        for t in 0..block_size {
-            for ch in 0..self.channels {
-                let sample = self.channel_slice(ch)[t];
-                for (b, mut_p) in bytes.iter_mut().enumerate() {
-                    *mut_p = ((sample >> (8 * b)) & 0xFF) as u8;
-                }
-                md5_context.consume(&bytes[0..bytes_per_sample]);
-            }
-        }
-    }
-
     /// Returns the internal representation of multichannel signals.
     #[cfg(test)]
     pub fn raw_slice(&self) -> &[i32] {
         &self.samples
+    }
+}
+
+#[derive(Clone)]
+pub struct Context {
+    md5: md5::Context,
+    bytes_per_sample: usize,
+    channels: usize,
+    sample_count: usize,
+    frame_count: usize,
+}
+
+impl Context {
+    /// Creates new context.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `bits_per_sample > 32`.
+    pub fn new(bits_per_sample: usize, channels: usize) -> Self {
+        let bytes_per_sample = (bits_per_sample + 7) / 8;
+        assert!(
+            bytes_per_sample <= 4,
+            "bits_per_sample={bits_per_sample} cannot be larger than 32."
+        );
+        Self {
+            md5: md5::Context::new(),
+            bytes_per_sample,
+            channels,
+            sample_count: 0,
+            frame_count: 0,
+        }
+    }
+
+    /// Updates MD5 context for input hash (checksum) computation.
+    #[inline]
+    fn update_md5(&mut self, interleaved: &[i32], block_size: usize) {
+        const ZEROS: [u8; 4] = [0u8; 4];
+        for v in interleaved {
+            self.md5.consume(&v.to_le_bytes()[0..self.bytes_per_sample]);
+        }
+        for _t in interleaved.len()..(block_size * self.channels) {
+            self.md5.consume(&ZEROS[0..self.bytes_per_sample]);
+        }
+    }
+
+    /// Updates the context with the read samples.
+    ///
+    /// This function is typically called from `Source::read_samples`.
+    ///
+    /// # Errors
+    ///
+    /// This function currently does not return an error.
+    pub fn update(&mut self, interleaved: &[i32], block_size: usize) -> Result<(), SourceError> {
+        self.update_md5(interleaved, block_size);
+        self.sample_count += interleaved.len() / self.channels;
+        self.frame_count += 1;
+        Ok(())
+    }
+
+    /// Returns the count of the last frame loaded.
+    ///
+    /// # Panics
+    ///
+    /// This panics when it is called before `update` is called (typically via
+    /// `Source::read_samples`) at least once.
+    #[inline]
+    pub fn current_frame_number(&self) -> usize {
+        assert!(self.frame_count > 0);
+        self.frame_count - 1
+    }
+
+    /// Returns MD5 digest of the consumed samples.
+    #[inline]
+    pub fn md5_digest(&self) -> [u8; 16] {
+        self.md5.clone().compute().into()
+    }
+
+    /// Returns the number of samples consumed.
+    #[inline]
+    pub fn total_samples(&self) -> usize {
+        self.sample_count
     }
 }
 
@@ -124,7 +178,11 @@ pub trait Source {
     fn sample_rate(&self) -> usize;
     /// Reads samples to the buffer.
     #[allow(clippy::missing_errors_doc)]
-    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, SourceError>;
+    fn read_samples(
+        &mut self,
+        dest: &mut FrameBuf,
+        context: &mut Context,
+    ) -> Result<usize, SourceError>;
     /// Returns length of source if it's defined.
     fn len_hint(&self) -> Option<usize> {
         None
@@ -146,6 +204,7 @@ pub trait Seekable: Source {
         &mut self,
         offset: usize,
         dest: &mut FrameBuf,
+        context: &mut Context,
     ) -> Result<usize, SourceError>;
 }
 
@@ -195,8 +254,12 @@ impl Source for PreloadedSignal {
         self.sample_rate
     }
 
-    fn read_samples(&mut self, dest: &mut FrameBuf) -> Result<usize, SourceError> {
-        self.read_samples_from(self.read_head, dest)
+    fn read_samples(
+        &mut self,
+        dest: &mut FrameBuf,
+        context: &mut Context,
+    ) -> Result<usize, SourceError> {
+        self.read_samples_from(self.read_head, dest, context)
     }
 
     fn len_hint(&self) -> Option<usize> {
@@ -213,6 +276,7 @@ impl Seekable for PreloadedSignal {
         &mut self,
         offset: usize,
         dest: &mut FrameBuf,
+        context: &mut Context,
     ) -> Result<usize, SourceError> {
         if dest.channels() != self.channels {
             return Err(SourceError::by_reason(SourceErrorReason::InvalidBuffer));
@@ -223,6 +287,9 @@ impl Seekable for PreloadedSignal {
         let src = &self.samples[begin..end];
 
         dest.fill_from_interleaved(src);
+        if !src.is_empty() {
+            context.update(src, dest.size())?;
+        }
         self.read_head += dest.size();
         Ok(src.len() / self.channels)
     }
@@ -246,7 +313,10 @@ mod tests {
 
         let mut src = PreloadedSignal::from_samples(&signal, channels, 16, 16000);
         let mut framebuf = FrameBuf::with_size(channels, block_size);
-        let read = src.read_samples_from(0, &mut framebuf).expect("Read error");
+        let mut ctx = Context::new(16, channels);
+        let read = src
+            .read_samples_from(0, &mut framebuf, &mut ctx)
+            .expect("Read error");
         assert_eq!(read, block_size);
 
         let mut head = 0;
@@ -272,10 +342,13 @@ mod tests {
 
         let block_size = 128;
         let mut src = PreloadedSignal::from_samples(&signal, channels, 16, 16000);
+        let mut ctx = Context::new(16, channels);
         let mut framebuf = FrameBuf::with_size(channels, block_size);
 
         for step in 0..8 {
-            let read = src.read_samples(&mut framebuf).expect("Read error");
+            let read = src
+                .read_samples(&mut framebuf, &mut ctx)
+                .expect("Read error");
             assert_eq!(read, 128);
             assert_eq!(src.read_head, 128 * (step + 1));
             for t in 0..block_size {
@@ -286,7 +359,9 @@ mod tests {
                 );
             }
         }
-        let read = src.read_samples(&mut framebuf).expect("Read error");
+        let read = src
+            .read_samples(&mut framebuf, &mut ctx)
+            .expect("Read error");
         assert_eq!(read, 76);
         for t in 0..76 {
             assert_eq!(framebuf.channel_slice(0)[t], (1024 + t) as i32);
@@ -297,16 +372,26 @@ mod tests {
 
     #[test]
     fn md5_computation() {
-        let zeros = FrameBuf::with_size(2, 32);
-        let mut md5_context = md5::Context::new();
-        zeros.update_md5(16, 32, &mut md5_context);
+        let mut ctx = Context::new(16, 2);
+        ctx.update(&[0i32; 32 * 2], 32).expect("update failed");
 
         // Reference computed with Python's hashlib.
         assert_eq!(
-            <[u8; 16]>::from(md5_context.compute()),
+            ctx.md5_digest(),
             [
                 0xF0, 0x9F, 0x35, 0xA5, 0x63, 0x78, 0x39, 0x45, 0x8E, 0x46, 0x2E, 0x63, 0x50, 0xEC,
                 0xBC, 0xE4
+            ]
+        );
+
+        let mut ctx = Context::new(16, 2);
+        ctx.update(&[0xABCDi32; 32 * 2], 32).expect("update failed");
+        // Reference computed by a reliable version of this library.
+        assert_eq!(
+            ctx.md5_digest(),
+            [
+                0x02, 0x3D, 0x3A, 0xE9, 0x26, 0x0B, 0xB0, 0xC9, 0x51, 0xF6, 0x5B, 0x25, 0x24, 0x62,
+                0xB1, 0xFA
             ]
         );
     }

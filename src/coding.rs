@@ -43,6 +43,7 @@ use super::constant::MAX_LPC_ORDER;
 use super::error::SourceError;
 use super::lpc;
 use super::rice;
+use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Seekable;
 use super::source::Source;
@@ -475,20 +476,15 @@ pub fn parallel_encode_with_fixed_block_size<T: Source>(
 ) -> Result<Stream, SourceError> {
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let channels = src.channels();
-    let mut md5_context = md5::Context::new();
-    let mut offset: usize = 0;
-    let mut frame_number: usize = 0;
+    let mut context = Context::new(src.bits_per_sample(), channels);
     let mut framebufs = vec![];
     loop {
         let mut framebuf = FrameBuf::with_size(channels, block_size);
-        let read_samples = src.read_samples(&mut framebuf)?;
+        let read_samples = src.read_samples(&mut framebuf, &mut context)?;
         if read_samples == 0 {
             break;
         }
-        framebuf.update_md5(src.bits_per_sample(), block_size, &mut md5_context);
-        framebufs.push((frame_number, framebuf));
-        frame_number += 1;
-        offset += read_samples;
+        framebufs.push((context.current_frame_number(), framebuf));
     }
     let stream_info = stream.stream_info();
     let frames = framebufs.into_par_iter().map(|(frame_number, framebuf)| {
@@ -500,10 +496,10 @@ pub fn parallel_encode_with_fixed_block_size<T: Source>(
     }
     stream
         .stream_info_mut()
-        .set_total_samples(src.len_hint().unwrap_or(offset));
+        .set_total_samples(src.len_hint().unwrap_or_else(|| context.total_samples()));
     stream
         .stream_info_mut()
-        .set_md5_digest(&md5_context.compute().into());
+        .set_md5_digest(&context.md5_digest());
     Ok(stream)
 }
 
@@ -521,30 +517,27 @@ pub fn encode_with_fixed_block_size<T: Source>(
         return parallel_encode_with_fixed_block_size(config, src, block_size);
     }
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
-    let channels = src.channels();
-    let mut framebuf = FrameBuf::with_size(channels, block_size);
-
-    let mut md5_context = md5::Context::new();
-    let mut offset: usize = 0;
-    let mut frame_number: usize = 0;
+    let mut framebuf = FrameBuf::with_size(src.channels(), block_size);
+    let mut context = Context::new(src.bits_per_sample(), src.channels());
     loop {
-        let read_samples = src.read_samples(&mut framebuf)?;
+        let read_samples = src.read_samples(&mut framebuf, &mut context)?;
         if read_samples == 0 {
             break;
         }
-        // For the last frame, FLAC uses all the samples in the zero-padded block.
-        framebuf.update_md5(src.bits_per_sample(), block_size, &mut md5_context);
-        let frame = encode_fixed_size_frame(config, &framebuf, frame_number, stream.stream_info());
+        let frame = encode_fixed_size_frame(
+            config,
+            &framebuf,
+            context.current_frame_number(),
+            stream.stream_info(),
+        );
         stream.add_frame(frame);
-        offset += read_samples;
-        frame_number += 1;
     }
     stream
         .stream_info_mut()
-        .set_total_samples(src.len_hint().unwrap_or(offset));
+        .set_md5_digest(&context.md5_digest());
     stream
         .stream_info_mut()
-        .set_md5_digest(&md5_context.compute().into());
+        .set_total_samples(src.len_hint().unwrap_or_else(|| context.total_samples()));
     Ok(stream)
 }
 
@@ -558,7 +551,7 @@ struct Hyp {
     bits: usize,
     back_pointer: Option<Arc<Hyp>>,
     is_last: bool,
-    md5_context: md5::Context,
+    context: Context,
 }
 
 #[cfg(feature = "experimental")]
@@ -578,20 +571,16 @@ impl Hyp {
         // OPTIMIZE ME: Heap allocation done for each hyp.
         let mut framebuf = FrameBuf::with_size(stream_info.channels(), block_size);
         let offset = back_pointer.as_ref().map_or(0, |h| h.next_offset());
-        src.read_samples_from(offset, &mut framebuf)?;
+        let mut ctx = back_pointer.as_ref().map_or_else(
+            || Context::new(stream_info.bits_per_sample(), stream_info.channels()),
+            |hyp| hyp.context.clone(),
+        );
+        src.read_samples_from(offset, &mut framebuf, &mut ctx)?;
         let frame_samples = std::cmp::min(src.len() - offset, block_size);
         let frame = encode_frame(config, &framebuf, offset, stream_info);
         let bits = frame.count_bits();
         let prev_samples = back_pointer.as_ref().map_or(0, |h| h.samples);
         let prev_bits = back_pointer.as_ref().map_or(0, |h| h.bits);
-        let mut md5_context = back_pointer
-            .as_ref()
-            .map_or_else(md5::Context::new, |h| h.md5_context.clone());
-        framebuf.update_md5(
-            stream_info.bits_per_sample(),
-            frame_samples,
-            &mut md5_context,
-        );
         Ok(Arc::new(Self {
             frame,
             offset,
@@ -600,7 +589,7 @@ impl Hyp {
             bits: prev_bits + bits,
             back_pointer,
             is_last: frame_samples != block_size,
-            md5_context,
+            context: ctx,
         }))
     }
 
