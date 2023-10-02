@@ -22,6 +22,7 @@ use std::array;
 // TYPE DEFINITION
 // ===
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct Simd<T: SimdElement, const LANES: usize>([T; LANES]);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd)]
@@ -42,6 +43,10 @@ impl SimdElement for i32 {
 }
 
 impl SimdElement for u32 {
+    type Mask = Self;
+}
+
+impl SimdElement for f32 {
     type Mask = Self;
 }
 
@@ -86,6 +91,9 @@ pub type i32x16 = Simd<i32, 16>;
 
 #[allow(non_camel_case_types)]
 pub type u32x16 = Simd<u32, 16>;
+
+#[allow(non_camel_case_types)]
+pub type f32x32 = Simd<f32, 32>;
 
 // ===
 // IMPLEMENTATION OF `fakesimd::Simd` (non-trait methods)
@@ -233,12 +241,31 @@ macro_rules! def_binop {
     };
 }
 
+macro_rules! def_binop_assign {
+    ($trait_name:ident, $binop_name: ident, $fn_name:ident, $expr:expr) => {
+        impl<U, T, const N: usize> std::ops::$trait_name<U> for Simd<T, N>
+        where
+            T: SimdElement,
+            Self: std::ops::$binop_name<U, Output = Self>,
+        {
+            #[inline]
+            #[allow(clippy::redundant_closure_call)]
+            fn $fn_name(&mut self, rhs: U) {
+                *self = ($expr)(*self, rhs);
+            }
+        }
+    };
+}
+
 def_binop!(Add, add, |x, y| x + y);
 def_binop!(Sub, sub, |x, y| x - y);
 def_binop!(Mul, mul, |x, y| x * y);
 def_binop!(Div, div, |x, y| x / y);
 def_binop!(BitAnd, bitand, |x, y| x & y);
 def_binop!(Shr, shr, |x, y| x >> y);
+
+def_binop_assign!(AddAssign, Add, add_assign, |x, y| x + y);
+def_binop_assign!(SubAssign, Sub, sub_assign, |x, y| x - y);
 
 impl<T, const N: usize> std::convert::AsRef<[T; N]> for Simd<T, N>
 where
@@ -280,16 +307,5 @@ where
     #[inline]
     fn index_mut(&mut self, index: I) -> &mut <I as std::slice::SliceIndex<[T]>>::Output {
         &mut self.as_mut_array()[index]
-    }
-}
-
-impl<U, T, const N: usize> std::ops::SubAssign<U> for Simd<T, N>
-where
-    T: SimdElement,
-    Self: std::ops::Sub<U, Output = Self>,
-{
-    #[inline]
-    fn sub_assign(&mut self, rhs: U) {
-        *self = *self - rhs;
     }
 }
