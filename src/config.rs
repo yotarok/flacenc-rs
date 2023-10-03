@@ -14,6 +14,8 @@
 
 //! Encoder configuration structs.
 
+use std::num::NonZeroUsize;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -29,13 +31,15 @@ use super::error::VerifyError;
 use super::lpc::Window;
 
 /// Configuration for encoder.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct Encoder {
     /// The possible block sizes encoder can use.
     pub block_sizes: Vec<usize>,
     /// Whether encoder runs on multi-thread mode.
     pub multithread: bool,
+    /// The number of threads used in multithread mode.
+    pub workers: Option<NonZeroUsize>,
     /// Configuration for stereo-coding module.
     pub stereo_coding: StereoCoding,
     /// Configuration for individual channels.
@@ -50,6 +54,7 @@ impl Default for Encoder {
             subframe_coding: SubFrameCoding::default(),
             block_sizes: vec![4096usize],
             multithread: cfg!(feature = "par"),
+            workers: None,
         }
     }
 }
@@ -93,7 +98,7 @@ impl Verify for Encoder {
 }
 
 /// Configuration for stereo coding algorithms.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct StereoCoding {
     /// If set to false, left-side coding will not be used.
@@ -121,7 +126,7 @@ impl Verify for StereoCoding {
 }
 
 /// Configuration for sub-frame (individual channel) coding.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct SubFrameCoding {
     // Disabling verbatim coding is intentionally prohibited.
@@ -158,7 +163,7 @@ impl Verify for SubFrameCoding {
 }
 
 /// Configuration for partitioned-rice coding (PRC).
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct Prc {
     /// Max value for the parameter of rice coding.
@@ -186,7 +191,7 @@ impl Verify for Prc {
 }
 
 /// Configuration for quantized linear-predictive coding (QLPC).
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct Qlpc {
     /// LPC order.
