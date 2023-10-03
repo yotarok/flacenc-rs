@@ -15,10 +15,6 @@
 //! Controller connecting coding algorithms.
 
 use std::cell::RefCell;
-#[cfg(feature = "experimental")]
-use std::collections::BTreeSet;
-#[cfg(feature = "experimental")]
-use std::sync::Arc;
 
 #[cfg(feature = "par")]
 use rayon::iter::IntoParallelIterator;
@@ -37,15 +33,12 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
-#[cfg(feature = "experimental")]
-use super::constant::BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER;
 use super::constant::MAX_LPC_ORDER;
 use super::error::SourceError;
 use super::lpc;
 use super::rice;
 use super::source::Context;
 use super::source::FrameBuf;
-use super::source::Seekable;
 use super::source::Source;
 
 #[cfg(feature = "fakesimd")]
@@ -542,217 +535,6 @@ pub fn encode_with_fixed_block_size<T: Source>(
         .stream_info_mut()
         .set_total_samples(src.len_hint().unwrap_or_else(|| context.total_samples()));
     Ok(stream)
-}
-
-/// A hypothesis for block-size beam search.
-#[cfg(feature = "experimental")]
-struct Hyp {
-    frame: Frame,
-    offset: usize,
-    block_size: usize,
-    samples: usize,
-    bits: usize,
-    back_pointer: Option<Arc<Hyp>>,
-    is_last: bool,
-    context: Context,
-}
-
-#[cfg(feature = "experimental")]
-impl Hyp {
-    /// Creates a new beam-search node connecting to the given `back_pointer`.
-    ///
-    /// # Error
-    ///
-    /// Returns `SourceError` when it failed to read from `src`.
-    pub fn new<T: Seekable>(
-        src: &mut T,
-        block_size: usize,
-        config: &config::Encoder,
-        stream_info: &StreamInfo,
-        back_pointer: Option<Arc<Self>>,
-    ) -> Result<Arc<Self>, SourceError> {
-        // OPTIMIZE ME: Heap allocation done for each hyp.
-        let mut framebuf = FrameBuf::with_size(stream_info.channels(), block_size);
-        let offset = back_pointer.as_ref().map_or(0, |h| h.next_offset());
-        let mut ctx = back_pointer.as_ref().map_or_else(
-            || Context::new(stream_info.bits_per_sample(), stream_info.channels()),
-            |hyp| hyp.context.clone(),
-        );
-        src.read_samples_from(offset, &mut framebuf, &mut ctx)?;
-        let frame_samples = std::cmp::min(src.len() - offset, block_size);
-        let frame = encode_frame(config, &framebuf, offset, stream_info);
-        let bits = frame.count_bits();
-        let prev_samples = back_pointer.as_ref().map_or(0, |h| h.samples);
-        let prev_bits = back_pointer.as_ref().map_or(0, |h| h.bits);
-        Ok(Arc::new(Self {
-            frame,
-            offset,
-            block_size,
-            samples: prev_samples + frame_samples,
-            bits: prev_bits + bits,
-            back_pointer,
-            is_last: frame_samples != block_size,
-            context: ctx,
-        }))
-    }
-
-    pub const fn next_offset(&self) -> usize {
-        self.offset + self.block_size
-    }
-
-    pub fn bits_per_sample(&self) -> f64 {
-        self.bits as f64 / self.samples as f64
-    }
-}
-
-#[cfg(feature = "experimental")]
-struct BeamSearch<'a, T: Seekable> {
-    config: &'a config::Encoder,
-    stream_info: &'a StreamInfo,
-    src: &'a mut T,
-    beam_width: usize,
-    best_hyp: Option<Arc<Hyp>>,
-    current_hyps: Vec<Arc<Hyp>>,
-    next_hyps: Vec<Arc<Hyp>>,
-    prune_markers: BTreeSet<usize>,
-}
-
-#[cfg(feature = "experimental")]
-impl<'a, T: Seekable> BeamSearch<'a, T> {
-    pub fn new(
-        config: &'a config::Encoder,
-        stream_info: &'a StreamInfo,
-        src: &'a mut T,
-    ) -> Result<Self, SourceError> {
-        let beam_width = config
-            .block_size_search_beam_width
-            .unwrap_or(config.block_sizes.len() * BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER);
-        let mut ret = Self {
-            config,
-            stream_info,
-            src,
-            beam_width,
-            best_hyp: None,
-            current_hyps: vec![],
-            next_hyps: vec![],
-            prune_markers: BTreeSet::new(),
-        };
-        ret.extend_one(&None)?;
-        ret.prune_and_update();
-        Ok(ret)
-    }
-
-    pub fn extend_all(&mut self) -> Result<(), SourceError> {
-        self.next_hyps.clear();
-        let current_hyps = self.current_hyps.clone();
-        for hyp in &current_hyps {
-            self.extend_one(&Some(Arc::clone(hyp)))?;
-        }
-        self.prune_and_update();
-        Ok(())
-    }
-
-    pub fn done(&self) -> bool {
-        self.current_hyps.is_empty()
-    }
-
-    pub fn results(&self) -> impl Iterator<Item = Arc<Hyp>> {
-        let mut ret = vec![];
-        if let Some(best) = self.best_hyp.as_ref() {
-            let mut cur = Arc::clone(best);
-            loop {
-                ret.push(Arc::clone(&cur));
-                if let Some(prev) = cur.back_pointer.as_ref() {
-                    cur = Arc::clone(prev);
-                } else {
-                    break;
-                }
-            }
-        }
-        ret.into_iter().rev()
-    }
-
-    fn update_best_hyp(&mut self, hyp: Arc<Hyp>) {
-        let best_bps = self
-            .best_hyp
-            .as_ref()
-            .map_or(f64::MAX, |h| h.bits_per_sample());
-        if hyp.bits_per_sample() < best_bps {
-            self.best_hyp = Some(hyp);
-        }
-    }
-
-    fn extend_one(&mut self, back_pointer: &Option<Arc<Hyp>>) -> Result<(), SourceError> {
-        for &bs in &self.config.block_sizes {
-            let hyp = Hyp::new(
-                self.src,
-                bs,
-                self.config,
-                self.stream_info,
-                back_pointer.clone(),
-            )?;
-            if hyp.is_last {
-                self.update_best_hyp(Arc::clone(&hyp));
-            } else {
-                self.next_hyps.push(hyp);
-            }
-        }
-        Ok(())
-    }
-
-    fn prune_and_update(&mut self) {
-        self.next_hyps.sort_by(|x, y| {
-            x.bits_per_sample()
-                .partial_cmp(&y.bits_per_sample())
-                .unwrap()
-        });
-        self.prune_markers.clear();
-        self.current_hyps.clear();
-        for hyp in &self.next_hyps {
-            if self.prune_markers.contains(&hyp.next_offset()) {
-                continue;
-            }
-            self.prune_markers.insert(hyp.next_offset());
-            self.current_hyps.push(Arc::clone(hyp));
-        }
-        self.current_hyps.truncate(self.beam_width);
-    }
-}
-
-/// Searches combination of block sizes and encodes `src` in variable length format.
-///
-/// # Errors
-///
-/// This function returns `SourceError` when it failed to read samples from `src`.
-#[cfg(feature = "experimental")]
-#[allow(clippy::missing_panics_doc)]
-pub fn encode_with_multiple_block_sizes<T: Seekable>(
-    config: &config::Encoder,
-    mut src: T,
-) -> Result<Stream, SourceError> {
-    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
-    let stream_info = stream.stream_info();
-    let mut beam_search = BeamSearch::new(config, stream_info, &mut src)?;
-
-    // TODO: MD5 checksums are not supported in BSBS mode.
-    while !beam_search.done() {
-        beam_search.extend_all()?;
-    }
-    for hyp in beam_search.results() {
-        stream.add_frame(hyp.frame.clone());
-    }
-    stream.stream_info_mut().set_total_samples(src.len());
-
-    Ok(stream)
-}
-
-#[cfg(not(feature = "experimental"))]
-#[allow(unused_mut, clippy::missing_errors_doc)]
-pub fn encode_with_multiple_block_sizes<T: Seekable>(
-    _config: &config::Encoder,
-    mut _src: T,
-) -> Result<Stream, SourceError> {
-    unimplemented!("Multiple block-size is only supported when flacenc is built with \"experimental\" feature enabled.")
 }
 
 #[cfg(test)]

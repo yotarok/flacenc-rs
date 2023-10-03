@@ -21,9 +21,6 @@ pub enum ExitCode {
     InvalidConfig = -1,
 }
 
-/// Default block-size beam-search width in factor of #choices.
-pub const BSBS_DEFAULT_BEAM_WIDTH_MULTIPLIER: usize = 2;
-
 /// Maximum length of a block.
 pub const MIN_BLOCKSIZE_SUPPORTED: usize = 32;
 
