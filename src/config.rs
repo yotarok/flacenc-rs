@@ -34,8 +34,6 @@ use super::lpc::Window;
 pub struct Encoder {
     /// The possible block sizes encoder can use.
     pub block_sizes: Vec<usize>,
-    /// Beam width for block-size search.
-    pub block_size_search_beam_width: Option<usize>,
     /// Whether encoder runs on multi-thread mode.
     pub multithread: bool,
     /// Configuration for stereo-coding module.
@@ -51,7 +49,6 @@ impl Default for Encoder {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
             block_sizes: vec![4096usize],
-            block_size_search_beam_width: None,
             multithread: cfg!(feature = "par"),
         }
     }
@@ -65,16 +62,10 @@ impl Verify for Encoder {
                 "Must specify at least one block size.",
             ));
         }
-        if !cfg!(feature = "experimental") && self.block_sizes.len() > 1 {
+        if self.block_sizes.len() > 1 {
             return Err(VerifyError::new(
                 "block_sizes",
-                "Multiple blocksize mode is only allowed when \"experimental\" feature is enabled.",
-            ));
-        }
-        if self.block_size_search_beam_width == Some(0) {
-            return Err(VerifyError::new(
-                "block_size_search_beam_width",
-                "Must be more than 1.",
+                "Multiple blocksize mode is not supported currently.",
             ));
         }
         for (i, &bs) in self.block_sizes.iter().enumerate() {
