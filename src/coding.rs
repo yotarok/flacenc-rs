@@ -16,11 +16,6 @@
 
 use std::cell::RefCell;
 
-#[cfg(feature = "par")]
-use rayon::iter::IntoParallelIterator;
-#[cfg(feature = "par")]
-use rayon::iter::ParallelIterator;
-
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
 use super::component::Constant;
@@ -36,6 +31,8 @@ use super::config;
 use super::constant::MAX_LPC_ORDER;
 use super::error::SourceError;
 use super::lpc;
+#[cfg(feature = "par")]
+use super::par;
 use super::rice;
 use super::source::Context;
 use super::source::FrameBuf;
@@ -452,53 +449,6 @@ pub fn encode_fixed_size_frame(
     ret
 }
 
-/// Parallel version of `encode_with_fixed_block_size`.
-///
-/// This function is internally called by `encode_with_fixed_block_size`
-/// when `config.multithread == true`. However, one can explicitly call this
-/// function and disable single-threaded mode.
-///
-/// # Errors
-///
-/// This function returns `SourceError` when it failed to read samples from `src`.
-#[cfg(feature = "par")]
-pub fn parallel_encode_with_fixed_block_size<T: Source>(
-    config: &config::Encoder,
-    mut src: T,
-    block_size: usize,
-) -> Result<Stream, SourceError> {
-    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
-    let channels = src.channels();
-    let mut context = Context::new(src.bits_per_sample(), channels);
-    let mut framebufs = vec![];
-    loop {
-        let mut framebuf = FrameBuf::with_size(channels, block_size);
-        let read_samples = src.read_samples(&mut framebuf, &mut context)?;
-        if read_samples == 0 {
-            break;
-        }
-        framebufs.push((context.current_frame_number(), framebuf));
-    }
-    let stream_info = stream.stream_info();
-    let frames = framebufs.into_par_iter().map(|(frame_number, framebuf)| {
-        let mut f = encode_fixed_size_frame(config, &framebuf, frame_number, stream_info);
-        // It's safe to ignore the error here.
-        f.precompute_bitstream().unwrap_or_default();
-        f
-    });
-
-    for frame in &frames.collect::<Vec<_>>() {
-        stream.add_frame(frame.clone());
-    }
-    stream
-        .stream_info_mut()
-        .set_total_samples(src.len_hint().unwrap_or_else(|| context.total_samples()));
-    stream
-        .stream_info_mut()
-        .set_md5_digest(&context.md5_digest());
-    Ok(stream)
-}
-
 /// Encoder entry function for fixed block-size encoding.
 ///
 /// # Errors
@@ -509,8 +459,11 @@ pub fn encode_with_fixed_block_size<T: Source>(
     mut src: T,
     block_size: usize,
 ) -> Result<Stream, SourceError> {
-    if cfg!(feature = "par") && config.multithread {
-        return parallel_encode_with_fixed_block_size(config, src, block_size);
+    #[cfg(feature = "par")]
+    {
+        if config.multithread {
+            return par::encode_with_fixed_block_size(config, src, block_size);
+        }
     }
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let mut framebuf = FrameBuf::with_size(src.channels(), block_size);

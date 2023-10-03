@@ -62,6 +62,9 @@ pub const MIN_RICE_PARTITION_SIZE: usize = 64;
 #[allow(dead_code)]
 pub const MAX_SAMPLE_BITS: usize = 32;
 
+/// The number of `FrameBuf`s for each worker thread in par-mode.
+pub const PAR_MODE_FRAMEBUF_MULTIPLICITY: usize = 2;
+
 /// The number of bits used for encoding shift bits of QLPC.
 pub const QLPC_SHIFT_BITS: usize = 5;
 

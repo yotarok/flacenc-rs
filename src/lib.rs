@@ -59,6 +59,8 @@ pub mod error;
 #[cfg(feature = "fakesimd")]
 pub mod fakesimd;
 pub mod lpc;
+#[cfg(feature = "par")]
+pub mod par;
 pub mod rice;
 pub mod source;
 
