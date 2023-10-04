@@ -86,3 +86,20 @@ pub const QLPC_DEFAULT_ORDER: usize = 10;
 
 /// Default precision for storing QLPC coefficients.
 pub const QLPC_DEFAULT_PRECISION: usize = 12;
+
+/// Module for internal error messages.
+///
+/// Use `panic!` and those messages only for env-related unrecoveralbe errors.
+/// It's okay to use them in tests, but it's not okay to add another variable
+/// only for test functions.
+pub mod panic_msg {
+    pub const MPMC_SEND_FAILED: &str =
+        "INTERNAL ERROR: Critical error occured in multi-thread communication channel.";
+    pub const MPMC_RECV_FAILED: &str =
+        "INTERNAL ERROR: Critical error occured in multi-thread communication channel.";
+    pub const MUTEX_LOCK_FAILED: &str = "INTERNAL ERROR: Couldn't get lock for mutex.";
+    pub const MUTEX_DROP_FAILED: &str = "INTERNAL ERROR: Couldn't discard mutex.";
+    pub const FRAMENUM_NOT_SET: &str =
+        "INTERNAL ERROR: Frame buffer is not properly initialized. (FrameNo. not set).";
+    pub const THREAD_JOIN_FAILED: &str = "INTERNAL ERROR: Failed to wait thread termination.";
+}
