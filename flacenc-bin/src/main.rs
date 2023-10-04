@@ -47,6 +47,7 @@
 
 use std::fmt::Debug;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
@@ -62,7 +63,9 @@ use flacenc::config;
 use flacenc::constant::ExitCode;
 use flacenc::error::SourceError;
 use flacenc::error::Verify;
-use flacenc::source;
+use flacenc::source::Context;
+use flacenc::source::FrameBuf;
+use flacenc::source::Source;
 
 /// FLAC encoder.
 #[derive(Parser, Debug)]
@@ -88,8 +91,9 @@ struct Args {
 /// Serializes `Stream` to a file.
 #[allow(clippy::expect_used)]
 fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
-    eprintln!("{} bits to be written", stream.count_bits());
-    let mut bv = flacenc::bitsink::ByteVec::new();
+    let bits = stream.count_bits();
+    eprintln!("{bits} bits to be written");
+    let mut bv = flacenc::bitsink::ByteVec::with_capacity(bits);
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     let mut writer = BufWriter::new(file);
     writer
@@ -97,48 +101,73 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
         .expect("Failed to write a bitstream to the file.");
 }
 
-/// Collect iterator of `Result`s, and returns values or the first error.
-fn collect_results<I, T, E>(iter: I) -> Result<Vec<T>, E>
-where
-    I: Iterator<Item = Result<T, E>>,
-    E: std::error::Error,
-    T: Debug,
-{
-    let mut error: Option<E> = None;
-    let mut samples = vec![];
-    for r in iter {
-        if let Ok(v) = r {
-            samples.push(v);
-        } else {
-            error = Some(r.unwrap_err());
-            break;
-        }
+/// An example of `flacenc::source::Source` based on `hound::WavReader`.
+struct HoundSource {
+    spec: hound::WavSpec,
+    duration: usize,
+    samples: hound::WavIntoSamples<BufReader<File>, i32>,
+    buf: Vec<i32>,
+}
+
+impl HoundSource {
+    /// Constructs `HoundSource` from `path`.
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let reader = Box::new(hound::WavReader::open(path).map_err(Box::new)?);
+        let spec = reader.spec();
+        let duration = reader.duration() as usize;
+        Ok(Self {
+            spec,
+            duration,
+            samples: reader.into_samples(),
+            buf: Vec::new(),
+        })
     }
-    error.map_or_else(|| Ok(samples), Err)
 }
 
-/// Loads wave file and constructs `PreloadedSignal`.
-///
-/// # Errors
-///
-/// This function propagates errors emitted by the backend wave parser.
-pub fn load_input_wav<P: AsRef<Path>>(
-    path: P,
-) -> Result<source::PreloadedSignal, Box<dyn std::error::Error>> {
-    let mut reader = hound::WavReader::open(path).map_err(Box::new)?;
-    let spec = reader.spec();
-    let samples: Vec<i32> = collect_results(reader.samples())?;
-    Ok(source::PreloadedSignal::from_samples(
-        &samples,
-        spec.channels as usize,
-        spec.bits_per_sample as usize,
-        spec.sample_rate as usize,
-    ))
+impl Source for HoundSource {
+    fn channels(&self) -> usize {
+        self.spec.channels as usize
+    }
+
+    fn bits_per_sample(&self) -> usize {
+        self.spec.bits_per_sample as usize
+    }
+
+    fn sample_rate(&self) -> usize {
+        self.spec.sample_rate as usize
+    }
+
+    #[inline]
+    fn read_samples(
+        &mut self,
+        dest: &mut FrameBuf,
+        context: &mut Context,
+    ) -> Result<usize, SourceError> {
+        self.buf.clear();
+        let to_read = dest.size() * self.channels();
+        for _t in 0..to_read {
+            if let Some(res) = self.samples.next() {
+                let v = res.unwrap();
+                self.buf.push(v);
+            } else {
+                break;
+            }
+        }
+        dest.fill_from_interleaved(&self.buf);
+        if !self.buf.is_empty() {
+            context.update(&self.buf, dest.size())?;
+        }
+        Ok(self.buf.len() / self.channels())
+    }
+
+    fn len_hint(&self) -> Option<usize> {
+        Some(self.duration)
+    }
 }
 
-fn run_encoder(
+fn run_encoder<S: Source>(
     encoder_config: &config::Encoder,
-    source: source::PreloadedSignal,
+    source: S,
 ) -> Result<Stream, SourceError> {
     let block_size = encoder_config.block_sizes[0];
     coding::encode_with_fixed_block_size(encoder_config, source, block_size)
@@ -155,7 +184,7 @@ fn main_body(args: Args) -> Result<(), i32> {
         return Err(ExitCode::InvalidConfig as i32);
     }
 
-    let source = load_input_wav(&args.source).expect("Failed to load input source.");
+    let source = HoundSource::from_path(&args.source).expect("Failed to load input source.");
 
     let stream = run_encoder(&encoder_config, source).expect("Encoder error.");
 
