@@ -232,7 +232,8 @@ impl PrcParameterFinder {
             let next_bits = eval_partitions(&self.tables[0..nparts], &mut self.ps);
             if next_bits < min_bits {
                 min_bits = next_bits;
-                self.min_ps = self.ps.clone();
+                self.min_ps.clear();
+                self.min_ps.extend_from_slice(&self.ps);
                 min_order = partition_order;
             }
         }

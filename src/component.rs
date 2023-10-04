@@ -40,12 +40,17 @@ pub trait BitRepr {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError>;
 }
 
+/// Lookup table for `encode_to_utf8like`.
+const UTF8_HEADS: [u8; 7] = [0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE];
+
 /// Encodes the given integer into UTF-8-like byte sequence.
-fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeError> {
+#[inline]
+fn encode_to_utf8like(val: u64) -> Result<heapless::Vec<u8, 7>, RangeError> {
     let val_size = u64::BITS as usize;
     let code_bits: usize = val_size - val.leading_zeros() as usize;
+    let mut ret = heapless::Vec::new();
     if code_bits <= 7 {
-        dest.write_lsbs(val, 8);
+        ret.push(val as u8).unwrap();
     } else if code_bits > 36 {
         return Err(RangeError::from_display(
             "input",
@@ -61,20 +66,23 @@ fn encode_to_utf8like<S: BitSink>(val: u64, dest: &mut S) -> Result<(), RangeErr
         let capacity = trailing_bytes * 6 + 6 - trailing_bytes;
         assert!(capacity >= code_bits);
 
-        let mut val = val << (val_size - capacity);
-
-        dest.write_lsbs(0xFEu8, trailing_bytes + 2);
         let first_bits = 6 - trailing_bytes;
-        dest.write_msbs(val, first_bits);
+        let mut val = val << (val_size - capacity);
+        let head_byte: u8 = if trailing_bytes == 6 {
+            0xFEu8
+        } else {
+            UTF8_HEADS[trailing_bytes] | ((val >> (64 - first_bits)) & 0xFF) as u8
+        };
+        ret.push(head_byte).unwrap();
         val <<= first_bits;
 
         for _i in 0..trailing_bytes {
             let b = 0x80u8 | (val >> 58) as u8;
-            dest.write(b);
+            ret.push(b).unwrap();
             val <<= 6;
         }
     }
-    Ok(())
+    Ok(ret)
 }
 
 /// Computes the number of bytes required for UTF-8-like encoding of `val`.
@@ -189,6 +197,7 @@ impl Stream {
 }
 
 impl BitRepr for Stream {
+    #[inline]
     fn count_bits(&self) -> usize {
         let mut ret = 32 + self.stream_info.count_bits();
         for elem in &self.metadata {
@@ -234,6 +243,7 @@ impl MetadataBlock {
 }
 
 impl BitRepr for MetadataBlock {
+    #[inline]
     fn count_bits(&self) -> usize {
         32 + self.data.count_bits()
     }
@@ -270,6 +280,7 @@ enum MetadataBlockData {
 }
 
 impl BitRepr for MetadataBlockData {
+    #[inline]
     fn count_bits(&self) -> usize {
         match self {
             Self::StreamInfo(info) => info.count_bits(),
@@ -349,6 +360,7 @@ impl StreamInfo {
 }
 
 impl BitRepr for StreamInfo {
+    #[inline]
     fn count_bits(&self) -> usize {
         272
     }
@@ -456,6 +468,7 @@ thread_local! {
 }
 
 impl BitRepr for Frame {
+    #[inline]
     fn count_bits(&self) -> usize {
         let header = self.header.count_bits();
         let body: usize = self.subframes.iter().map(BitRepr::count_bits).sum();
@@ -532,6 +545,7 @@ impl ChannelAssignment {
 }
 
 impl BitRepr for ChannelAssignment {
+    #[inline]
     fn count_bits(&self) -> usize {
         4
     }
@@ -624,6 +638,7 @@ thread_local! {
 }
 
 impl BitRepr for FrameHeader {
+    #[inline]
     fn count_bits(&self) -> usize {
         let mut ret = 40;
         if self.variable_block_size {
@@ -657,9 +672,11 @@ impl BitRepr for FrameHeader {
                 dest.write_lsbs(self.sample_size << 1, 4);
 
                 if self.variable_block_size {
-                    encode_to_utf8like(self.start_sample_number, dest)?;
+                    let v = encode_to_utf8like(self.start_sample_number)?;
+                    dest.write_bytes_aligned(&v);
                 } else {
-                    encode_to_utf8like(u64::from(self.frame_number), dest)?;
+                    let v = encode_to_utf8like(self.frame_number.into())?;
+                    dest.write_bytes_aligned(&v);
                 }
                 dest.write_lsbs(foot, footsize);
             }
@@ -708,6 +725,7 @@ impl From<Lpc> for SubFrame {
 }
 
 impl BitRepr for SubFrame {
+    #[inline]
     fn count_bits(&self) -> usize {
         match self {
             Self::Verbatim(c) => c.count_bits(),
@@ -744,6 +762,7 @@ impl Constant {
 }
 
 impl BitRepr for Constant {
+    #[inline]
     fn count_bits(&self) -> usize {
         8 + self.bits_per_sample as usize
     }
@@ -769,11 +788,17 @@ impl Verbatim {
             bits_per_sample,
         }
     }
+
+    #[inline]
+    pub fn count_bits_from_metadata(block_size: usize, bits_per_sample: usize) -> usize {
+        8 + block_size * bits_per_sample
+    }
 }
 
 impl BitRepr for Verbatim {
+    #[inline]
     fn count_bits(&self) -> usize {
-        8 + self.data.len() * (self.bits_per_sample as usize)
+        Self::count_bits_from_metadata(self.data.len(), self.bits_per_sample as usize)
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
@@ -817,6 +842,7 @@ impl FixedLpc {
 }
 
 impl BitRepr for FixedLpc {
+    #[inline]
     fn count_bits(&self) -> usize {
         8 + self.bits_per_sample as usize * self.order() + self.residual.count_bits()
     }
@@ -874,6 +900,7 @@ impl Lpc {
 }
 
 impl BitRepr for Lpc {
+    #[inline]
     fn count_bits(&self) -> usize {
         let warm_up_bits = self.bits_per_sample as usize * self.order();
         8 + warm_up_bits
@@ -957,6 +984,7 @@ impl Residual {
 }
 
 impl BitRepr for Residual {
+    #[inline]
     fn count_bits(&self) -> usize {
         let nparts = 1usize << self.partition_order as usize;
         let mut quotient_bits: usize = 0;
@@ -1099,32 +1127,19 @@ mod tests {
     #[test]
     fn utf8_encoding() -> Result<(), EncodeError> {
         let v = 0x56;
-        let mut bv: BitVec<usize> = BitVec::new();
-        encode_to_utf8like(v, &mut bv)?;
-        assert_eq!(bv, bits![0, 1, 0, 1, 0, 1, 1, 0]);
+        let bs = encode_to_utf8like(v)?;
+        assert_eq!(bs, &[0x56]);
 
         let v = 0x1024;
-        let mut bv: BitVec<usize> = BitVec::new();
-        encode_to_utf8like(v, &mut bv)?;
-        assert_eq!(
-            bv,
-            bits![1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0]
-        );
+        let bs = encode_to_utf8like(v)?;
+        assert_eq!(bs, &[0xE1, 0x80, 0xA4]);
 
         let v = 0xF_FFFF_FFFFu64; // 36 bits of ones
-        let mut bv: BitVec<usize> = BitVec::new();
-        encode_to_utf8like(v, &mut bv)?;
-        assert_eq!(
-            bv,
-            bits![
-                1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1,
-                1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1
-            ]
-        );
+        let bs = encode_to_utf8like(v)?;
+        assert_eq!(bs, &[0xFE, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF]);
 
         let v = 0x10_0000_0000u64; //  out of domain
-        let mut bv: BitVec<usize> = BitVec::new();
-        encode_to_utf8like(v, &mut bv).expect_err("Should be out of domain");
+        encode_to_utf8like(v).expect_err("Should be out of domain");
 
         Ok(())
     }
