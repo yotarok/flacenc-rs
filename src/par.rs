@@ -39,6 +39,7 @@ const MPMC_CHANNEL_PANIC_MSG: &str =
 const MUTEX_PANIC_MSG: &str = "INTERNAL ERROR: Couldn't get lock for mutex.";
 const UNINIT_FRAMENUM_PANIC_MSG: &str =
     "INTERNAL ERROR: Frame buffer is not properly initialized. (FrameNo. not set).";
+const THREAD_TERMINATION_PANIC_MSG: &str = "INTERNAL ERROR: Failed to wait thread termination.";
 
 /// Sink object that stores encoding results.
 ///
@@ -208,7 +209,6 @@ pub fn encode_with_fixed_block_size<T: Source>(
         block_size,
     ));
     let parsink: Arc<ParSink<Frame>> = Arc::new(ParSink::new());
-    let mut context = Context::new(src.bits_per_sample(), src.channels());
 
     let join_handles: Vec<_> = (0..worker_count)
         .map(|_n| {
@@ -231,18 +231,20 @@ pub fn encode_with_fixed_block_size<T: Source>(
                             ),
                         )
                     };
+                    parbuf.enqueue_refill(bufid);
                     frame.precompute_bitstream().unwrap_or(());
                     parsink.push(frame_number, frame);
-                    parbuf.enqueue_refill(bufid);
                 }
             })
         })
         .collect();
 
     let src_len_hint = src.len_hint();
+    let mut context = Context::new(src.bits_per_sample(), src.channels());
     parbuf.feed(src, &mut context, worker_count)?;
+
     for h in join_handles {
-        h.join().expect("Thread error");
+        h.join().expect(THREAD_TERMINATION_PANIC_MSG);
     }
 
     Arc::into_inner(parsink)

@@ -276,8 +276,9 @@ pub fn encode_subframe(
         // Assuming constant is always best if it's applicable.
         Constant::new(samples[0], bits_per_sample).into()
     } else {
-        let verb: SubFrame = Verbatim::from_samples(samples, bits_per_sample).into();
-        let baseline_bits = verb.count_bits();
+        let baseline_bits =
+            Verbatim::count_bits_from_metadata(samples.len(), bits_per_sample as usize);
+
         let fixed = if config.use_fixed {
             fixed_lpc(config, samples, bits_per_sample, baseline_bits)
         } else {
@@ -298,7 +299,9 @@ pub fn encode_subframe(
             None
         };
 
-        est_lpc.or(fixed).unwrap_or(verb)
+        est_lpc
+            .or(fixed)
+            .unwrap_or_else(|| Verbatim::from_samples(samples, bits_per_sample).into())
     }
 }
 
@@ -347,10 +350,6 @@ impl StereoCodingHelper {
         offset: usize,
         stream_info: &StreamInfo,
     ) -> Frame {
-        let mut stereo_frame = None;
-        let mut min_bits = indep.count_bits();
-        let envelope_bits = indep.header().count_bits() + 16;
-
         self.midside_framebuf.resize(framebuf.size());
 
         for t in 0..framebuf.size() {
@@ -369,43 +368,63 @@ impl StereoCodingHelper {
             &ChannelAssignment::MidSide,
         );
 
+        let (bits_l, bits_r, bits_m, bits_s) = (
+            indep.subframe(0).count_bits(),
+            indep.subframe(1).count_bits(),
+            ms_frame.subframe(0).count_bits(),
+            ms_frame.subframe(1).count_bits(),
+        );
+
         let combinations = [
             (
                 config.stereo_coding.use_leftside,
                 ChannelAssignment::LeftSide,
                 indep.subframe(0),
                 ms_frame.subframe(1),
+                bits_l,
+                bits_s,
             ),
             (
                 config.stereo_coding.use_rightside,
                 ChannelAssignment::RightSide,
                 ms_frame.subframe(1),
                 indep.subframe(1),
+                bits_r,
+                bits_s,
             ),
             (
                 config.stereo_coding.use_midside,
                 ChannelAssignment::MidSide,
                 ms_frame.subframe(0),
                 ms_frame.subframe(1),
+                bits_m,
+                bits_s,
             ),
         ];
 
-        for (allowed, ch_info, subframe0, subframe1) in &combinations {
+        let envelope_bits = indep.header().count_bits() + 16;
+        let mut min_bits = indep.count_bits();
+        let mut min_idx = None;
+        for (idx, (allowed, _ch_info, _subframe0, _subframe1, bits0, bits1)) in
+            combinations.iter().enumerate()
+        {
             if !allowed {
                 continue;
             }
-            let bits = envelope_bits + subframe0.count_bits() + subframe1.count_bits();
+            let bits = envelope_bits + bits0 + bits1;
             if bits < min_bits {
-                let mut header = ms_frame.header().clone();
-                header.reset_channel_assignment(ch_info.clone());
                 min_bits = bits;
-                stereo_frame = Some(Frame::from_parts(
-                    header,
-                    [*subframe0, *subframe1].into_iter().cloned(),
-                ));
+                min_idx = Some(idx);
             }
         }
-        stereo_frame.unwrap_or(indep)
+        min_idx
+            .map(|idx| {
+                let mut header = ms_frame.header().clone();
+                let (_allowed, ref ch_info, subframe0, subframe1, _b0, _b1) = combinations[idx];
+                header.reset_channel_assignment(ch_info.clone());
+                Frame::from_parts(header, [subframe0, subframe1].into_iter().cloned())
+            })
+            .unwrap_or(indep)
     }
 }
 
