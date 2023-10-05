@@ -48,7 +48,6 @@
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufReader;
-use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -97,9 +96,7 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
     eprintln!("{bits} bits to be written");
     let mut bv = flacenc::bitsink::ByteVec::with_capacity(bits);
     stream.write(&mut bv).expect("Bitstream formatting failed.");
-    let mut writer = BufWriter::new(file);
-    writer
-        .write_all(bv.as_byte_slice())
+    file.write_all(bv.as_byte_slice())
         .expect("Failed to write a bitstream to the file.");
 }
 
@@ -201,7 +198,7 @@ impl Source for HoundSource {
 
         dest.fill_from_interleaved(&self.buf);
         if !self.buf.is_empty() {
-            context.update(&self.buf, dest.size())?;
+            context.update_with_le_bytes(&self.bytebuf, dest.size())?;
         }
         Ok(self.buf.len() / self.channels())
     }

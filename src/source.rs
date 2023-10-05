@@ -198,6 +198,30 @@ impl Context {
         Ok(())
     }
 
+    /// Updates the context with the read bytes.
+    ///
+    /// This function is a short-cut version of `update` that can be used when
+    /// `Source` already have a WAV-file-like sample buffer.
+    ///
+    /// # Errors
+    ///
+    /// This function currently does not return an error.
+    pub fn update_with_le_bytes(
+        &mut self,
+        packed_samples: &[u8],
+        block_size: usize,
+    ) -> Result<(), SourceError> {
+        self.md5.consume(packed_samples);
+        let block_byte_count = block_size * self.channels * self.bytes_per_sample;
+        if packed_samples.len() < block_byte_count {
+            self.md5
+                .consume(vec![0u8; block_byte_count - packed_samples.len()]);
+        }
+        self.sample_count += packed_samples.len() / self.channels / self.bytes_per_sample;
+        self.frame_count += 1;
+        Ok(())
+    }
+
     /// Returns the count of the last frame loaded.
     ///
     /// # Panics
