@@ -414,6 +414,11 @@ impl Frame {
         }
     }
 
+    /// Deconstructs frame.
+    pub fn into_parts(self) -> (FrameHeader, heapless::Vec<SubFrame, MAX_CHANNELS>) {
+        (self.header, self.subframes)
+    }
+
     /// Adds subframe.
     ///
     /// # Panics
@@ -542,6 +547,22 @@ impl ChannelAssignment {
             }
         }
     }
+
+    #[inline]
+    pub fn select_channels(
+        &self,
+        l: SubFrame,
+        r: SubFrame,
+        m: SubFrame,
+        s: SubFrame,
+    ) -> (SubFrame, SubFrame) {
+        match *self {
+            Self::Independent(_) => (l, r),
+            Self::LeftSide => (l, s),
+            Self::RightSide => (s, r),
+            Self::MidSide => (m, s),
+        }
+    }
 }
 
 impl BitRepr for ChannelAssignment {
@@ -630,6 +651,11 @@ impl FrameHeader {
     #[cfg(test)]
     pub const fn block_size(&self) -> usize {
         self.block_size as usize
+    }
+
+    /// Returns `ChannelAssignment` of this frame.
+    pub const fn channel_assignment(&self) -> &ChannelAssignment {
+        &self.channel_assignment
     }
 }
 

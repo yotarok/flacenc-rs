@@ -156,7 +156,10 @@ impl ParFrameBuf {
                 .send(None)
                 .expect(panic_msg::MPMC_SEND_FAILED);
         }
-        Ok(FeedStats { frame_count, worker_starvation_count })
+        Ok(FeedStats {
+            frame_count,
+            worker_starvation_count,
+        })
     }
 
     /// Gets the id for `FrameBuf` to be encoded first.

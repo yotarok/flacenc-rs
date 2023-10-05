@@ -19,7 +19,7 @@ use seq_macro::seq;
 use super::error::SourceError;
 use super::error::SourceErrorReason;
 
-// deinterleaver is often used in the I/O thread which can be a performance 
+// deinterleaver is often used in the I/O thread which can be a performance
 // bottleneck. So, hoping that LLVM optimizer can automatically SIMD-ize,
 // `seq_macro` is extensively used to define chennel-specific implementations
 // with unrolled loops.
