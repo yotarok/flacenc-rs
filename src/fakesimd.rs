@@ -16,6 +16,7 @@
 //! feature in a nightly rust. This module only implement the functions that
 //! are used in flacenc.
 
+use num_traits::NumCast;
 use std::array;
 
 // ===
@@ -55,6 +56,9 @@ pub struct LaneCount<const LANES: usize>();
 impl SupportedLaneCount for LaneCount<16> {}
 impl SupportedLaneCount for LaneCount<32> {}
 
+pub trait SimdCast: SimdElement + NumCast {}
+impl<T: SimdElement + NumCast> SimdCast for T {}
+
 // ===
 // SIMD OP TRAITS
 // ===
@@ -66,11 +70,13 @@ pub trait SimdUint {
 
 pub trait SimdInt {
     type Scalar;
+    type Cast<T: SimdElement>;
     #[allow(clippy::return_self_not_must_use)]
     fn abs(self) -> Self;
     #[allow(clippy::return_self_not_must_use)]
     fn signum(self) -> Self;
     fn reduce_sum(self) -> Self::Scalar;
+    fn cast<T: SimdCast>(self) -> Self::Cast<T>;
 }
 
 pub trait SimdPartialEq {
@@ -156,6 +162,7 @@ where
     T: SimdElement + num_traits::PrimInt + num_traits::Signed + std::iter::Sum,
 {
     type Scalar = T;
+    type Cast<U: SimdElement> = Simd<U, N>;
     #[inline]
     fn abs(self) -> Self {
         Self(array::from_fn(|i| num_traits::sign::abs(self.0[i])))
@@ -169,6 +176,11 @@ where
     #[inline]
     fn reduce_sum(self) -> T {
         self.0.into_iter().sum()
+    }
+
+    #[inline]
+    fn cast<U: SimdCast>(self) -> Simd<U, N> {
+        Simd::<U, N>(array::from_fn(|i| U::from(self.0[i]).unwrap()))
     }
 }
 

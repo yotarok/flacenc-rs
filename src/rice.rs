@@ -26,6 +26,7 @@ use super::fakesimd as simd;
 #[cfg(not(feature = "fakesimd"))]
 use std::simd;
 
+use simd::SimdInt;
 use simd::SimdPartialEq;
 use simd::SimdPartialOrd;
 use simd::SimdUint;
@@ -127,6 +128,14 @@ pub const fn encode_signbit(v: i32) -> u32 {
     v.unsigned_abs() * 2 - (v < 0) as u32
 }
 
+#[inline]
+pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<u32, N>
+where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    v.abs().cast() * simd::Simd::splat(2u32) - (v.cast() >> simd::Simd::splat(31u32))
+}
+
 /// Recovers a sign bit from its LSB.
 #[inline]
 pub const fn decode_signbit(v: u32) -> i32 {
@@ -212,6 +221,8 @@ impl PrcParameterFinder {
         self.tables.clear();
         self.min_ps.resize(nparts, 0);
         self.errors.clear();
+        // currently no performance improvement is observed by simply changing
+        // it to `encode_signbit_simd` via `as_simd`.
         self.errors
             .extend(signal.iter().map(|v| encode_signbit(*v)));
 

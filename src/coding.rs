@@ -54,6 +54,93 @@ pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
     true
 }
 
+/// Computes rice encoding of a scalar (used in `encode_residual`.)
+#[inline]
+fn quotients_and_remainders(err: i32, rice_p: u8) -> (u32, u32) {
+    let remainder_mask = (1u32 << rice_p) - 1;
+    let err = rice::encode_signbit(err);
+    (err >> rice_p, err & remainder_mask)
+}
+
+/// Computes rice encoding of a SIMD vector (used in `encode_residual`.)
+#[inline]
+#[cfg(not(feature = "fakesimd"))]
+fn quotients_and_remainders_simd<const N: usize>(
+    err_v: simd::Simd<i32, N>,
+    rice_p: u8,
+    quotients: &mut [u32],
+    remainders: &mut [u32],
+) where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let rice_p_v = simd::Simd::splat(u32::from(rice_p));
+    let remainder_mask_v = simd::Simd::splat((1u32 << rice_p) - 1);
+    let err_v = rice::encode_signbit_simd(err_v);
+    quotients.copy_from_slice((err_v >> rice_p_v).as_ref());
+    remainders.copy_from_slice((err_v & remainder_mask_v).as_ref());
+}
+
+/// Computes encoding of each residual partition.
+///
+/// This function is moved out from the main loop for avoiding messy conditoinal
+/// compilation due to fakesimd. We had to resort conditional compilation
+/// because `as_simd` operation that is provided as an extension to standard
+/// types (slice/ Vec) is still there even if we use stable version, so the
+/// approach we used in "fakesimd" is not suitable for mimicking this.
+///
+/// TODO: Probably, it's better to introduce another abstraction for `as_simd`
+/// e.g. SIMD-version of `map` so we can do conditional compilation there.
+#[cfg(not(feature = "fakesimd"))]
+#[inline]
+pub fn encode_residual_partition(
+    start: usize,
+    end: usize,
+    rice_p: u8,
+    errors: &[i32],
+    quotients: &mut [u32],
+    remainders: &mut [u32],
+) {
+    const SIMD_N: usize = 8;
+    // note that t >= warmup_length because start >= warmup_length.
+    let mut t = start;
+    let (head, body, tail) = errors[start..end].as_simd::<SIMD_N>();
+    for err in head {
+        (quotients[t], remainders[t]) = quotients_and_remainders(*err, rice_p);
+        t += 1;
+    }
+    for err_v in body {
+        quotients_and_remainders_simd::<SIMD_N>(
+            *err_v,
+            rice_p,
+            &mut quotients[t..t + SIMD_N],
+            &mut remainders[t..t + SIMD_N],
+        );
+        t += SIMD_N;
+    }
+    for err in tail {
+        (quotients[t], remainders[t]) = quotients_and_remainders(*err, rice_p);
+        t += 1;
+    }
+}
+
+/// Computes encoding of each residual partition. (without SIMD)
+#[cfg(feature = "fakesimd")]
+#[inline]
+pub fn encode_residual_partition(
+    start: usize,
+    end: usize,
+    rice_p: u8,
+    errors: &[i32],
+    quotients: &mut [u32],
+    remainders: &mut [u32],
+) {
+    let mut t = start;
+    for err in &errors[start..end] {
+        (quotients[t], remainders[t]) = quotients_and_remainders(*err, rice_p);
+        t += 1;
+    }
+}
+
 /// Constructs `Residual` component given the error signal.
 pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
     let block_size = errors.len();
@@ -67,17 +154,8 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
     for (p, rice_p) in prc_p.ps.iter().enumerate().take(nparts) {
         let start = std::cmp::max(p * part_size, warmup_length);
         let end = (p + 1) * part_size;
-        let remainder_mask = (1u32 << rice_p) - 1;
-
-        for t in start..end {
-            let err = rice::encode_signbit(errors[t]);
-            quotients[t] = if t < warmup_length { 0 } else { err >> rice_p };
-            remainders[t] = if t < warmup_length {
-                0
-            } else {
-                err & remainder_mask
-            };
-        }
+        // ^ this is okay because partitions are larger than warmup_length
+        encode_residual_partition(start, end, *rice_p, errors, &mut quotients, &mut remainders);
     }
     Residual::new(
         prc_p.order,

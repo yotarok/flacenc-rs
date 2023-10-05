@@ -43,7 +43,6 @@ fn deinterleave_gen(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
 seq!(N in 2..=8 {
     #[inline]
     #[allow(dead_code)]
-    // #[allow(unused_variables)]
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::identity_op)]
     #[allow(clippy::erasing_op)]
