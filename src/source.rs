@@ -14,11 +14,19 @@
 
 //! Module for input source handling.
 
+use seq_macro::seq;
+
 use super::error::SourceError;
 use super::error::SourceErrorReason;
 
-/// Reorder interleaved samples into a deinterleaved pattern.
-pub fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
+// deinterleaver is often used in the I/O thread which can be a performance 
+// bottleneck. So, hoping that LLVM optimizer can automatically SIMD-ize,
+// `seq_macro` is extensively used to define chennel-specific implementations
+// with unrolled loops.
+
+#[inline]
+#[allow(dead_code)]
+fn deinterleave_gen(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
     let samples = dest.len() / channels;
     let src_samples = interleaved.len() / channels;
     for t in 0..samples {
@@ -30,6 +38,53 @@ pub fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
             }
         }
     }
+}
+
+seq!(N in 2..=8 {
+    #[inline]
+    #[allow(dead_code)]
+    // #[allow(unused_variables)]
+    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::identity_op)]
+    #[allow(clippy::erasing_op)]
+    fn deinterleave_ch~N(interleaved: &[i32], dest: &mut [i32]) {
+        let samples = dest.len() / N;
+        let src_samples = interleaved.len() / N;
+        let mut t = 0;
+        while t < samples {
+            let t0 = t;
+            seq!(UNROLL in 0..32 {
+                seq!(CH in 0..N {
+                    dest[samples * CH + t0 + UNROLL] = if t < src_samples {
+                        interleaved[N * (t0 + UNROLL) + CH]
+                    } else {
+                        0i32
+                    };
+                });
+                t += 1;
+                if t >= samples {
+                    break;
+                }
+            });
+        }
+    }
+});
+
+fn deinterleave_ch1(interleaved: &[i32], dest: &mut [i32]) {
+    let n = std::cmp::min(dest.len(), interleaved.len());
+    dest[0..n].copy_from_slice(&interleaved[0..n]);
+}
+
+/// Deinterleaves channel interleaved samples to the channel-major order.
+pub fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
+    seq!(CH in 1..=8 {
+        if channels == CH {
+            return deinterleave_ch~CH(interleaved, dest);
+        }
+    });
+    // This is not going to be used in FLAC, but just trying to make it
+    // complete.
+    deinterleave_gen(interleaved, channels, dest);
 }
 
 /// Reusable buffer for multi-channel framed signals.

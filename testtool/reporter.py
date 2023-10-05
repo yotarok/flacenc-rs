@@ -111,10 +111,16 @@ def assert_eq(expected, actual):
         actual_disp = str(actual)
         if len(expected_disp) > 80:
             expected_disp = (
-                expected_disp[:10] + "<snipped>" + expected_disp[-10:]
+                expected_disp[:10]
+                + f"<snipped; len={len(expected)}>"
+                + expected_disp[-10:]
             )
         if len(actual_disp) > 80:
-            actual_disp = actual_disp[:10] + "<snipped>" + actual_disp[-10:]
+            actual_disp = (
+                actual_disp[:10]
+                + f"<snipped; len={len(actual)}>"
+                + actual_disp[-10:]
+            )
         raise ValueError(f"{expected_disp} != {actual_disp}")
 
 

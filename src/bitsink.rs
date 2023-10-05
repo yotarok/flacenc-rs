@@ -206,7 +206,6 @@ impl BitSink for ByteVec {
     #[inline]
     fn write_bytes_aligned(&mut self, bytes: &[u8]) -> usize {
         let ret = self.align_to_byte();
-        self.align_to_byte();
         self.bytes.extend_from_slice(bytes);
         self.bitlength += 8 * bytes.len();
         ret

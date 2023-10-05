@@ -49,6 +49,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::BufWriter;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
@@ -62,6 +63,7 @@ use flacenc::component::Stream;
 use flacenc::config;
 use flacenc::constant::ExitCode;
 use flacenc::error::SourceError;
+use flacenc::error::SourceErrorReason;
 use flacenc::error::Verify;
 use flacenc::source::Context;
 use flacenc::source::FrameBuf;
@@ -101,38 +103,77 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
         .expect("Failed to write a bitstream to the file.");
 }
 
+/// Converts a byte-sequence of little-endian integers to integers (i32).
+fn bytes_to_ints(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize) {
+    let bitshift = bytes_per_sample * 8;
+    for (vals, dest_p) in bytes.chunks(bytes_per_sample).zip(dest.iter_mut()) {
+        let mut bs = std::array::from_fn(|_n| 0);
+        bs[4 - bytes_per_sample..].copy_from_slice(vals);
+
+        *dest_p = i32::from_le_bytes(bs) >> bitshift;
+    }
+}
+
 /// An example of `flacenc::source::Source` based on `hound::WavReader`.
+///
+/// To mitigate I/O overhead due to sample-by-sample retrieval in hound API,
+/// this source only uses hound to parse WAV header and seeks offset for the
+/// first sample. After parsing the header, the inside `BufReader` is obtained
+/// via `WavReader::into_inner` and it is used to retrieve blocks of samples.
 struct HoundSource {
     spec: hound::WavSpec,
     duration: usize,
-    samples: hound::WavIntoSamples<BufReader<File>, i32>,
+    reader: BufReader<File>,
+    bytes_per_sample: usize,
     buf: Vec<i32>,
+    bytebuf: Vec<u8>,
+    current_offset: usize,
 }
 
 impl HoundSource {
     /// Constructs `HoundSource` from `path`.
+    ///
+    /// # Errors
+    ///
+    /// The function fails when file is not found or has invalid format. This
+    /// function currently do not support WAVs with IEEE float samples, and it
+    /// returns `SourceError` with `SourceErrorReason::InvalidFormat` if the
+    /// samples are floats.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        let reader = Box::new(hound::WavReader::open(path).map_err(Box::new)?);
+        let mut reader = Box::new(hound::WavReader::open(path).map_err(Box::new)?);
         let spec = reader.spec();
         let duration = reader.duration() as usize;
-        Ok(Self {
-            spec,
-            duration,
-            samples: reader.into_samples(),
-            buf: Vec::new(),
-        })
+        reader.seek(0).unwrap();
+        if spec.sample_format == hound::SampleFormat::Int {
+            Ok(Self {
+                spec,
+                duration,
+                reader: reader.into_inner(),
+                bytes_per_sample: (spec.bits_per_sample as usize + 7) / 8,
+                buf: Vec::new(),
+                bytebuf: Vec::new(),
+                current_offset: 0,
+            })
+        } else {
+            Err(Box::new(SourceError::by_reason(
+                SourceErrorReason::InvalidFormat,
+            )))
+        }
     }
 }
 
 impl Source for HoundSource {
+    #[inline]
     fn channels(&self) -> usize {
         self.spec.channels as usize
     }
 
+    #[inline]
     fn bits_per_sample(&self) -> usize {
         self.spec.bits_per_sample as usize
     }
 
+    #[inline]
     fn sample_rate(&self) -> usize {
         self.spec.sample_rate as usize
     }
@@ -144,15 +185,20 @@ impl Source for HoundSource {
         context: &mut Context,
     ) -> Result<usize, SourceError> {
         self.buf.clear();
-        let to_read = dest.size() * self.channels();
-        for _t in 0..to_read {
-            if let Some(res) = self.samples.next() {
-                let v = res.unwrap();
-                self.buf.push(v);
-            } else {
-                break;
-            }
-        }
+        self.bytebuf.clear();
+        let to_read = std::cmp::min(self.duration - self.current_offset, dest.size());
+        let to_read_bytes = to_read * self.bytes_per_sample * self.channels();
+
+        self.bytebuf.resize(to_read_bytes, 0u8);
+        let read_bytes = self
+            .reader
+            .read(&mut self.bytebuf)
+            .map_err(SourceError::from_io_error)?;
+        self.current_offset += to_read;
+
+        self.buf.resize(read_bytes / self.bytes_per_sample, 0);
+        bytes_to_ints(&self.bytebuf, &mut self.buf, self.bytes_per_sample);
+
         dest.fill_from_interleaved(&self.buf);
         if !self.buf.is_empty() {
             context.update(&self.buf, dest.size())?;
@@ -238,4 +284,16 @@ where
 #[allow(clippy::expect_used)]
 fn main() -> Result<(), i32> {
     run_with_profiler_if_requested(Args::parse(), main_body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    pub fn test_bytes_to_ints() {
+        let bs = [0x34, 0x12, 0x56, 0x34, 0x78, 0x56, 0xCC, 0xED, 0x00, 0x00];
+        let mut ints = [0i32; 5];
+        bytes_to_ints(&bs, &mut ints, 2);
+        assert_eq!(ints, [0x1234, 0x3456, 0x5678, -0x1234, 0x0000]);
+    }
 }

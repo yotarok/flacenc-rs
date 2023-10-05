@@ -72,6 +72,11 @@ struct NumberedFrameBuf {
     frame_number: Option<usize>,
 }
 
+pub struct FeedStats {
+    pub frame_count: usize,
+    pub worker_starvation_count: usize,
+}
+
 /// Parallel `FrameBuf`.
 struct ParFrameBuf {
     buffers: Vec<Mutex<NumberedFrameBuf>>,
@@ -114,8 +119,10 @@ impl ParFrameBuf {
         src: T,
         context: &mut Context,
         workers: usize,
-    ) -> Result<(), SourceError> {
+    ) -> Result<FeedStats, SourceError> {
         let mut src = src;
+        let mut frame_count = 0usize;
+        let mut worker_starvation_count = 0usize;
 
         'feed: loop {
             let bufid = self
@@ -134,6 +141,10 @@ impl ParFrameBuf {
                 }
                 numbuf.frame_number = Some(context.current_frame_number());
             }
+            if self.encode_queue.0.is_empty() {
+                worker_starvation_count += 1;
+            }
+            frame_count += 1;
             self.encode_queue
                 .0
                 .send(Some(bufid))
@@ -145,7 +156,7 @@ impl ParFrameBuf {
                 .send(None)
                 .expect(panic_msg::MPMC_SEND_FAILED);
         }
-        Ok(())
+        Ok(FeedStats { frame_count, worker_starvation_count })
     }
 
     /// Gets the id for `FrameBuf` to be encoded first.
