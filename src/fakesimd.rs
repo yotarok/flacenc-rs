@@ -39,6 +39,10 @@ pub trait SimdElement: Copy + std::fmt::Debug {
     type Mask;
 }
 
+impl SimdElement for i16 {
+    type Mask = Self;
+}
+
 impl SimdElement for i32 {
     type Mask = Self;
 }
@@ -51,8 +55,13 @@ impl SimdElement for f32 {
     type Mask = Self;
 }
 
+impl SimdElement for i64 {
+    type Mask = Self;
+}
+
 pub trait SupportedLaneCount {}
 pub struct LaneCount<const LANES: usize>();
+impl SupportedLaneCount for LaneCount<8> {}
 impl SupportedLaneCount for LaneCount<16> {}
 impl SupportedLaneCount for LaneCount<32> {}
 
@@ -92,6 +101,9 @@ pub trait SimdPartialOrd {
 // ===
 // TYPE ALIASES
 // ===
+#[allow(non_camel_case_types)]
+pub type i16x32 = Simd<i16, 32>;
+
 #[allow(non_camel_case_types)]
 pub type i32x16 = Simd<i32, 16>;
 
