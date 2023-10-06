@@ -27,6 +27,7 @@ use super::config;
 use super::constant;
 use super::constant::panic_msg;
 use super::constant::ENVVAR_KEY_DEFAULT_PARALLELISM;
+use super::constant::ENVVAR_KEY_RUNSTATS_OUTPUT;
 use super::error::SourceError;
 use super::source::Context;
 use super::source::FrameBuf;
@@ -206,6 +207,31 @@ fn determine_worker_count(config: &config::Encoder) -> Result<usize, SourceError
         .map_or(default_parallelism, NonZeroUsize::get))
 }
 
+struct ParRunStats {
+    worker_count: usize,
+    feed: FeedStats,
+}
+
+impl ParRunStats {
+    pub fn new(worker_count: usize, feed: FeedStats) -> Self {
+        Self { worker_count, feed }
+    }
+}
+
+impl std::fmt::Display for ParRunStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "
+worker_count = {}
+frames_processed = {}
+worker_starvation_count = {}
+",
+            self.worker_count, self.feed.frame_count, self.feed.worker_starvation_count,
+        )
+    }
+}
+
 /// Parallel version of `encode_with_fixed_block_size`.
 ///
 /// This function is internally called by `encode_with_fixed_block_size`
@@ -266,7 +292,12 @@ pub fn encode_with_fixed_block_size<T: Source>(
 
     let src_len_hint = src.len_hint();
     let mut context = Context::new(src.bits_per_sample(), src.channels());
-    parbuf.feed(src, &mut context, worker_count)?;
+    let feed_stats = parbuf.feed(src, &mut context, worker_count)?;
+
+    if let Ok(path_str) = std::env::var(ENVVAR_KEY_RUNSTATS_OUTPUT) {
+        let run_stat = ParRunStats::new(worker_count, feed_stats);
+        std::fs::write(path_str, format!("{run_stat}")).unwrap();
+    }
 
     stream
         .stream_info_mut()
