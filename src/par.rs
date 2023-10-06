@@ -26,6 +26,7 @@ use super::component::Stream;
 use super::config;
 use super::constant;
 use super::constant::panic_msg;
+use super::constant::ENVVAR_KEY_DEFAULT_PARALLELISM;
 use super::error::SourceError;
 use super::source::Context;
 use super::source::FrameBuf;
@@ -193,11 +194,16 @@ impl ParFrameBuf {
 
 /// Determines worker counts considering various cues.
 fn determine_worker_count(config: &config::Encoder) -> Result<usize, SourceError> {
-    let default_parallelism =
-        std::thread::available_parallelism().map_err(SourceError::from_io_error)?;
+    let default_parallelism = std::thread::available_parallelism()
+        .map_err(SourceError::from_io_error)?
+        .get();
+    let default_parallelism = std::env::var(ENVVAR_KEY_DEFAULT_PARALLELISM)
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(default_parallelism);
     Ok(config
         .workers
-        .map_or_else(|| default_parallelism.get(), NonZeroUsize::get))
+        .map_or(default_parallelism, NonZeroUsize::get))
 }
 
 /// Parallel version of `encode_with_fixed_block_size`.
@@ -262,6 +268,10 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let mut context = Context::new(src.bits_per_sample(), src.channels());
     parbuf.feed(src, &mut context, worker_count)?;
 
+    stream
+        .stream_info_mut()
+        .set_md5_digest(&context.md5_digest());
+
     for h in join_handles {
         h.join().expect(panic_msg::THREAD_JOIN_FAILED);
     }
@@ -270,9 +280,6 @@ pub fn encode_with_fixed_block_size<T: Source>(
         .unwrap()
         .finalize(|f: Frame| stream.add_frame(f));
 
-    stream
-        .stream_info_mut()
-        .set_md5_digest(&context.md5_digest());
     stream
         .stream_info_mut()
         .set_total_samples(src_len_hint.unwrap_or_else(|| context.total_samples()));

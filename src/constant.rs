@@ -21,6 +21,8 @@ pub enum ExitCode {
     InvalidConfig = -1,
 }
 
+pub const ENVVAR_KEY_DEFAULT_PARALLELISM: &str = "FLACENC_WORKERS";
+
 /// Maximum length of a block.
 pub const MIN_BLOCKSIZE_SUPPORTED: usize = 32;
 
