@@ -26,7 +26,8 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::multiple_crate_versions,
-    clippy::must_use_candidate
+    clippy::must_use_candidate,
+    clippy::wildcard_dependencies
 )]
 // Some from restriction lint-group
 #![warn(
@@ -66,6 +67,12 @@ pub mod source;
 
 #[cfg(test)]
 mod test_helper;
+
+#[cfg(feature = "mimalloc")]
+use mimalloc::MiMalloc;
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[cfg(test)]
 mod test {
