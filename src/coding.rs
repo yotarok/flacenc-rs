@@ -157,13 +157,13 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
         // ^ this is okay because partitions are larger than warmup_length
         encode_residual_partition(start, end, *rice_p, errors, &mut quotients, &mut remainders);
     }
-    Residual::new(
-        prc_p.order,
+    Residual::from_parts(
+        prc_p.order as u8,
         block_size,
         warmup_length,
-        &prc_p.ps,
-        &quotients,
-        &remainders,
+        prc_p.ps,
+        quotients,
+        remainders,
     )
 }
 

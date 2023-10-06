@@ -987,13 +987,32 @@ impl Residual {
         quotients: &[u32],
         remainders: &[u32],
     ) -> Self {
-        Self {
-            partition_order: partition_order as u8,
+        Self::from_parts(
+            partition_order as u8,
             block_size,
             warmup_length,
-            rice_params: rice_params.to_owned(),
-            quotients: quotients.to_owned(),
-            remainders: remainders.to_owned(),
+            rice_params.to_owned(),
+            quotients.to_owned(),
+            remainders.to_owned(),
+        )
+    }
+
+    /// Constructs `Residual` with consuming parts.
+    pub fn from_parts(
+        partition_order: u8,
+        block_size: usize,
+        warmup_length: usize,
+        rice_params: Vec<u8>,
+        quotients: Vec<u32>,
+        remainders: Vec<u32>,
+    ) -> Self {
+        Self {
+            partition_order,
+            block_size,
+            warmup_length,
+            rice_params,
+            quotients,
+            remainders,
         }
     }
 
