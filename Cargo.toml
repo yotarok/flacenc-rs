@@ -14,16 +14,18 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 debug = 1
 
 [features]
-default = ["par"]
+default = ["par", "mimalloc"]
 experimental = ["dep:nalgebra"]
 par = ["dep:crossbeam-channel"]
 fakesimd = []
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 crc = "2.1"
 crossbeam-channel = { version = "0.5.8", optional = true }
 heapless = "0.7.10"
 md5 = "0.7.0"
+mimalloc = { version = "*", default-features = false, optional = true }
 nalgebra = { version = "0.31", optional = true }
 num-traits = "0.2"
 seq-macro = "0.3"
