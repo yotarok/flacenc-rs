@@ -21,7 +21,11 @@ pub enum ExitCode {
     InvalidConfig = -1,
 }
 
+/// Environment variable name for specifying the number of threads.
 pub const ENVVAR_KEY_DEFAULT_PARALLELISM: &str = "FLACENC_WORKERS";
+
+/// Environment variable for the path for par-mode running stats.
+pub const ENVVAR_KEY_RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
 
 /// Maximum length of a block.
 pub const MIN_BLOCKSIZE_SUPPORTED: usize = 32;
