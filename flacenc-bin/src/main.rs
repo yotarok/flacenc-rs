@@ -103,10 +103,9 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
 /// Converts a byte-sequence of little-endian integers to integers (i32).
 fn bytes_to_ints(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize) {
     let bitshift = bytes_per_sample * 8;
+    let pad = 4 - bytes_per_sample;
     for (vals, dest_p) in bytes.chunks(bytes_per_sample).zip(dest.iter_mut()) {
-        let mut bs = std::array::from_fn(|_n| 0);
-        bs[4 - bytes_per_sample..].copy_from_slice(vals);
-
+        let bs = std::array::from_fn(|n| if n < pad { 0 } else { vals[n - pad] });
         *dest_p = i32::from_le_bytes(bs) >> bitshift;
     }
 }
