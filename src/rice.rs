@@ -27,6 +27,7 @@ use super::fakesimd as simd;
 use std::simd;
 
 use simd::SimdInt;
+use simd::SimdOrd;
 use simd::SimdPartialEq;
 use simd::SimdPartialOrd;
 use simd::SimdUint;
@@ -72,11 +73,9 @@ impl PrcBitTable {
     fn init_with_errors(&mut self, errors: &[u32], offset: usize) {
         let mut p_to_bits =
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
-
         for v in errors {
-            let v = *v;
-            let vs = simd::u32x16::splat(v) >> INDEX;
-            p_to_bits = (vs + p_to_bits) & MAX_P_TO_BITS_VEC;
+            p_to_bits += simd::Simd::splat(*v) >> INDEX;
+            p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
         }
         self.p_to_bits = p_to_bits;
     }
@@ -364,5 +363,12 @@ mod tests {
         // Current implementation prefers the largest p when there're multiple
         // minimizers.
         assert_eq!(bt.minimizer(), (3, 1));
+    }
+
+    #[test]
+    fn prc_max_bits() {
+        // check if the numbers of bits are bounded.
+        let table = PrcBitTable::from_errors(&[0x0FFF_FFFE, 0x0100_0000], 8, 0);
+        assert_eq!(table.bits(0), MAX_P_TO_BITS as usize);
     }
 }

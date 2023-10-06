@@ -98,6 +98,11 @@ pub trait SimdPartialOrd {
     fn simd_le(self, other: Self) -> Self::Mask;
 }
 
+pub trait SimdOrd {
+    #[allow(clippy::return_self_not_must_use)]
+    fn simd_min(self, other: Self) -> Self;
+}
+
 // ===
 // TYPE ALIASES
 // ===
@@ -242,6 +247,16 @@ where
             mask: array::from_fn(|i| self.0[i] <= other.0[i]),
             phantom_data: std::marker::PhantomData,
         }
+    }
+}
+
+impl<T, const N: usize> SimdOrd for Simd<T, N>
+where
+    T: SimdElement + Ord,
+{
+    #[inline]
+    fn simd_min(self, other: Self) -> Self {
+        Self(array::from_fn(|i| self.0[i].min(other.0[i])))
     }
 }
 
