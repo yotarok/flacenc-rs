@@ -139,33 +139,10 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
     f32::from(coef) * scalefac
 }
 
-const QLPC_SIMD_LANES: usize = 16usize;
-const MAX_COEF_VECTORS: usize = (MAX_LPC_ORDER + (QLPC_SIMD_LANES - 1)) / QLPC_SIMD_LANES;
-
-const LOW_WORD_MASK: simd::i32x16 = simd::i32x16::from_array([0x0000_FFFFi32; 16]);
-const LOW_WORD_DENOM: simd::i32x16 = simd::i32x16::from_array([0x0001_0000i32; 16]);
-#[allow(dead_code)]
-const HIGH_WORD_SHIFT: simd::i32x16 = simd::i32x16::from_array([16i32; 16]);
-
-/// Shifts elements in a vector of `T` represented as a slice of `Simd<T, N>`.
-#[inline]
-fn shift_lanes_right<T, const N: usize>(val: T, vecs: &mut [simd::Simd<T, N>])
-where
-    T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
-    let mut carry = val;
-    for v in vecs {
-        let mut shifted = v.rotate_lanes_right::<1>();
-        (shifted[0], carry) = (carry, shifted[0]);
-        *v = shifted;
-    }
-}
-
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
 pub struct QuantizedParameters {
-    coefs: heapless::Vec<simd::i32x16, MAX_COEF_VECTORS>,
+    coefs: simd::i16x32,
     order: usize,
     shift: i8,
     precision: usize,
@@ -202,14 +179,13 @@ impl QuantizedParameters {
             .map_or(0, <[i32]>::len);
         let order = q_coefs.len() - tail_zeros;
 
-        let mut coefs_v = heapless::Vec::new();
-        for arr in q_coefs.chunks(QLPC_SIMD_LANES) {
-            let mut v = simd::i32x16::splat(0);
-            v.as_mut_array()[0..arr.len()].copy_from_slice(arr);
-            coefs_v
-                .push(v)
-                .expect("INTERNAL ERROR: Length of coefs exceeded QLPC_SIMD_LANES.");
-        }
+        let coefs_v = simd::i16x32::from_array(std::array::from_fn(|i| {
+            if i < q_coefs.len() {
+                q_coefs[i] as i16
+            } else {
+                0
+            }
+        }));
 
         Self {
             coefs: coefs_v,
@@ -224,57 +200,70 @@ impl QuantizedParameters {
         self.order
     }
 
+    /// Implementation of `compute_error` for each SIMD config.
+    #[inline]
+    fn compute_error_impl<T, const N: usize>(&self, signal: &[i32], errors: &mut [i32])
+    where
+        T: simd::SimdElement + simd::SimdCast + Into<i64> + From<i32> + From<i16>,
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+        simd::Simd<T, N>: simd::SimdInt<Scalar = T> + std::ops::Mul<Output = simd::Simd<T, N>>,
+    {
+        let coefs: simd::Simd<T, N> =
+            simd::Simd::from_array(std::array::from_fn(|i| self.coefs.as_array()[i].into()));
+
+        for p in errors.iter_mut().take(self.order()) {
+            *p = 0;
+        }
+        let mut window: simd::Simd<T, N> = simd::Simd::from_array(std::array::from_fn(|tau| {
+            if tau >= self.order {
+                0.into()
+            } else {
+                signal[self.order - 1 - tau].into()
+            }
+        }));
+
+        for t in self.order()..signal.len() {
+            let mut pred = 0i64;
+            pred += (coefs * window).reduce_sum().into();
+
+            let shifted: i32 = (pred >> self.shift) as i32;
+            errors[t] = signal[t] - shifted;
+
+            window = window.rotate_lanes_right::<1>();
+            window[0] = signal[t].into();
+        }
+    }
+
     /// Compute error signal from `QuantizedParameters`.
     ///
     /// # Panics
     ///
     /// This function panics if `errors.len()` is smaller than `signal.len()`.
+    #[allow(clippy::collapsible_else_if)]
     pub fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
         assert!(errors.len() >= signal.len());
-        for p in errors.iter_mut().take(self.order()) {
-            *p = 0;
-        }
-        let mut window_h = heapless::Vec::<simd::i32x16, MAX_COEF_VECTORS>::new();
-        let mut window_l = heapless::Vec::<simd::i32x16, MAX_COEF_VECTORS>::new();
-
-        for i in 0..MAX_COEF_VECTORS {
-            let tau: isize = (self.order() as isize - 1) - (i * QLPC_SIMD_LANES) as isize;
-            if tau < 0 {
-                break;
+        let effective_bits = 32
+            - signal
+                .iter()
+                .map(|v| v.unsigned_abs().leading_zeros())
+                .min()
+                .unwrap_or(0);
+        if effective_bits < 16 {
+            if self.order() <= 8 {
+                self.compute_error_impl::<i32, 8>(signal, errors);
+            } else if self.order() <= 16 {
+                self.compute_error_impl::<i32, 16>(signal, errors);
+            } else {
+                self.compute_error_impl::<i32, 32>(signal, errors);
             }
-            let mut v = simd::i32x16::splat(0);
-            for j in 0..QLPC_SIMD_LANES {
-                let j = j as isize;
-                if tau - j < 0 {
-                    break;
-                }
-                v[j as usize] = signal[(tau - j) as usize];
+        } else {
+            if self.order() <= 8 {
+                self.compute_error_impl::<i64, 8>(signal, errors);
+            } else if self.order() <= 16 {
+                self.compute_error_impl::<i64, 16>(signal, errors);
+            } else {
+                self.compute_error_impl::<i64, 32>(signal, errors);
             }
-
-            window_l
-                .push((v.abs() & LOW_WORD_MASK) * v.signum())
-                .expect("INTERNAL ERROR: Couldn't push to window_l");
-            window_h
-                .push(v.abs() / LOW_WORD_DENOM * v.signum())
-                .expect("INTERNAL ERROR: Couldn't push to window_h");
-        }
-
-        for t in self.order()..signal.len() {
-            let mut pred = 0i64;
-            for j in 0..window_l.len() {
-                pred += i64::from((self.coefs[j] * window_l[j]).reduce_sum());
-                pred += i64::from((self.coefs[j] * window_h[j]).reduce_sum()) << 16;
-            }
-
-            let shifted: i32 = (pred >> self.shift) as i32;
-            errors[t] = signal[t] - shifted;
-
-            // shift window
-            shift_lanes_right(
-                (signal[t].abs() & 0xFFFFi32) * signal[t].signum(),
-                &mut window_l,
-            );
-            shift_lanes_right((signal[t].abs() >> 16) * signal[t].signum(), &mut window_h);
         }
     }
 
@@ -290,9 +279,7 @@ impl QuantizedParameters {
 
     /// Returns an individual coefficient in quantized form.
     pub fn coef(&self, idx: usize) -> i16 {
-        let q = idx / QLPC_SIMD_LANES;
-        let r = idx % QLPC_SIMD_LANES;
-        self.coefs[q][r] as i16
+        self.coefs[idx]
     }
 
     /// Returns `Vec` containing quantized coefficients.
