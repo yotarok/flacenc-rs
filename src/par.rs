@@ -44,7 +44,7 @@ struct ParSink<T> {
 
 impl<T> ParSink<T> {
     /// Creates `ParSink` object.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             data: Mutex::new(BTreeMap::new()),
         }
@@ -211,7 +211,7 @@ struct ParRunStats {
 }
 
 impl ParRunStats {
-    pub fn new(worker_count: usize, feed: FeedStats) -> Self {
+    pub const fn new(worker_count: usize, feed: FeedStats) -> Self {
         Self { worker_count, feed }
     }
 }

@@ -89,6 +89,7 @@ impl Default for ByteVec {
 
 impl ByteVec {
     /// Creates new `ByteVec` instance with the default capacity.
+    #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn new() -> Self {
         Self {
             bytes: vec![],
@@ -117,7 +118,7 @@ impl ByteVec {
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
-    fn tail_len(&self) -> usize {
+    const fn tail_len(&self) -> usize {
         let r = self.bitlength % 8;
         if r == 0 {
             0

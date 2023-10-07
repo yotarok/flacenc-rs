@@ -463,7 +463,7 @@ impl Frame {
     }
 
     #[cfg(test)]
-    fn is_bitstream_precomputed(&self) -> bool {
+    const fn is_bitstream_precomputed(&self) -> bool {
         self.precomputed_bitstream.is_some()
     }
 }
@@ -816,7 +816,7 @@ impl Verbatim {
     }
 
     #[inline]
-    pub fn count_bits_from_metadata(block_size: usize, bits_per_sample: usize) -> usize {
+    pub const fn count_bits_from_metadata(block_size: usize, bits_per_sample: usize) -> usize {
         8 + block_size * bits_per_sample
     }
 }

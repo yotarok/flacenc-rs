@@ -19,9 +19,6 @@
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
 // ad-hoc exceptions.
 #![allow(
-    // "missing_const_for_fn" is useful but currently this emits a lot of false-
-    // positives.
-    clippy::missing_const_for_fn,
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,

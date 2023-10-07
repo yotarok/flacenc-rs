@@ -242,6 +242,7 @@ impl Context {
 
     /// Returns the number of samples consumed.
     #[inline]
+    #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn total_samples(&self) -> usize {
         self.sample_count
     }

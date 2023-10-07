@@ -56,7 +56,7 @@ fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
 #[inline]
-fn quotients_and_remainders(err: i32, rice_p: u8) -> (u32, u32) {
+const fn quotients_and_remainders(err: i32, rice_p: u8) -> (u32, u32) {
     let remainder_mask = (1u32 << rice_p) - 1;
     let err = rice::encode_signbit(err);
     (err >> rice_p, err & remainder_mask)
