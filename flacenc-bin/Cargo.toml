@@ -31,4 +31,5 @@ toml = "0.5"
 
 
 [features]
-pprof = [ "dep:pprof" ]
+pprof = ["dep:pprof"]
+fakesimd = ["flacenc/fakesimd"]
