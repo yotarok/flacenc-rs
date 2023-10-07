@@ -1,5 +1,6 @@
 /target
 /flacenc-bin/target
+/Cargo.lock
 # Test materials
 /report/*_out
 /testwav
