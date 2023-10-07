@@ -45,7 +45,7 @@ use super::fakesimd as simd;
 use std::simd;
 
 /// Returns true if samples are all same.
-pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
+fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
     for t in 1..samples.len() {
         if samples[0] != samples[t] {
             return false;
@@ -92,7 +92,7 @@ fn quotients_and_remainders_simd<const N: usize>(
 /// e.g. SIMD-version of `map` so we can do conditional compilation there.
 #[cfg(not(feature = "fakesimd"))]
 #[inline]
-pub fn encode_residual_partition(
+fn encode_residual_partition(
     start: usize,
     end: usize,
     rice_p: u8,
@@ -126,7 +126,7 @@ pub fn encode_residual_partition(
 /// Computes encoding of each residual partition. (without SIMD)
 #[cfg(feature = "fakesimd")]
 #[inline]
-pub fn encode_residual_partition(
+fn encode_residual_partition(
     start: usize,
     end: usize,
     rice_p: u8,
@@ -142,7 +142,7 @@ pub fn encode_residual_partition(
 }
 
 /// Constructs `Residual` component given the error signal.
-pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
+fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
     let block_size = errors.len();
     let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     let nparts = 1 << prc_p.order;
@@ -168,7 +168,7 @@ pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usiz
 }
 
 /// Pack scalars into `Vec` of `Simd`s.
-pub fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
+fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
 where
     T: simd::SimdElement + From<i8>,
     simd::LaneCount<LANES>: simd::SupportedLaneCount,
@@ -187,7 +187,7 @@ where
 }
 
 /// Unpack slice of `Simd` into `Vec` of elements.
-pub fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
+fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
 where
     T: simd::SimdElement + From<i8>,
     simd::LaneCount<LANES>: simd::SupportedLaneCount,
@@ -284,7 +284,7 @@ thread_local! {
 /// The current implementation may cause overflow error if `bits_per_sample` is
 /// larger than 29. Therefore, it panics when `bits_per_sample` is larger than
 /// this.
-pub fn fixed_lpc(
+fn fixed_lpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
     bits_per_sample: u8,
@@ -323,7 +323,7 @@ fn perform_qlpc(
 /// # Panics
 ///
 /// It panics if `signal` is shorter than `MAX_LPC_ORDER_PLUS_1`.
-pub fn estimated_qlpc(
+fn estimated_qlpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
     bits_per_sample: u8,
@@ -346,7 +346,7 @@ pub fn estimated_qlpc(
 }
 
 /// Finds the best method to encode the given samples, and returns `SubFrame`.
-pub fn encode_subframe(
+fn encode_subframe(
     config: &config::SubFrameCoding,
     samples: &[i32],
     bits_per_sample: u8,
@@ -385,7 +385,7 @@ pub fn encode_subframe(
 }
 
 /// Encode frame with the given channel assignment.
-pub fn encode_frame_impl(
+fn encode_frame_impl(
     config: &config::Encoder,
     framebuf: &FrameBuf,
     offset: usize,

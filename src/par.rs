@@ -32,7 +32,6 @@ use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Source;
 
-use crossbeam_channel;
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 

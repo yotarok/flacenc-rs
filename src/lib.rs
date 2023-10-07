@@ -59,11 +59,11 @@ pub mod config;
 pub mod constant;
 pub mod error;
 #[cfg(feature = "fakesimd")]
-pub mod fakesimd;
-pub mod lpc;
+pub(crate) mod fakesimd;
+pub(crate) mod lpc;
 #[cfg(feature = "par")]
-pub mod par;
-pub mod rice;
+pub(crate) mod par;
+pub(crate) mod rice;
 pub mod source;
 
 #[cfg(test)]

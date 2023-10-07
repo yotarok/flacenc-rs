@@ -302,6 +302,7 @@ impl QuantizedParameters {
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
+#[allow(dead_code)]
 pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
     weighted_auto_correlation(order, signal, dest, |_t| 1.0f32);
 }
@@ -312,6 +313,7 @@ pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
+#[allow(dead_code)]
 pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>) {
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
