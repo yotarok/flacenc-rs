@@ -29,7 +29,7 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
-use super::constant::MAX_LPC_ORDER;
+use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::error::SourceError;
 use super::lpc;
 #[cfg(feature = "par")]

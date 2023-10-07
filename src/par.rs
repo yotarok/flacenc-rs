@@ -25,9 +25,8 @@ use super::component::Frame;
 use super::component::Stream;
 use super::config;
 use super::constant;
+use super::constant::envvar_key;
 use super::constant::panic_msg;
-use super::constant::ENVVAR_KEY_DEFAULT_PARALLELISM;
-use super::constant::ENVVAR_KEY_RUNSTATS_OUTPUT;
 use super::error::SourceError;
 use super::source::Context;
 use super::source::FrameBuf;
@@ -198,7 +197,7 @@ fn determine_worker_count(config: &config::Encoder) -> Result<usize, SourceError
     let default_parallelism = std::thread::available_parallelism()
         .map_err(SourceError::from_io_error)?
         .get();
-    let default_parallelism = std::env::var(ENVVAR_KEY_DEFAULT_PARALLELISM)
+    let default_parallelism = std::env::var(envvar_key::DEFAULT_PARALLELISM)
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(default_parallelism);
@@ -255,7 +254,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let worker_count = determine_worker_count(&config)?;
     let parbuf = Arc::new(ParFrameBuf::new(
-        worker_count * constant::PAR_MODE_FRAMEBUF_MULTIPLICITY,
+        worker_count * constant::par::FRAMEBUF_MULTIPLICITY,
         src.channels(),
         block_size,
     ));
@@ -294,7 +293,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let mut context = Context::new(src.bits_per_sample(), src.channels());
     let feed_stats = parbuf.feed(src, &mut context, worker_count)?;
 
-    if let Ok(path_str) = std::env::var(ENVVAR_KEY_RUNSTATS_OUTPUT) {
+    if let Ok(path_str) = std::env::var(envvar_key::RUNSTATS_OUTPUT) {
         let run_stat = ParRunStats::new(worker_count, feed_stats);
         std::fs::write(path_str, format!("{run_stat}")).unwrap();
     }

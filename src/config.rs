@@ -19,13 +19,13 @@ use std::num::NonZeroUsize;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::constant::MAX_BLOCKSIZE_SUPPORTED;
-use super::constant::MAX_LPC_ORDER;
-use super::constant::MAX_RICE_PARAMETER;
-use super::constant::MIN_BLOCKSIZE_SUPPORTED;
-use super::constant::QLPC_DEFAULT_ORDER;
-use super::constant::QLPC_DEFAULT_PRECISION;
-use super::constant::QLPC_MAX_PRECISION;
+use super::constant::qlpc::DEFAULT_ORDER as QLPC_DEFAULT_ORDER;
+use super::constant::qlpc::DEFAULT_PRECISION as QLPC_DEFAULT_PRECISION;
+use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
+use super::constant::qlpc::MAX_PRECISION as QLPC_MAX_PRECISION;
+use super::constant::rice::MAX_RICE_PARAMETER;
+use super::constant::MAX_BLOCKSIZE;
+use super::constant::MIN_BLOCKSIZE;
 use super::error::Verify;
 use super::error::VerifyError;
 use super::lpc::Window;
@@ -74,15 +74,15 @@ impl Verify for Encoder {
             ));
         }
         for (i, &bs) in self.block_sizes.iter().enumerate() {
-            if bs > MAX_BLOCKSIZE_SUPPORTED {
+            if bs > MAX_BLOCKSIZE {
                 return Err(VerifyError::new(
                     &format!("block_sizes[{i}]"),
-                    &format!("Must be less than {MAX_BLOCKSIZE_SUPPORTED}"),
+                    &format!("Must be less than {MAX_BLOCKSIZE}"),
                 ));
-            } else if bs < MIN_BLOCKSIZE_SUPPORTED {
+            } else if bs < MIN_BLOCKSIZE {
                 return Err(VerifyError::new(
                     &format!("block_sizes[{i}]"),
-                    &format!("Must be more than {MIN_BLOCKSIZE_SUPPORTED}"),
+                    &format!("Must be more than {MIN_BLOCKSIZE}"),
                 ));
             }
         }
