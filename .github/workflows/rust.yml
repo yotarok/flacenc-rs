@@ -21,42 +21,48 @@ jobs:
       uses: dtolnay/rust-toolchain@v1
       with:
         toolchain: nightly
-        override: true
         components: rustfmt, clippy
-    - name: Install external dependencies
-      run: sudo apt-get update && sudo apt-get install -y libsndfile1-dev
-    - name: Run cargo check
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: check
-        args: --verbose --all-targets --all-features
     - name: Run tests
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
         args: --verbose --all-targets --all-features
-    - name: Run cargo check (CLI)
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: check
-        args: --verbose --all-targets --all-features
-        directory: flacenc-bin
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
         args: --verbose --all-targets --all-features
         directory: flacenc-bin
+
+  build_stable:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install latest stable
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    - name: Run tests
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: test
+        args: --verbose --all-targets --features fakesimd
+    - name: Run tests (CLI)
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: test
+        args: --verbose --all-targets --features fakesimd
+        directory: flacenc-bin
+
   lints:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Install latest nightly
-      # uses: actions-rs/toolchain@v1
       uses: dtolnay/rust-toolchain@v1
       with:
         toolchain: nightly
-        override: true
         components: rustfmt, clippy
     - name: Code format check
       uses: ClementTsang/cargo-action@v0.0.3
