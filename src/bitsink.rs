@@ -30,6 +30,7 @@ impl<T: ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>> P
 where
     <T as ToBytes>::Bytes: AsRef<[u8]>,
 {
+    /// The number of bits packed in this type. Synonym of `T::BITS`.
     const PACKED_BITS: usize = std::mem::size_of::<T>() * 8;
 }
 
@@ -72,41 +73,6 @@ pub trait BitSink: Sized {
         let val: i64 = val.into();
         let shifted = (val << (64 - bits_per_sample)) as u64;
         self.write_msbs(shifted, bits_per_sample);
-    }
-}
-
-pub struct Tee<'a, L: BitSink, R: BitSink> {
-    primary: &'a mut L,
-    secondary: &'a mut R,
-}
-
-impl<'a, L: BitSink, R: BitSink> Tee<'a, L, R> {
-    #[allow(dead_code)]
-    pub fn new(primary: &'a mut L, secondary: &'a mut R) -> Self {
-        Tee { primary, secondary }
-    }
-}
-
-impl<'a, L: BitSink, R: BitSink> BitSink for Tee<'a, L, R> {
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
-        self.primary.write_msbs(val, n);
-        self.secondary.write_msbs(val, n);
-    }
-
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
-        self.primary.write_lsbs(val, n);
-        self.secondary.write_lsbs(val, n);
-    }
-
-    fn write<T: PackedBits>(&mut self, val: T) {
-        self.primary.write(val);
-        self.secondary.write(val);
-    }
-
-    fn align_to_byte(&mut self) -> usize {
-        let padded = self.primary.align_to_byte();
-        self.secondary.write_lsbs(0u8, padded);
-        padded
     }
 }
 
@@ -308,21 +274,6 @@ mod tests {
         assert_eq!(sink.len(), 10);
         sink.align_to_byte();
         assert_eq!(sink.len(), 16);
-    }
-
-    #[test]
-    fn write_with_tee() {
-        let mut sink: BitVec<u8> = BitVec::new();
-        sink.write_lsbs(0x01u8, 1);
-        let mut aux_sink: BitVec<u16> = BitVec::new();
-        let mut tee = Tee::new(&mut sink, &mut aux_sink);
-        tee.write_lsbs(0x01u8, 1);
-        tee.align_to_byte();
-        assert_eq!(sink.len(), 8);
-        assert_eq!(aux_sink.len(), 7);
-        assert_eq!(sink, bits![1, 1, 0, 0, 0, 0, 0, 0]);
-        assert!(aux_sink[0]);
-        assert!(!aux_sink[1]);
     }
 
     #[test]
