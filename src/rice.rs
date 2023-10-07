@@ -128,6 +128,7 @@ pub const fn encode_signbit(v: i32) -> u32 {
 }
 
 #[inline]
+#[allow(dead_code)] // this will not be used in "fakesimd"-mode.
 pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<u32, N>
 where
     simd::LaneCount<N>: simd::SupportedLaneCount,
