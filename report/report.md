@@ -14,6 +14,7 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
 
   - Ours
     - default: 0.5443052357800366
+    - mt1: 0.5443052357800366
     - st: 0.5443052357800366
     - dmse: 0.5418910269181569
     - mae: 0.5374571118440491
@@ -21,14 +22,15 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 262.95450816292407
-    - opt8: 259.1380532036254
-    - opt5: 496.70429571044514
+    - opt8lax: 259.7203135151158
+    - opt8: 260.42093890860923
+    - opt5: 488.40837738687225
 
   - Ours
-    - default: 662.186808670442
-    - st: 163.42923949310426
-    - dmse: 241.24605969190324
-    - mae: 39.85165597702513
+    - default: 662.9781508966807
+    - mt1: 164.64471383673836
+    - st: 162.62864248466053
+    - dmse: 247.3677607453294
+    - mae: 40.02400033211147
 
 
