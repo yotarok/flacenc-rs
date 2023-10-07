@@ -1,0 +1,2 @@
+multithread = true
+workers = 1
