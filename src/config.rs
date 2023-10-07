@@ -33,6 +33,7 @@ use super::lpc::Window;
 /// Configuration for encoder.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Encoder {
     /// The possible block sizes encoder can use.
     pub block_sizes: Vec<usize>,
@@ -100,6 +101,7 @@ impl Verify for Encoder {
 /// Configuration for stereo coding algorithms.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct StereoCoding {
     /// If set to false, left-side coding will not be used.
     pub use_leftside: bool,
@@ -128,6 +130,7 @@ impl Verify for StereoCoding {
 /// Configuration for sub-frame (individual channel) coding.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct SubFrameCoding {
     // Disabling verbatim coding is intentionally prohibited.
     /// If set to false, constant mode will not be used.
@@ -165,6 +168,7 @@ impl Verify for SubFrameCoding {
 /// Configuration for partitioned-rice coding (PRC).
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Prc {
     /// Max value for the parameter of rice coding.
     pub max_parameter: usize,
@@ -193,6 +197,7 @@ impl Verify for Prc {
 /// Configuration for quantized linear-predictive coding (QLPC).
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Qlpc {
     /// LPC order.
     pub lpc_order: usize,
