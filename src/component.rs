@@ -20,8 +20,8 @@ use std::cmp::min;
 
 use super::bitsink::BitSink;
 use super::bitsink::ByteVec;
+use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
-use super::constant::MAX_LPC_ORDER;
 use super::error::EncodeError;
 use super::error::RangeError;
 use super::lpc;

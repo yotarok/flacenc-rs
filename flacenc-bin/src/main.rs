@@ -60,7 +60,6 @@ use flacenc::coding;
 use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
-use flacenc::constant::ExitCode;
 use flacenc::error::SourceError;
 use flacenc::error::SourceErrorReason;
 use flacenc::error::Verify;
@@ -87,6 +86,13 @@ struct Args {
     #[cfg(feature = "pprof")]
     #[clap(long)]
     pprof_output: Option<String>,
+}
+
+/// Exit codes of the encoder process.
+enum ExitCode {
+    #[allow(dead_code)]
+    Normal = 0,
+    InvalidConfig = -1,
 }
 
 /// Serializes `Stream` to a file.

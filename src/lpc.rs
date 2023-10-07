@@ -21,9 +21,9 @@ use std::rc::Rc;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::constant::MAX_LPC_ORDER;
-use super::constant::QLPC_MAX_SHIFT;
-use super::constant::QLPC_MIN_SHIFT;
+use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
+use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
+use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
 
 #[cfg(feature = "fakesimd")]
 use super::fakesimd as simd;

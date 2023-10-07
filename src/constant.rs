@@ -14,91 +14,89 @@
 
 //! Configuration constants
 
-/// Exit code: Invalid config
-pub enum ExitCode {
-    #[allow(dead_code)]
-    Normal = 0,
-    InvalidConfig = -1,
-}
+// Constance sorted in an alphabetical-order.  Top-level constants first, and
+// then sub-modules. Constants that are used only in a specific sub-module or
+// its caller should be placed in the corresponding submodule.
 
-/// Environment variable name for specifying the number of threads.
-pub const ENVVAR_KEY_DEFAULT_PARALLELISM: &str = "FLACENC_WORKERS";
+/// Minimum length of a block supported.
+pub const MIN_BLOCKSIZE: usize = 32;
 
-/// Environment variable for the path for par-mode running stats.
-pub const ENVVAR_KEY_RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
+/// Maximum length of a block supported (65536 in the specification.)
+pub const MAX_BLOCKSIZE: usize = 32768;
 
-/// Maximum length of a block.
-pub const MIN_BLOCKSIZE_SUPPORTED: usize = 32;
-
-/// Maximum length of a block.
-pub const MAX_BLOCKSIZE_SUPPORTED: usize = 32768;
-
-/// Maximum length of a block.
-#[allow(dead_code)]
-pub const MAX_BLOCKSIZE: usize = 65536;
-
-/// Maximum number of channels supported.
+/// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;
 
-/// Maximum order of LPC supported. (32 by specification.)
-pub const MAX_LPC_ORDER: usize = 24;
+/// Maximum bits-per-sample supported.
+pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
-/// Maximum order of LPC supported. (32 by specification.)
-pub const MAX_LPC_ORDER_PLUS_1: usize = MAX_LPC_ORDER + 1;
+/// Constants related to keys for the environment variables.
+pub(crate) mod envvar_key {
+    /// Environment variable name for specifying the number of threads.
+    pub const DEFAULT_PARALLELISM: &str = "FLACENC_WORKERS";
 
-/// Maximum allowed rice parameters (incl.)
-///
-/// 5-bit rice coding is not supported currently, and 0b1111 is reserved for
-/// verbatim encoding. So, 14 will be the maximum.
-pub const MAX_RICE_PARAMETER: usize = 14;
+    /// Environment variable for the path for par-mode running stats.
+    pub const RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
+}
 
-/// Maximum order of rice parameter partitioning (incl.)
-pub const MAX_RICE_PARTITION_ORDER: usize = 15;
+/// Constants related to par-mode (multithreading.)
+pub mod par {
+    /// The number of `FrameBuf`s for each worker thread in par-mode.
+    pub const FRAMEBUF_MULTIPLICITY: usize = 2;
+}
 
-/// Maximum number of rice partitions (excl.)
-pub const MAX_RICE_PARTITIONS: usize = 1usize << MAX_RICE_PARTITION_ORDER;
+/// Constants related to quantized linear predictive coding (QLPC).
+pub mod qlpc {
+    /// The number of bits used for encoding shift bits of QLPC.
+    pub const SHIFT_BITS: usize = 5;
 
-/// Minimum rice partition size. (1 by specification)
-///
-/// For some source, degradation observed only when increasing this value
-/// from 256 to 512.  Here, it is set to 64 for robustness.
-pub const MIN_RICE_PARTITION_SIZE: usize = 64;
+    /// Maximum order of LPC supported. (32 in the specification.)
+    pub const MAX_ORDER: usize = 24;
 
-/// Maximum bits-per-sample.
-#[allow(dead_code)]
-pub const MAX_SAMPLE_BITS: usize = 32;
+    /// Max number of bits (precision) for storing QLPC coefficients.
+    pub const MAX_PRECISION: usize = 16;
 
-/// The number of `FrameBuf`s for each worker thread in par-mode.
-pub const PAR_MODE_FRAMEBUF_MULTIPLICITY: usize = 2;
+    /// Maximum shift parameter of QLPC defined in the specification.
+    pub const MAX_SHIFT: i8 = (1i8 << (SHIFT_BITS - 1)) - 1;
 
-/// The number of bits used for encoding shift bits of QLPC.
-pub const QLPC_SHIFT_BITS: usize = 5;
+    /// Minimum shift parameter of QLPC.
+    ///
+    /// According to the bitstream specification, it can be -16
+    /// (`-(1 << QLPC_SHIFT_BITS)`), but the reference decoder doesn't support
+    /// negative shift case.
+    pub const MIN_SHIFT: i8 = 0;
 
-/// Max (by spec) precision for storing QLPC coefficients.
-pub const QLPC_MAX_PRECISION: usize = 16;
+    /// Default LPC order for QLPC module.
+    pub const DEFAULT_ORDER: usize = 10;
 
-/// Maximum shift parameter defined by the specification.
-pub const QLPC_MAX_SHIFT: i8 = (1i8 << (QLPC_SHIFT_BITS - 1)) - 1;
+    /// Default precision for storing QLPC coefficients.
+    pub const DEFAULT_PRECISION: usize = 12;
+}
 
-/// Minimum shift parameter.
-///
-/// According to the bitstream specification, it can be -16
-/// (`-(1 << QLPC_SHIFT_BITS)`), but the reference decoder doesn't support
-/// negative shift case.
-pub const QLPC_MIN_SHIFT: i8 = 0;
+/// Constants related to partitioned rice coding (PRC).
+pub mod rice {
+    /// Maximum allowed value for the Rice parameters.
+    ///
+    /// 5-bit rice coding is not supported currently, and 0b1111 is reserved for
+    /// verbatim encoding. So, 14 will be the maximum.
+    pub const MAX_RICE_PARAMETER: usize = 14;
 
-/// Default LPC order for QLPC module.
-pub const QLPC_DEFAULT_ORDER: usize = 10;
+    /// Maximum order of Rice parameter partitioning.
+    pub const MAX_PARTITION_ORDER: usize = 15;
 
-/// Default precision for storing QLPC coefficients.
-pub const QLPC_DEFAULT_PRECISION: usize = 12;
+    /// Maximum number of Rice partitions.
+    pub const MAX_PARTITIONS: usize = 1usize << MAX_PARTITION_ORDER;
+
+    /// Minimum rice partition size. (1 in the specification)
+    pub const MIN_PARTITION_SIZE: usize = 64;
+}
 
 /// Module for internal error messages.
 ///
 /// Use `panic!` and those messages only for env-related unrecoveralbe errors.
 /// It's okay to use them in tests, but it's not okay to add another variable
 /// only for test functions.
-pub mod panic_msg {
+pub(crate) mod panic_msg {
     pub const MPMC_SEND_FAILED: &str =
         "INTERNAL ERROR: Critical error occured in multi-thread communication channel.";
     pub const MPMC_RECV_FAILED: &str =
