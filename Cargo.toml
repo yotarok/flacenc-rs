@@ -14,7 +14,7 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 debug = 1
 
 [features]
-default = ["par", "mimalloc"]
+default = ["par"]
 experimental = ["dep:nalgebra"]
 par = ["dep:crossbeam-channel"]
 fakesimd = []
