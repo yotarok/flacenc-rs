@@ -138,7 +138,6 @@ impl ByteSink {
     /// let empty: [u8; 0] = [];
     /// assert_eq!(&empty, sink.as_byte_slice());
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn new() -> Self {
         Self {
             bytes: vec![],
@@ -191,7 +190,6 @@ impl ByteSink {
     /// sink.write_msbs(0u8, 6);
     /// assert_eq!(sink.len(), 70)
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn len(&self) -> usize {
         self.bitlength
     }
@@ -207,7 +205,6 @@ impl ByteSink {
     /// sink.write_msbs(0u8, 6);
     /// assert!(!sink.is_empty());
     /// ```
-    #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn is_empty(&self) -> bool {
         self.bitlength == 0
     }

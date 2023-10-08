@@ -16,8 +16,6 @@
 //! feature in a nightly rust. This module only implement the functions that
 //! are used in flacenc.
 
-#![allow(clippy::missing_const_for_fn)]
-
 use num_traits::NumCast;
 use std::array;
 
