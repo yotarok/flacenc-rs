@@ -134,7 +134,7 @@ mae_optimization_steps = 2
         }
 
         let source =
-            source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
+            source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
 
         test_helper::integrity_test(
             |s| {

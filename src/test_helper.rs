@@ -21,10 +21,10 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use tempfile::NamedTempFile;
 
-use super::bitsink::ByteVec;
+use super::bitsink::ByteSink;
 use super::component::BitRepr;
 use super::component::Stream;
-use super::source::PreloadedSignal;
+use super::source::MemSource;
 use super::source::Seekable;
 use super::source::Source;
 
@@ -147,15 +147,15 @@ pub fn test_signal(src: &str, ch: usize) -> Vec<i32> {
         .collect()
 }
 
-pub fn integrity_test<Enc>(encoder: Enc, src: &PreloadedSignal) -> Stream
+pub fn integrity_test<Enc>(encoder: Enc, src: &MemSource) -> Stream
 where
-    Enc: Fn(PreloadedSignal) -> Stream,
+    Enc: Fn(MemSource) -> Stream,
 {
     let stream = encoder(src.clone());
 
     let mut file = NamedTempFile::new().expect("Failed to create temp file.");
 
-    let mut bv: ByteVec = ByteVec::with_capacity(stream.count_bits());
+    let mut bv: ByteSink = ByteSink::with_capacity(stream.count_bits());
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     file.write_all(bv.as_byte_slice())
         .expect("File write failed.");
@@ -189,7 +189,7 @@ where
         for ch in 0..channels {
             assert_eq!(
                 loaded.as_slice()[t * channels + ch],
-                src.as_raw_slice()[t * channels + ch],
+                src.as_slice()[t * channels + ch],
                 "Failed at t={} of ch={} (block={}, in-block-t={})\n{:?}",
                 t,
                 ch,

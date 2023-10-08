@@ -40,22 +40,22 @@ let samples: &[i32] = &[0i32; 4096]; // replace this with real samples.
 
 let (channels, bits_per_sample, sample_rate) = (2, 16, 44100);
 let config = flacenc::config::Encoder::default();
-let source = flacenc::source::PreloadedSignal::from_samples(
+let source = flacenc::source::MemSource::from_samples(
     samples, channels, bits_per_sample, sample_rate);
 let flac_stream = flacenc::encode_with_fixed_block_size(
     &config, source, config.block_sizes[0]
 ).expect("Encode failed.");
 
 // `Stream` imlpements `BitRepr` so you can obtain the encoded stream via
-// `ByteVec` struct that implements `BitSink`.
-let mut sink = flacenc::bitsink::ByteVec::new();
+// `ByteSink` struct that implements `BitSink`.
+let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.write(&mut sink);
 
 // Then, e.g. you can write it to a file.
 std::fs::write("/dev/null", sink.as_byte_slice());
 
 // or you can only get a specific frame.
-let mut sink = flacenc::bitsink::ByteVec::new();
+let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.frame(0).write(&mut sink);
 ```
 

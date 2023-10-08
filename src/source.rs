@@ -304,7 +304,8 @@ pub trait Seekable: Source {
 
 /// Source with preloaded samples.
 #[derive(Clone, Debug)]
-pub struct PreloadedSignal {
+#[allow(clippy::module_name_repetitions)]
+pub struct MemSource {
     channels: usize,
     bits_per_sample: usize,
     sample_rate: usize,
@@ -312,8 +313,8 @@ pub struct PreloadedSignal {
     read_head: usize,
 }
 
-impl PreloadedSignal {
-    /// Constructs `PreloadedSignal` from samples.
+impl MemSource {
+    /// Constructs `MemSource` from samples.
     pub fn from_samples(
         samples: &[i32],
         channels: usize,
@@ -330,12 +331,12 @@ impl PreloadedSignal {
     }
 
     /// Returns sample buffer as a raw slice.
-    pub fn as_raw_slice(&self) -> &[i32] {
+    pub fn as_slice(&self) -> &[i32] {
         &self.samples
     }
 }
 
-impl Source for PreloadedSignal {
+impl Source for MemSource {
     fn channels(&self) -> usize {
         self.channels
     }
@@ -361,7 +362,7 @@ impl Source for PreloadedSignal {
     }
 }
 
-impl Seekable for PreloadedSignal {
+impl Seekable for MemSource {
     fn len(&self) -> usize {
         self.samples.len() / self.channels()
     }
@@ -405,7 +406,7 @@ mod tests {
             }
         }
 
-        let mut src = PreloadedSignal::from_samples(&signal, channels, 16, 16000);
+        let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
         let mut framebuf = FrameBuf::with_size(channels, block_size);
         let mut ctx = Context::new(16, channels);
         let read = src
@@ -435,7 +436,7 @@ mod tests {
         }
 
         let block_size = 128;
-        let mut src = PreloadedSignal::from_samples(&signal, channels, 16, 16000);
+        let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
         let mut ctx = Context::new(16, channels);
         let mut framebuf = FrameBuf::with_size(channels, block_size);
 
