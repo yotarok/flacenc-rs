@@ -281,7 +281,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
                         )
                     };
                     parbuf.enqueue_refill(bufid);
-                    frame.precompute_bitstream().unwrap_or(());
+                    frame.precompute_bitstream();
                     parsink.push(frame_number, frame);
                 }
             })

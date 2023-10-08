@@ -14,6 +14,8 @@
 
 //! Abstract interface for bit-based output.
 
+use super::error::Never;
+
 /// Trait for the bit-addressible integers.
 ///
 /// This trait is seaked so the user cannot implement it. Currently, this trait
@@ -43,40 +45,73 @@ impl<T: seal_signed_bits::Sealed> SignedBits for T {}
 /// `bitvec::BitVec` or `ByteSink` (in this module) and covert the contents to
 /// a desired type.
 pub trait BitSink: Sized {
+    /// Error type that may happen while writing bits to `BitSink`.
+    type Error: std::error::Error;
+
     /// Puts zeros to `BitSink` until the length aligns to the byte boundaries.
     ///
     /// # Returns
     ///
     /// The number of zeros put.
-    fn align_to_byte(&mut self) -> usize;
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    fn align_to_byte(&mut self) -> Result<usize, Self::Error>;
 
     /// Writes bytes after alignment, and returns padded bits.
-    fn write_bytes_aligned(&mut self, bytes: &[u8]) -> usize {
-        let ret = self.align_to_byte();
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    #[inline]
+    fn write_bytes_aligned(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+        let ret = self.align_to_byte()?;
         for b in bytes {
-            self.write_lsbs(*b, 8);
+            self.write(*b)?;
         }
-        ret
+        Ok(ret)
     }
 
     /// Writes `n` LSBs to the sink.
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize);
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
     /// Writes `n` MSBs to the sink.
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize);
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
     /// Writes all bits in `val: PackedBits`.
-    fn write<T: PackedBits>(&mut self, val: T);
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error>;
 
     /// Writes `val` in two's coplement format.
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
     #[inline]
-    fn write_twoc<T: SignedBits>(&mut self, val: T, bits_per_sample: usize) {
+    fn write_twoc<T: SignedBits>(
+        &mut self,
+        val: T,
+        bits_per_sample: usize,
+    ) -> Result<(), Self::Error> {
         let val: i64 = val.into();
         let shifted = (val << (64 - bits_per_sample)) as u64;
-        self.write_msbs(shifted, bits_per_sample);
+        self.write_msbs(shifted, bits_per_sample)
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ByteSink {
     bytes: Vec<u8>,
     bitlength: usize,
@@ -160,38 +195,41 @@ impl ByteSink {
 }
 
 impl BitSink for ByteSink {
+    type Error = Never;
+
     #[inline]
-    fn write<T: PackedBits>(&mut self, val: T) {
+    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
         let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
         let tail = self.paddings();
         if tail > 0 {
-            self.write_msbs(val, tail);
+            self.write_msbs(val, tail)?;
         }
         let val = val << tail;
         let bytes: T::Bytes = val.to_be_bytes();
         self.bytes.extend_from_slice(bytes.as_ref());
         self.bitlength = nbitlength;
+        Ok(())
     }
 
     #[inline]
-    fn align_to_byte(&mut self) -> usize {
+    fn align_to_byte(&mut self) -> Result<usize, Self::Error> {
         let r = self.paddings();
         self.bitlength += r;
-        r
+        Ok(r)
     }
 
     #[inline]
-    fn write_bytes_aligned(&mut self, bytes: &[u8]) -> usize {
-        let ret = self.align_to_byte();
+    fn write_bytes_aligned(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+        let ret = self.align_to_byte()?;
         self.bytes.extend_from_slice(bytes);
         self.bitlength += 8 * bytes.len();
-        ret
+        Ok(ret)
     }
 
     #[inline]
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
         if n == 0 {
-            return;
+            return Ok(());
         }
         let mut val: T = val;
         let mut n = n;
@@ -220,14 +258,15 @@ impl BitSink for ByteSink {
             self.bytes.push(tail_byte);
         }
         self.bitlength = nbitlength;
+        Ok(())
     }
 
     #[inline]
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
         if n == 0 {
-            return;
+            return Ok(());
         }
-        self.write_msbs(val << (T::PACKED_BITS - n), n);
+        self.write_msbs(val << (T::PACKED_BITS - n), n)
     }
 }
 
@@ -271,76 +310,85 @@ mod tests {
         T2: BitStore,
         O2: BitOrder,
     {
+        type Error = Never;
+
         #[inline]
-        fn align_to_byte(&mut self) -> usize {
+        fn align_to_byte(&mut self) -> Result<usize, Self::Error> {
             let npad = 8 - self.len() % 8;
             if npad == 8 {
-                return 0;
+                return Ok(0);
             }
-            self.write_lsbs(0u8, npad);
-            npad
+            self.write_lsbs(0u8, npad)?;
+            Ok(npad)
         }
 
-        fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
             let val: u64 = val.into();
             self.extend_from_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
+            Ok(())
         }
 
-        fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) {
+        fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
             let val: u64 = val.into();
             self.extend_from_bitslice(&val.view_bits::<Msb0>()[0..n]);
+            Ok(())
         }
 
-        fn write<T: PackedBits>(&mut self, val: T) {
-            self.write_lsbs(val, std::mem::size_of::<T>() * 8);
+        fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
+            self.write_lsbs(val, std::mem::size_of::<T>() * 8)?;
+            Ok(())
         }
     }
 
     #[test]
-    fn align_to_byte_with_bitvec() {
+    fn align_to_byte_with_bitvec() -> Result<(), Never> {
         let mut sink: BitVec<u8> = BitVec::new();
-        sink.write_lsbs(0x01u8, 1);
-        sink.align_to_byte();
+        sink.write_lsbs(0x01u8, 1)?;
+        sink.align_to_byte()?;
         assert_eq!(sink.len(), 8);
-        sink.align_to_byte();
+        sink.align_to_byte()?;
         assert_eq!(sink.len(), 8);
-        sink.write_lsbs(0x01u8, 2);
+        sink.write_lsbs(0x01u8, 2)?;
         assert_eq!(sink.len(), 10);
-        sink.align_to_byte();
+        sink.align_to_byte()?;
         assert_eq!(sink.len(), 16);
+        Ok(())
     }
 
     #[test]
-    fn twoc_writing() {
+    fn twoc_writing() -> Result<(), Never> {
         let mut sink: BitVec<u8> = BitVec::new();
-        sink.write_twoc(-7, 4);
+        sink.write_twoc(-7, 4)?;
         assert_eq!(sink, bits![1, 0, 0, 1]);
+        Ok(())
     }
 
     #[test]
-    fn bytevec_write_msb() {
+    fn bytevec_write_msb() -> Result<(), Never> {
         let mut bv = ByteSink::new();
-        bv.write_msbs(0xFFu8, 3);
-        bv.write_msbs(0x0u64, 12);
-        bv.write_msbs(0xFFFF_FFFFu32, 9);
-        bv.write_msbs(0x0u16, 8);
+        bv.write_msbs(0xFFu8, 3)?;
+        bv.write_msbs(0x0u64, 12)?;
+        bv.write_msbs(0xFFFF_FFFFu32, 9)?;
+        bv.write_msbs(0x0u16, 8)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000000");
+        Ok(())
     }
 
     #[test]
-    fn bytevec_write_lsb() {
+    fn bytevec_write_lsb() -> Result<(), Never> {
         let mut bv = ByteSink::new();
-        bv.write_lsbs(0xFFu8, 3);
-        bv.write_lsbs(0x0u64, 12);
-        bv.write_lsbs(0xFFFF_FFFFu32, 9);
-        bv.write_lsbs(0x0u16, 8);
+        bv.write_lsbs(0xFFu8, 3)?;
+        bv.write_lsbs(0x0u64, 12)?;
+        bv.write_lsbs(0xFFFF_FFFFu32, 9)?;
+        bv.write_lsbs(0x0u16, 8)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000000");
 
         let mut bv = ByteSink::new();
-        bv.write_lsbs(0xFFu8, 3);
-        bv.write_lsbs(0x0u64, 12);
-        bv.write_lsbs(0xFFFF_FFFFu32, 9);
-        bv.write_lsbs(0x0u16, 5);
+        bv.write_lsbs(0xFFu8, 3)?;
+        bv.write_lsbs(0x0u64, 12)?;
+        bv.write_lsbs(0xFFFF_FFFFu32, 9)?;
+        bv.write_lsbs(0x0u16, 5)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000***");
+        Ok(())
     }
 }
