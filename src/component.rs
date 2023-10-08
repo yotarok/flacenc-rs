@@ -27,11 +27,14 @@ use super::error::RangeError;
 use super::lpc;
 use super::rice;
 
+// re-export quantized parameters
+pub use lpc::QuantizedParameters;
+
 const CRC_8_FLAC: crc::Algorithm<u8> = crc::CRC_8_SMBUS;
 const CRC_16_FLAC: crc::Algorithm<u16> = crc::CRC_16_UMTS;
 
 /// FLAC components that can be represented in a bit sequence.
-pub trait BitRepr {
+pub trait BitRepr: seal_bit_repr::Sealed {
     /// Counts the number of bits required to store the component.
     fn count_bits(&self) -> usize;
 
@@ -134,7 +137,15 @@ pub struct Stream {
 
 impl Stream {
     /// Constructs `Stream` with the given meta information.
-    pub const fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let stream = Stream::new(16000, 1, 16);
+    /// assert_eq!(stream.stream_info().channels(), 1);
+    /// ```
+    pub fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
         let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample);
         Self {
             stream_info: MetadataBlock::from_stream_info(stream_info, true),
@@ -148,7 +159,16 @@ impl Stream {
     /// # Panics
     ///
     /// Panics if `self` is corrupted by manually modifying fields.
-    pub const fn stream_info(&self) -> &StreamInfo {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let stream = Stream::new(16000, 1, 24);
+    /// assert_eq!(stream.stream_info().bits_per_sample(), 24);
+    /// ```
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn stream_info(&self) -> &StreamInfo {
         // This "allow" is required because `MetadataBlockData` variants other
         // than `StreamInfo` are not implemented yet.
         #[allow(unreachable_patterns)]
@@ -163,7 +183,7 @@ impl Stream {
     /// # Panics
     ///
     /// Panics if `self` is corrupted by manually modifying fields.
-    pub fn stream_info_mut(&mut self) -> &mut StreamInfo {
+    pub(crate) fn stream_info_mut(&mut self) -> &mut StreamInfo {
         // This "allow" is required because `MetadataBlockData` variants other
         // than `StreamInfo` are not implemented yet.
         #[allow(unreachable_patterns)]
@@ -180,18 +200,23 @@ impl Stream {
     /// please manually call `set_total_samples` and `set_md5_digest`,
     /// respectively, via `self.stream_info_mut`.
     pub fn add_frame(&mut self, frame: Frame) {
-        // Consume frame and add to stream.
+        // TODO: Add example section to the doc. Currently, it's not
+        // straightforward as we don't have a public method for generating
+        // a single `Frame` except for encoders.
         self.stream_info_mut().update_frame_info(&frame);
         self.frames.push(frame);
     }
 
     /// Returns `Frame` for the given frame number.
     pub fn frame(&self, n: usize) -> &Frame {
+        // TODO: Add example section to the doc. Currently, it's not
+        // straightforward as we don't have a public method for generating
+        // a single `Frame` except for encoders.
         &self.frames[n]
     }
 
     #[cfg(test)]
-    pub fn frames(&self) -> &[Frame] {
+    pub(crate) fn frames(&self) -> &[Frame] {
         &self.frames
     }
 }
@@ -210,8 +235,7 @@ impl BitRepr for Stream {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        // fLaC
-        dest.write_bytes_aligned(&[0x66, 0x4c, 0x61, 0x43])
+        dest.write_bytes_aligned(&[0x66, 0x4c, 0x61, 0x43]) // fLaC
             .map_err(OutputError::<S>::from_sink)?;
         self.stream_info.write(dest)?;
         for elem in &self.metadata {
@@ -279,6 +303,7 @@ enum MetadataBlockType {
 }
 
 #[derive(Clone, Debug)]
+/// Enum that covers all variants of `METADATA_BLOCK`.
 enum MetadataBlockData {
     StreamInfo(StreamInfo),
 }
@@ -300,7 +325,7 @@ impl BitRepr for MetadataBlockData {
 }
 
 /// [`METADATA_BLOCK_STREAM_INFO`](https://xiph.org/flac/format.html#metadata_block_streaminfo) component.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StreamInfo {
     min_block_size: u16, // 16 bits: Minimum block size in samples.
     max_block_size: u16, // 16 bits: Maximum block size in samples.
@@ -315,7 +340,25 @@ pub struct StreamInfo {
 
 impl StreamInfo {
     /// Constructs new `StreamInfo`.
-    pub const fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
+    ///
+    /// For unspecified fields, the following default values are used:
+    ///
+    /// -  `min_block_size`: `u16::MAX`,
+    /// -  `max_block_size`: `0`,
+    /// -  `min_frame_size`: `u32::MAX`,
+    /// -  `max_frame_size`: `0`,
+    /// -  `total_samples`: `0`,
+    /// -  `md5_digest`: all-zero (indicating verification disabled.)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    /// assert_eq!(info.max_frame_size(), 0);
+    /// ```
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
         Self {
             min_block_size: u16::MAX,
             max_block_size: 0,
@@ -330,7 +373,11 @@ impl StreamInfo {
     }
 
     /// Updates `StreamInfo` with information from the given Frame.
+    ///
+    /// This function updates `{min|max}_{block|frame}_size` and
+    /// `total_samples`.
     pub fn update_frame_info(&mut self, frame: &Frame) {
+        // TODO: Add example for this fn.
         let block_size = frame.block_size() as u16;
         self.min_block_size = min(block_size, self.min_block_size);
         self.max_block_size = max(block_size, self.max_block_size);
@@ -341,25 +388,104 @@ impl StreamInfo {
         self.total_samples += u64::from(block_size);
     }
 
+    /// Gets `min_frame_size` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn min_frame_size(&self) -> usize {
+        self.min_frame_size as usize
+    }
+
+    /// Gets `max_frame_size` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn max_frame_size(&self) -> usize {
+        self.max_frame_size as usize
+    }
+
+    /// Gets `min_block_size` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn min_block_size(&self) -> usize {
+        self.min_block_size as usize
+    }
+
+    /// Gets `max_block_size` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn max_block_size(&self) -> usize {
+        self.max_block_size as usize
+    }
+
+    /// Gets `sample_rate` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn sample_rate(&self) -> usize {
+        self.sample_rate as usize
+    }
+
+    /// Gets `channels` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn channels(&self) -> usize {
+        self.channels as usize
+    }
+
+    /// Gets `bits_per_sample` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample as usize
+    }
+
+    /// Gets `total_samples` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn total_samples(&self) -> usize {
+        self.total_samples as usize
+    }
+
+    /// Sets `total_samples` field.
+    ///
+    /// `total_samples` is updated during the encoding. However, since `Frame`
+    /// only knows its frame size, the effective number of samples is not
+    /// visible after paddings.  Similar to `set_md5_digest`, this field should
+    /// be finalized by propagating information from `Context`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::*;
+    /// let mut ctx = source::Context::new(16, 2);
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// ctx.update(&[0x0000_0FFFi32; 246], 123);
+    /// info.set_total_samples(ctx.total_samples());
+    /// assert_ne!(info.total_samples(), 246);
+    /// ```
+    #[allow(clippy::missing_const_for_fn)]
     pub fn set_total_samples(&mut self, n: usize) {
         self.total_samples = n as u64;
     }
 
-    pub fn set_md5_digest(&mut self, digest: &[u8; 16]) {
-        self.md5.copy_from_slice(digest);
-    }
-
-    #[cfg(test)]
-    pub const fn md5(&self) -> &[u8; 16] {
+    /// Gets `md5_digest` field.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn md5_digest(&self) -> &[u8; 16] {
         &self.md5
     }
 
-    pub const fn channels(&self) -> usize {
-        self.channels as usize
-    }
-
-    pub const fn bits_per_sample(&self) -> usize {
-        self.bits_per_sample as usize
+    /// Resets MD5 digest value by the given slice.
+    ///
+    /// MD5 computation is not performed in in `update_frame_info`, and is
+    /// expected to be done externally (by `source::Context`). This function
+    /// is called to set MD5 bytes after we read all input samples.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::*;
+    /// let mut ctx = source::Context::new(16, 2);
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// assert_eq!(info.md5_digest(), &[0x00u8; 16]);
+    /// ctx.update(&[0x0000_0FFFi32; 256], 128);
+    /// info.set_md5_digest(&ctx.md5_digest());
+    /// assert_ne!(info.md5_digest(), &[0x00u8; 16]);
+    /// ```
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn set_md5_digest(&mut self, digest: &[u8; 16]) {
+        self.md5.copy_from_slice(digest);
     }
 }
 
@@ -401,12 +527,17 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub const fn block_size(&self) -> usize {
+    /// Gets block size of this frame.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn block_size(&self) -> usize {
         self.header.block_size as usize
     }
 
-    /// Constructs an empty Frame.
-    pub const fn new(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
+    /// Constructs an empty `Frame`.
+    ///
+    /// This makes an invalid `Frame`; therefore this shouldn't be "pub" so far.
+    #[allow(clippy::missing_const_for_fn)]
+    pub(crate) fn new(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
         let header = FrameHeader::new(block_size, ch_info, offset);
         Self {
             header,
@@ -416,7 +547,7 @@ impl Frame {
     }
 
     /// Constructs Frame from `FrameHeader` and `SubFrame`s.
-    pub fn from_parts<I>(header: FrameHeader, subframes: I) -> Self
+    pub(crate) fn from_parts<I>(header: FrameHeader, subframes: I) -> Self
     where
         I: Iterator<Item = SubFrame>,
     {
@@ -437,19 +568,20 @@ impl Frame {
     /// # Panics
     ///
     /// Panics when the number of subframes added exceeded the `MAX_CHANNELS`.
-    pub fn add_subframe(&mut self, subframe: SubFrame) {
+    pub(crate) fn add_subframe(&mut self, subframe: SubFrame) {
         self.subframes
             .push(subframe)
             .expect("Exceeded maximum number of channels.");
     }
 
     /// Returns `FrameHeader` of this frame.
-    pub const fn header(&self) -> &FrameHeader {
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn header(&self) -> &FrameHeader {
         &self.header
     }
 
     /// Returns a mutable reference to `FrameHeader` of this frame.
-    pub fn header_mut(&mut self) -> &mut FrameHeader {
+    pub(crate) fn header_mut(&mut self) -> &mut FrameHeader {
         &mut self.header
     }
 
@@ -459,14 +591,14 @@ impl Frame {
     }
 
     /// Allocates precomputed bitstream buffer, and precomputes.
-    #[allow(clippy::missing_panics_doc)]
     pub fn precompute_bitstream(&mut self) {
         if self.precomputed_bitstream.is_some() {
             return;
         }
         let mut dest = ByteSink::with_capacity(self.count_bits());
-        self.write(&mut dest).unwrap();
-        self.precomputed_bitstream = Some(dest.into_bytes());
+        if self.write(&mut dest).is_ok() {
+            self.precomputed_bitstream = Some(dest.into_bytes());
+        }
     }
 
     #[cfg(test)]
@@ -523,7 +655,7 @@ impl BitRepr for Frame {
 }
 
 /// Enum for channel assignment in `FRAME_HEADER`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChannelAssignment {
     Independent(u8),
     LeftSide,
@@ -533,7 +665,7 @@ pub enum ChannelAssignment {
 
 impl ChannelAssignment {
     /// Returns the number of extra bit required to store the channel samples.
-    pub const fn bits_per_sample_offset(&self, ch: usize) -> usize {
+    pub(crate) const fn bits_per_sample_offset(&self, ch: usize) -> usize {
         #[allow(clippy::match_same_arms, clippy::bool_to_int_with_if)]
         match *self {
             Self::Independent(_) => 0,
@@ -562,7 +694,7 @@ impl ChannelAssignment {
     }
 
     #[inline]
-    pub fn select_channels(
+    pub(crate) fn select_channels(
         &self,
         l: SubFrame,
         r: SubFrame,
@@ -622,7 +754,7 @@ pub struct FrameHeader {
 }
 
 impl FrameHeader {
-    pub const fn new(
+    pub(crate) const fn new(
         block_size: usize,
         channel_assignment: ChannelAssignment,
         start_sample_number: usize,
@@ -644,14 +776,14 @@ impl FrameHeader {
     }
 
     /// Overwrites channel assignment information of the frame.
-    pub fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
+    pub(crate) fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
     }
 
     /// Resets `sample_size` field from `StreamInfo`.
     ///
     /// This field must be specified for Claxon compatibility.
-    pub fn reset_sample_size(&mut self, stream_info: &StreamInfo) {
+    pub(crate) fn reset_sample_size(&mut self, stream_info: &StreamInfo) {
         let bits = match stream_info.bits_per_sample {
             8 => 1,
             12 => 2,
@@ -671,7 +803,8 @@ impl FrameHeader {
     }
 
     /// Returns `ChannelAssignment` of this frame.
-    pub const fn channel_assignment(&self) -> &ChannelAssignment {
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn channel_assignment(&self) -> &ChannelAssignment {
         &self.channel_assignment
     }
 }
@@ -737,7 +870,7 @@ impl BitRepr for FrameHeader {
     }
 }
 
-/// [SUBFRAME](https://xiph.org/flac/format.html#subframe) component.
+/// [`SUBFRAME`](https://xiph.org/flac/format.html#subframe) component.
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubFrame {
@@ -800,11 +933,23 @@ pub struct Constant {
 }
 
 impl Constant {
-    pub const fn new(dc_offset: i32, bits_per_sample: u8) -> Self {
+    pub(crate) const fn new(dc_offset: i32, bits_per_sample: u8) -> Self {
         Self {
             dc_offset,
             bits_per_sample,
         }
+    }
+
+    /// Gets offset value.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn dc_offset(&self) -> i32 {
+        self.dc_offset
+    }
+
+    /// Gets bits-per-sample.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample as usize
     }
 }
 
@@ -825,12 +970,12 @@ impl BitRepr for Constant {
 /// [`SUBFRAME_VERBATIM`](https://xiph.org/flac/format.html#subframe_verbatim) component.
 #[derive(Clone, Debug)]
 pub struct Verbatim {
-    pub data: Vec<i32>,
+    data: Vec<i32>,
     bits_per_sample: u8,
 }
 
 impl Verbatim {
-    pub fn from_samples(samples: &[i32], bits_per_sample: u8) -> Self {
+    pub(crate) fn from_samples(samples: &[i32], bits_per_sample: u8) -> Self {
         Self {
             data: Vec::from(samples),
             bits_per_sample,
@@ -838,8 +983,22 @@ impl Verbatim {
     }
 
     #[inline]
-    pub const fn count_bits_from_metadata(block_size: usize, bits_per_sample: usize) -> usize {
+    pub(crate) const fn count_bits_from_metadata(
+        block_size: usize,
+        bits_per_sample: usize,
+    ) -> usize {
         8 + block_size * bits_per_sample
+    }
+
+    /// Gets a slice for the verbatim samples.
+    pub fn samples(&self) -> &[i32] {
+        &self.data
+    }
+
+    /// Gets bits-per-sample.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample as usize
     }
 }
 
@@ -874,7 +1033,7 @@ impl FixedLpc {
     ///
     /// Panics when `warm_up.len()`, i.e. the order of LPC, is larger than the
     /// maximum fixed-LPC order (4).
-    pub fn new(warm_up: &[i32], residual: Residual, bits_per_sample: usize) -> Self {
+    pub(crate) fn new(warm_up: &[i32], residual: Residual, bits_per_sample: usize) -> Self {
         let warm_up = heapless::Vec::from_slice(warm_up)
             .expect("Exceeded maximum order for FixedLPC component.");
 
@@ -885,8 +1044,26 @@ impl FixedLpc {
         }
     }
 
+    /// Gets the order of LPC (of fixed LPC).
     pub fn order(&self) -> usize {
         self.warm_up.len()
+    }
+
+    /// Gets warm-up samples as a slice.
+    pub fn warm_up(&self) -> &[i32] {
+        &self.warm_up
+    }
+
+    /// Gets a reference to the internal `Residual` component.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn residual(&self) -> &Residual {
+        &self.residual
+    }
+
+    /// Gets bits-per-sample.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample as usize
     }
 }
 
@@ -922,7 +1099,7 @@ impl Lpc {
     /// # Panics
     ///
     /// Panics if the length of `warm_up` is not equal to `parameters.order()`.
-    pub fn new(
+    pub(crate) fn new(
         warm_up: &[i32],
         parameters: lpc::QuantizedParameters,
         residual: Residual,
@@ -938,13 +1115,32 @@ impl Lpc {
         }
     }
 
+    /// Gets the order of LPC (of fixed LPC).
     pub const fn order(&self) -> usize {
         self.parameters.order()
     }
 
-    #[allow(dead_code)]
-    pub const fn parameters(&self) -> &lpc::QuantizedParameters {
+    /// Gets warm-up samples as a slice.
+    pub fn warm_up(&self) -> &[i32] {
+        &self.warm_up
+    }
+
+    /// Gets reference to parameter struct.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn parameters(&self) -> &lpc::QuantizedParameters {
         &self.parameters
+    }
+
+    /// Gets a reference to the internal `Residual` component.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn residual(&self) -> &Residual {
+        &self.residual
+    }
+
+    /// Gets bits-per-sample.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample as usize
     }
 }
 
@@ -988,7 +1184,7 @@ impl BitRepr for Lpc {
     }
 }
 
-/// [RESIDUAL](https://xiph.org/flac/format.html#residual) component.
+/// [`RESIDUAL`](https://xiph.org/flac/format.html#residual) component.
 #[derive(Clone, Debug)]
 pub struct Residual {
     // TODO: Currently only supports 4-bit parameters
@@ -1004,7 +1200,8 @@ pub struct Residual {
 }
 
 impl Residual {
-    pub fn new(
+    #[cfg(test)]
+    pub(crate) fn new(
         partition_order: usize,
         block_size: usize,
         warmup_length: usize,
@@ -1023,7 +1220,7 @@ impl Residual {
     }
 
     /// Constructs `Residual` with consuming parts.
-    pub fn from_parts(
+    pub(crate) fn from_parts(
         partition_order: u8,
         block_size: usize,
         warmup_length: usize,
@@ -1041,13 +1238,24 @@ impl Residual {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn get(&self, id: usize) -> i32 {
+    /// Gets the partition order for the PRC.
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn partition_order(&self) -> usize {
+        self.partition_order as usize
+    }
+
+    /// Gets the rice parameter for the `p`-th partition
+    pub fn rice_param(&self, p: usize) -> usize {
+        self.rice_params[p] as usize
+    }
+
+    /// Gets the residual value for the `t`-th sample.
+    pub fn residual(&self, t: usize) -> i32 {
         let nparts = 1usize << self.partition_order as usize;
-        let part_id = id * nparts / self.block_size;
-        let quotient = self.quotients[id];
+        let part_id = t * nparts / self.block_size;
+        let quotient = self.quotients[t];
         let shift = u32::from(self.rice_params[part_id]);
-        let remainder = self.remainders[id];
+        let remainder = self.remainders[t];
         let v = (quotient << shift) + remainder;
         rice::decode_signbit(v)
     }
@@ -1098,6 +1306,25 @@ impl BitRepr for Residual {
         }
         Ok(())
     }
+}
+
+mod seal_bit_repr {
+    use super::*;
+
+    pub trait Sealed {}
+    impl Sealed for Stream {}
+    impl Sealed for MetadataBlock {}
+    impl Sealed for MetadataBlockData {}
+    impl Sealed for StreamInfo {}
+    impl Sealed for Frame {}
+    impl Sealed for FrameHeader {}
+    impl Sealed for ChannelAssignment {}
+    impl Sealed for SubFrame {}
+    impl Sealed for Constant {}
+    impl Sealed for FixedLpc {}
+    impl Sealed for Verbatim {}
+    impl Sealed for Lpc {}
+    impl Sealed for Residual {}
 }
 
 #[cfg(test)]

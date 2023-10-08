@@ -644,12 +644,12 @@ mod tests {
             .expect("Source read error");
         eprintln!("MD5 of DC signal ({constant}) with len={signal_len} and ch={channels} was",);
         eprint!("[");
-        for &b in stream.stream_info().md5() {
+        for &b in stream.stream_info().md5_digest() {
             eprint!("0x{b:02X}, ");
         }
         eprintln!("]");
         assert_eq!(
-            stream.stream_info().md5(),
+            stream.stream_info().md5_digest(),
             &[
                 0xEE, 0x78, 0x7A, 0x6E, 0x99, 0x01, 0x36, 0x79, 0xA5, 0xBB, 0x6D, 0x5C, 0x10, 0xAF,
                 0x0B, 0x87
