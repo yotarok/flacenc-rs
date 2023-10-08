@@ -14,25 +14,26 @@
 
 //! Abstract interface for bit-based output.
 
-use num_traits::PrimInt;
-use num_traits::ToBytes;
-
-/// Alias trait for the bit-addressible integers.
-pub trait PackedBits:
-    ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>
-where
-    Self::Bytes: AsRef<[u8]>,
-{
+/// Trait for the bit-addressible integers.
+///
+/// This trait is seaked so the user cannot implement it. Currently, this trait
+/// covers: `u8`, `u16`, `u32`, and `u64`.
+pub trait PackedBits: seal_packed_bits::Sealed {
     const PACKED_BITS: usize;
 }
 
-impl<T: ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>> PackedBits for T
-where
-    <T as ToBytes>::Bytes: AsRef<[u8]>,
-{
+impl<T: seal_packed_bits::Sealed> PackedBits for T {
     /// The number of bits packed in this type. Synonym of `T::BITS`.
     const PACKED_BITS: usize = std::mem::size_of::<T>() * 8;
 }
+
+/// Trait for the signed integers that can be provided to bitsink.
+///
+/// This trait is seaked so the user cannot implement it. Currently, this trait
+/// covers: `i8`, `i16`, `i32`, and `i64`.
+pub trait SignedBits: seal_signed_bits::Sealed {}
+
+impl<T: seal_signed_bits::Sealed> SignedBits for T {}
 
 /// Storage-agnostic interface trait for bit-based output.
 ///
@@ -69,7 +70,7 @@ pub trait BitSink: Sized {
 
     /// Writes `val` in two's coplement format.
     #[inline]
-    fn write_twoc<T: Into<i64>>(&mut self, val: T, bits_per_sample: usize) {
+    fn write_twoc<T: SignedBits>(&mut self, val: T, bits_per_sample: usize) {
         let val: i64 = val.into();
         let shifted = (val << (64 - bits_per_sample)) as u64;
         self.write_msbs(shifted, bits_per_sample);
@@ -219,6 +220,29 @@ impl BitSink for ByteSink {
         }
         self.write_msbs(val << (T::PACKED_BITS - n), n);
     }
+}
+
+mod seal_packed_bits {
+    use num_traits::PrimInt;
+    use num_traits::ToBytes;
+    pub trait Sealed:
+        ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>
+    {
+    }
+
+    impl Sealed for u8 {}
+    impl Sealed for u16 {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+}
+
+mod seal_signed_bits {
+    pub trait Sealed: Into<i64> {}
+
+    impl Sealed for i8 {}
+    impl Sealed for i16 {}
+    impl Sealed for i32 {}
+    impl Sealed for i64 {}
 }
 
 #[cfg(test)]
