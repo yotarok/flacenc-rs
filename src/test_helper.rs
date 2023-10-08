@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![allow(clippy::missing_panics_doc)]
+
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
 use std::io::Write;
@@ -22,8 +24,12 @@ use rand::distributions::Uniform;
 use tempfile::NamedTempFile;
 
 use super::bitsink::ByteSink;
+use super::coding;
 use super::component::BitRepr;
+use super::component::Frame;
+use super::component::FrameHeader;
 use super::component::Stream;
+use super::config;
 use super::source::MemSource;
 use super::source::Seekable;
 use super::source::Source;
@@ -136,6 +142,7 @@ static TEST_SIGNALS: Lazy<BTreeMap<(&str, usize), Vec<i16>>> = Lazy::new(|| {
     ])
 });
 
+/// Loads monoral test signal by key and the channel specifier.
 #[allow(dead_code)]
 pub fn test_signal(src: &str, ch: usize) -> Vec<i32> {
     TEST_SIGNALS
@@ -147,6 +154,10 @@ pub fn test_signal(src: &str, ch: usize) -> Vec<i32> {
         .collect()
 }
 
+/// Runs an integrity test over the given encoding function.
+///
+/// This runs `encoder` function followed by `claxon`-based FLAC decoding, and
+/// compares the waveforms of the original signal and reconstructed signal.
 pub fn integrity_test<Enc>(encoder: Enc, src: &MemSource) -> Stream
 where
     Enc: Fn(MemSource) -> Stream,
@@ -195,9 +206,51 @@ where
                 ch,
                 head,
                 t - current_offset,
-                stream.frame(head).subframe(ch)
+                stream.frame(head).unwrap().subframe(ch).unwrap()
             );
         }
     }
     stream
+}
+
+/// Makes a `Stream` for doctest.
+#[allow(dead_code)]
+pub fn make_example_stream(
+    signal_len: usize,
+    block_size: usize,
+    channels: usize,
+    sample_rate: usize,
+) -> Stream {
+    let signal = constant_plus_noise(signal_len * channels, 0, 10000);
+    let bits_per_sample = 16;
+    let source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+    coding::encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
+        .expect("encoder error")
+}
+
+/// Makes a `Frame` for doctest.
+#[allow(dead_code)]
+pub fn make_example_frame(
+    signal_len: usize,
+    block_size: usize,
+    channels: usize,
+    sample_rate: usize,
+) -> Frame {
+    make_example_stream(signal_len, block_size, channels, sample_rate)
+        .frame(0)
+        .unwrap()
+        .clone()
+}
+
+/// Makes a `Frame` for doctest.
+#[allow(dead_code)]
+pub fn make_example_frame_header(
+    signal_len: usize,
+    block_size: usize,
+    channels: usize,
+    sample_rate: usize,
+) -> FrameHeader {
+    make_example_frame(signal_len, block_size, channels, sample_rate)
+        .header()
+        .clone()
 }

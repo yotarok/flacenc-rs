@@ -56,7 +56,7 @@ std::fs::write("/dev/null", sink.as_byte_slice());
 
 // or you can only get a specific frame.
 let mut sink = flacenc::bitsink::ByteSink::new();
-flac_stream.frame(0).write(&mut sink);
+flac_stream.frame(0).unwrap().write(&mut sink);
 ```
 
 `samples` here is an interleaved sequence, e.g. in the caes with stereo inputs,

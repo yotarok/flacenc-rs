@@ -39,7 +39,12 @@ pub trait BitRepr: seal_bit_repr::Sealed {
     fn count_bits(&self) -> usize;
 
     /// Writes the bit sequence to `BitSink`.
-    #[allow(clippy::missing_errors_doc)]
+    ///
+    /// # Errors
+    ///
+    /// This function returns error if `self` contains an invalid value that
+    /// does not fit to FLAC's bitstream format, or if a `BitSink` method
+    /// returned an error.
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>>;
 }
 
@@ -198,6 +203,13 @@ impl Stream {
     /// MD5 checksums and the total number of samples.  For updating those,
     /// please manually call `set_total_samples` and `set_md5_digest`,
     /// respectively, via `self.stream_info_mut`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// ```
     pub fn add_frame(&mut self, frame: Frame) {
         // TODO: Add example section to the doc. Currently, it's not
         // straightforward as we don't have a public method for generating
@@ -207,14 +219,40 @@ impl Stream {
     }
 
     /// Returns `Frame` for the given frame number.
-    pub fn frame(&self, n: usize) -> &Frame {
-        // TODO: Add example section to the doc. Currently, it's not
-        // straightforward as we don't have a public method for generating
-        // a single `Frame` except for encoders.
-        &self.frames[n]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
+    /// let stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// let frame0 = stream.frame(0).expect("0-th frame is not found.");
+    /// let frame19 = stream.frame(19).expect("19-th frame is not found.");
+    /// assert!(frame0.count_bits() > 0);
+    /// assert!(frame19.count_bits() > 0);
+    /// ```
+    pub fn frame(&self, n: usize) -> Option<&Frame> {
+        self.frames.get(n)
     }
 
-    #[cfg(test)]
+    /// Returns the number of `Frame`s in the stream.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
+    /// let stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// assert_eq!(stream.frame_count(), 200);
+    /// ```
+    pub fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// Returns `Frame`s as a slice.
+    #[allow(dead_code)]
     pub(crate) fn frames(&self) -> &[Frame] {
         &self.frames
     }
@@ -303,6 +341,9 @@ enum MetadataBlockType {
 
 #[derive(Clone, Debug)]
 /// Enum that covers all variants of `METADATA_BLOCK`.
+///
+/// Currently only `StreamInfo` is covered in this enum.
+#[non_exhaustive]
 enum MetadataBlockData {
     StreamInfo(StreamInfo),
 }
@@ -370,12 +411,31 @@ impl StreamInfo {
         }
     }
 
-    /// Updates `StreamInfo` with information from the given Frame.
+    /// Updates `StreamInfo` with values from the given Frame.
     ///
     /// This function updates `{min|max}_{block|frame}_size` and
     /// `total_samples`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// for n in 0..other_stream.frame_count() {
+    ///     info.update_frame_info(other_stream.frame(n).unwrap());
+    /// }
+    /// assert_eq!(info.max_block_size(), 160);
+    /// assert_eq!(info.min_block_size(), 160);
+    ///
+    /// // `Frame` doesn't hold the original signal length, so `total_samples`
+    /// // becomes a multuple of block_size == 160.
+    /// assert_eq!(info.total_samples(), 31360);
+    /// ```
     pub fn update_frame_info(&mut self, frame: &Frame) {
-        // TODO: Add example for this fn.
         let block_size = frame.block_size() as u16;
         self.min_block_size = min(block_size, self.min_block_size);
         self.max_block_size = max(block_size, self.max_block_size);
@@ -387,41 +447,129 @@ impl StreamInfo {
     }
 
     /// Gets `min_frame_size` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// info.update_frame_info(other_stream.frame(0).unwrap());
+    ///
+    /// assert!(info.min_frame_size() > 0);
+    /// ```
     pub fn min_frame_size(&self) -> usize {
         self.min_frame_size as usize
     }
 
     /// Gets `max_frame_size` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// assert_eq!(info.max_frame_size(), 0);
+    /// ```
     pub fn max_frame_size(&self) -> usize {
         self.max_frame_size as usize
     }
 
     /// Gets `min_block_size` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// info.update_frame_info(other_stream.frame(0).unwrap());
+    ///
+    /// assert_eq!(info.min_block_size(), 160);
+    /// ```
     pub fn min_block_size(&self) -> usize {
         self.min_block_size as usize
     }
 
     /// Gets `max_block_size` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// assert_eq!(info.max_block_size(), 0);
+    /// ```
     pub fn max_block_size(&self) -> usize {
         self.max_block_size as usize
     }
 
     /// Gets `sample_rate` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    /// assert_eq!(info.sample_rate(), 16000);
+    /// ```
     pub fn sample_rate(&self) -> usize {
         self.sample_rate as usize
     }
 
     /// Gets `channels` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    /// assert_eq!(info.channels(), 2);
+    /// ```
     pub fn channels(&self) -> usize {
         self.channels as usize
     }
 
     /// Gets `bits_per_sample` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let info = StreamInfo::new(16000, 2, 16);
+    /// assert_eq!(info.bits_per_sample(), 16);
+    /// ```
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
 
     /// Gets `total_samples` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// for n in 0..other_stream.frame_count() {
+    ///     info.update_frame_info(other_stream.frame(n).unwrap());
+    /// }
+    ///
+    /// // `Frame` doesn't hold the original signal length, so `total_samples`
+    /// // becomes a multuple of block_size == 160.
+    /// assert_eq!(info.total_samples(), 31360);
+    /// ```
     pub fn total_samples(&self) -> usize {
         self.total_samples as usize
     }
@@ -449,6 +597,25 @@ impl StreamInfo {
     }
 
     /// Gets `md5_digest` field.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
+    /// let mut info = StreamInfo::new(16000, 2, 16);
+    ///
+    /// assert_eq!(info.md5_digest(), &[0u8; 16]); // default
+    ///
+    /// for n in 0..other_stream.frame_count() {
+    ///     info.update_frame_info(other_stream.frame(n).unwrap());
+    /// }
+    ///
+    /// // `update_frame_info` doesn't update MD5
+    /// assert_eq!(info.md5_digest(), &[0u8; 16]);
+    /// ```
     pub fn md5_digest(&self) -> &[u8; 16] {
         &self.md5
     }
@@ -515,6 +682,17 @@ pub struct Frame {
 
 impl Frame {
     /// Gets block size of this frame.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    ///
+    /// assert_eq!(frame.block_size(), 160);
+    /// ```
     pub fn block_size(&self) -> usize {
         self.header.block_size as usize
     }
@@ -543,7 +721,20 @@ impl Frame {
         }
     }
 
-    /// Deconstructs frame.
+    /// Deconstructs frame and transfers ownership of the data structs.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    ///
+    /// let (header, subframes) = frame.into_parts();
+    ///
+    /// assert_eq!(subframes.len(), 2);
+    /// ```
     pub fn into_parts(self) -> (FrameHeader, heapless::Vec<SubFrame, MAX_CHANNELS>) {
         (self.header, self.subframes)
     }
@@ -560,6 +751,16 @@ impl Frame {
     }
 
     /// Returns `FrameHeader` of this frame.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    /// assert_eq!(frame.header().block_size(), 160);
+    /// ```
     pub fn header(&self) -> &FrameHeader {
         &self.header
     }
@@ -570,11 +771,65 @@ impl Frame {
     }
 
     /// Returns `SubFrame` for the given channel.
-    pub fn subframe(&self, ch: usize) -> &SubFrame {
-        &self.subframes[ch]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    /// for ch in 0..frame.subframe_count() {
+    ///     assert!(frame.subframe(ch).is_some());
+    /// }
+    /// assert!(frame.subframe(2).is_none());
+    /// ```
+    #[inline]
+    pub fn subframe(&self, ch: usize) -> Option<&SubFrame> {
+        self.subframes.get(ch)
+    }
+
+    /// Returns the number of `SubFrame`s in this `Frame`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    /// for ch in 0..frame.subframe_count() {
+    ///     assert!(frame.subframe(ch).is_some());
+    /// }
+    /// assert!(frame.subframe(2).is_none());
+    /// ```
+    #[inline]
+    pub fn subframe_count(&self) -> usize {
+        self.subframes.len()
     }
 
     /// Allocates precomputed bitstream buffer, and precomputes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let mut frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    /// let frame_cloned = frame.clone();
+    ///
+    /// // This method is idempotent, and doesn't affect to results.
+    /// let mut sink = ByteSink::new();
+    /// frame.precompute_bitstream();
+    /// frame.write(&mut sink);
+    ///
+    /// let mut sink_ref = ByteSink::new();
+    /// frame_cloned.write(&mut sink_ref);
+    ///
+    /// assert_eq!(sink.as_byte_slice(), sink_ref.as_byte_slice());
+    /// ```
     pub fn precompute_bitstream(&mut self) {
         if self.precomputed_bitstream.is_some() {
             return;
@@ -754,7 +1009,27 @@ impl FrameHeader {
     }
 
     /// Clear `variable_block_size` flag, and set `frame_number`.
-    pub fn enter_fixed_size_mode(&mut self, frame_number: u32) {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let mut header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
+    ///
+    /// header.set_frame_number(12);
+    ///
+    /// let mut sink = ByteSink::new();
+    /// header.write(&mut sink);
+    ///
+    /// // 16-th bit denotes blocking strategy and it should be 0 (fixed blocking mode)
+    /// // after setting the frame number.
+    /// assert_eq!(sink.as_byte_slice()[1] & 0x01u8, 0u8);
+    /// assert_eq!(sink.as_byte_slice()[4], 12u8);
+    /// ```
+    pub fn set_frame_number(&mut self, frame_number: u32) {
         self.variable_block_size = false;
         self.frame_number = frame_number;
     }
@@ -781,12 +1056,37 @@ impl FrameHeader {
     }
 
     /// Returns block size.
-    #[cfg(test)]
-    pub const fn block_size(&self) -> usize {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
+    ///
+    /// assert_eq!(header.block_size(), 160);
+    /// ```
+    pub fn block_size(&self) -> usize {
         self.block_size as usize
     }
 
     /// Returns `ChannelAssignment` of this frame.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 1, 16000);
+    /// let header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
+    ///
+    /// // this is only used for stereo signal, and it will be always `Independent` for
+    /// // non-stereo signals.
+    /// assert_eq!(header.channel_assignment(), &ChannelAssignment::Independent(1));
+    /// ```
     pub fn channel_assignment(&self) -> &ChannelAssignment {
         &self.channel_assignment
     }

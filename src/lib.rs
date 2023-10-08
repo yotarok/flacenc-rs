@@ -64,8 +64,8 @@ pub(crate) mod par;
 pub(crate) mod rice;
 pub mod source;
 
-#[cfg(test)]
-mod test_helper;
+#[cfg(any(test, doctest, feature = "test_helper"))]
+pub mod test_helper;
 
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
