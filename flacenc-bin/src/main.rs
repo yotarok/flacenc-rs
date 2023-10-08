@@ -98,7 +98,7 @@ enum ExitCode {
 fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
     let bits = stream.count_bits();
     eprintln!("{bits} bits to be written");
-    let mut bv = flacenc::bitsink::ByteVec::with_capacity(bits);
+    let mut bv = flacenc::bitsink::ByteSink::with_capacity(bits);
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     file.write_all(bv.as_byte_slice())
         .expect("Failed to write a bitstream to the file.");

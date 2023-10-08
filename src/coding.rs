@@ -639,7 +639,7 @@ mod tests {
         let signal_len = 1024;
         let signal = test_helper::constant_plus_noise(signal_len * channels, constant, 0);
         let source =
-            source::PreloadedSignal::from_samples(&signal, channels, bits_per_sample, sample_rate);
+            source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
         let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
             .expect("Source read error");
         eprintln!("MD5 of DC signal ({constant}) with len={signal_len} and ch={channels} was",);

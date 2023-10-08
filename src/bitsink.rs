@@ -39,7 +39,7 @@ where
 /// `BitSink` API is unstable and will be subjected to change in a minor
 /// version up. Therefore, it is not recommended to derive this trait for
 /// supporting new output types. Rather, it is recommended to use
-/// `bitvec::BitVec` or `ByteVec` (in this module) and covert the contents to
+/// `bitvec::BitVec` or `ByteSink` (in this module) and covert the contents to
 /// a desired type.
 pub trait BitSink: Sized {
     /// Puts zeros to `BitSink` until the length aligns to the byte boundaries.
@@ -76,19 +76,19 @@ pub trait BitSink: Sized {
     }
 }
 
-pub struct ByteVec {
+pub struct ByteSink {
     bytes: Vec<u8>,
     bitlength: usize,
 }
 
-impl Default for ByteVec {
+impl Default for ByteSink {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ByteVec {
-    /// Creates new `ByteVec` instance with the default capacity.
+impl ByteSink {
+    /// Creates new `ByteSink` instance with the default capacity.
     #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn new() -> Self {
         Self {
@@ -97,7 +97,7 @@ impl ByteVec {
         }
     }
 
-    /// Creates new `ByteVec` instance with the specified capacity (in bits).
+    /// Creates new `ByteSink` instance with the specified capacity (in bits).
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity_in_bits / 8 + 1),
@@ -127,7 +127,7 @@ impl ByteVec {
         }
     }
 
-    /// Consumes `ByteVec` and returns the internal buffer.
+    /// Consumes `ByteSink` and returns the internal buffer.
     #[inline]
     pub fn bytes(self) -> Vec<u8> {
         self.bytes
@@ -149,7 +149,7 @@ impl ByteVec {
     }
 }
 
-impl BitSink for ByteVec {
+impl BitSink for ByteSink {
     #[inline]
     fn write<T: PackedBits>(&mut self, val: T) {
         let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn bytevec_write_msb() {
-        let mut bv = ByteVec::new();
+        let mut bv = ByteSink::new();
         bv.write_msbs(0xFFu8, 3);
         bv.write_msbs(0x0u64, 12);
         bv.write_msbs(0xFFFF_FFFFu32, 9);
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn bytevec_write_lsb() {
-        let mut bv = ByteVec::new();
+        let mut bv = ByteSink::new();
         bv.write_lsbs(0xFFu8, 3);
         bv.write_lsbs(0x0u64, 12);
         bv.write_lsbs(0xFFFF_FFFFu32, 9);

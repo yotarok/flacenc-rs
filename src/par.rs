@@ -363,7 +363,7 @@ mod tests {
                         signal.push(sign * (t as i32 % 256));
                     }
                 }
-                let src = source::PreloadedSignal::from_samples(&signal, channels, 16, 16000);
+                let src = source::MemSource::from_samples(&signal, channels, 16, 16000);
                 let mut ctx = Context::new(16, channels);
                 pfb.feed(src, &mut ctx, workers).expect("Feeding failed");
             });

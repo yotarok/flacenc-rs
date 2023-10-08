@@ -19,7 +19,7 @@ use std::cmp::max;
 use std::cmp::min;
 
 use super::bitsink::BitSink;
-use super::bitsink::ByteVec;
+use super::bitsink::ByteSink;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
 use super::error::EncodeError;
@@ -456,7 +456,7 @@ impl Frame {
         if self.precomputed_bitstream.is_some() {
             return Ok(());
         }
-        let mut dest = ByteVec::with_capacity(self.count_bits());
+        let mut dest = ByteSink::with_capacity(self.count_bits());
         self.write(&mut dest)?;
         self.precomputed_bitstream = Some(dest.bytes());
         Ok(())
@@ -469,7 +469,7 @@ impl Frame {
 }
 
 thread_local! {
-    static FRAME_CRC_BUFFER: RefCell<ByteVec> = RefCell::new(ByteVec::new());
+    static FRAME_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
 }
 
 impl BitRepr for Frame {
@@ -489,7 +489,7 @@ impl BitRepr for Frame {
             Ok(())
         } else {
             FRAME_CRC_BUFFER.with(|frame_buffer| {
-                let frame_buffer: &mut ByteVec = &mut frame_buffer.borrow_mut();
+                let frame_buffer: &mut ByteSink = &mut frame_buffer.borrow_mut();
                 frame_buffer.clear();
                 frame_buffer.reserve(self.count_bits());
 
@@ -660,7 +660,7 @@ impl FrameHeader {
 }
 
 thread_local! {
-    static HEADER_CRC_BUFFER: RefCell<ByteVec> = RefCell::new(ByteVec::new());
+    static HEADER_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
 }
 
 impl BitRepr for FrameHeader {
@@ -680,7 +680,7 @@ impl BitRepr for FrameHeader {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), EncodeError> {
         HEADER_CRC_BUFFER.with(|header_buffer| {
             {
-                let dest: &mut ByteVec = &mut header_buffer.borrow_mut();
+                let dest: &mut ByteSink = &mut header_buffer.borrow_mut();
                 dest.clear();
                 dest.reserve(self.count_bits());
 
