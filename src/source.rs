@@ -76,7 +76,12 @@ fn deinterleave_ch1(interleaved: &[i32], dest: &mut [i32]) {
 }
 
 /// Deinterleaves channel interleaved samples to the channel-major order.
-pub fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
+///
+/// # Examples
+///
+/// ```
+/// ```
+pub(crate) fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
     seq!(CH in 1..=8 {
         if channels == CH {
             return deinterleave_ch~CH(interleaved, dest);
@@ -97,6 +102,14 @@ pub struct FrameBuf {
 
 impl FrameBuf {
     /// Constructs `FrameBuf` of the specified size.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let fb = FrameBuf::with_size(2, 1024);
+    /// assert_eq!(fb.size(), 1024);
+    /// ```
     pub fn with_size(channels: usize, size: usize) -> Self {
         Self {
             samples: vec![0i32; size * channels],
@@ -106,22 +119,56 @@ impl FrameBuf {
     }
 
     /// Returns the size in the number of inter-channel samples.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let fb = FrameBuf::with_size(2, 1024);
+    /// assert_eq!(fb.size(), 1024);
+    /// ```
     pub const fn size(&self) -> usize {
         self.size
     }
 
     /// Resizes `FrameBuf`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let mut fb = FrameBuf::with_size(2, 1024);
+    /// assert_eq!(fb.size(), 1024);
+    /// fb.resize(2048);
+    /// assert_eq!(fb.size(), 2048);
+    /// ```
     pub fn resize(&mut self, new_size: usize) {
         self.size = new_size;
         self.samples.resize(self.size * self.channels, 0i32);
     }
 
     /// Fill first samples from the interleaved slice, and resets rest.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let mut fb = FrameBuf::with_size(8, 1024);
+    /// fb.fill_from_interleaved(&[0i32; 8 * 1024]);
+    /// ```
     pub fn fill_from_interleaved(&mut self, interleaved: &[i32]) {
         deinterleave(interleaved, self.channels, &mut self.samples);
     }
 
     /// Returns the number of channels
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let fb = FrameBuf::with_size(8, 1024);
+    /// assert_eq!(fb.channels(), 8);
+    /// ```
     pub const fn channels(&self) -> usize {
         self.channels
     }
@@ -144,6 +191,10 @@ impl FrameBuf {
 }
 
 /// Context information being updated while reading from `Source`.
+///
+/// Some information such as MD5 of the input waveform is better handled in
+/// `Source`-side rather than inside of encoder algorithms. `Context` is for
+/// handling such context variables.
 #[derive(Clone)]
 pub struct Context {
     md5: md5::Context,
@@ -159,6 +210,16 @@ impl Context {
     /// # Panics
     ///
     /// Panics if `bits_per_sample > 32`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let ctx = Context::new(16, 2);
+    /// assert!(ctx.current_frame_number().is_none());;
+    /// assert_eq!(ctx.total_samples(), 0);
+    /// ```
     pub fn new(bits_per_sample: usize, channels: usize) -> Self {
         let bytes_per_sample = (bits_per_sample + 7) / 8;
         assert!(
@@ -193,6 +254,19 @@ impl Context {
     /// # Errors
     ///
     /// This function currently does not return an error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let mut ctx = Context::new(16, 2);
+    ///
+    /// // it's okay to feed shorter blocks (`interleaved.len() < block_size == 30`).
+    /// ctx.update(&[0, -1, -2, 3], 30);
+    ///
+    /// assert_eq!(ctx.total_samples(), 2);
+    /// ```
     pub fn update(&mut self, interleaved: &[i32], block_size: usize) -> Result<(), SourceError> {
         self.update_md5(interleaved, block_size);
         self.sample_count += interleaved.len() / self.channels;
@@ -208,6 +282,23 @@ impl Context {
     /// # Errors
     ///
     /// This function currently does not return an error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let mut ctx = Context::new(16, 2);
+    /// let mut ctx_ref = Context::new(16, 2);
+    ///
+    /// ctx_ref.update(&[0, 1, 2, 3, 4, 5], 10);
+    /// ctx.update_with_le_bytes(
+    ///     &[0x00, 0x00, 0x01, 0x00, 0x02, 0x00,
+    ///       0x03, 0x00, 0x04, 0x00, 0x05, 0x00],
+    ///     10);
+    ///
+    /// assert_eq!(ctx.md5_digest(), ctx_ref.md5_digest());
+    /// ```
     pub fn update_with_le_bytes(
         &mut self,
         packed_samples: &[u8],
@@ -226,23 +317,58 @@ impl Context {
 
     /// Returns the count of the last frame loaded.
     ///
-    /// # Panics
+    /// # Examples
     ///
-    /// This panics when it is called before `update` is called (typically via
-    /// `Source::read_samples`) at least once.
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let mut ctx = Context::new(16, 2);
+    /// assert!(ctx.current_frame_number().is_none());
+    ///
+    /// ctx.update(&[0, -1, -2, 3], 16);
+    /// assert_eq!(ctx.current_frame_number(), Some(0usize));
+    /// ```
     #[inline]
-    pub fn current_frame_number(&self) -> usize {
-        assert!(self.frame_count > 0);
-        self.frame_count - 1
+    pub fn current_frame_number(&self) -> Option<usize> {
+        if self.frame_count > 0 {
+            Some(self.frame_count - 1)
+        } else {
+            None
+        }
     }
 
     /// Returns MD5 digest of the consumed samples.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    /// let ctx = Context::new(16, 2);
+    /// let zero_md5 = [
+    ///     0xD4, 0x1D, 0x8C, 0xD9, 0x8F, 0x00, 0xB2, 0x04,
+    ///     0xE9, 0x80, 0x09, 0x98, 0xEC, 0xF8, 0x42, 0x7E,
+    /// ];
+    /// assert_eq!(ctx.md5_digest(), zero_md5);
+    /// // it doesn't change if you don't call "update" functions.
+    /// assert_eq!(ctx.md5_digest(), zero_md5);
+    /// ```
     #[inline]
     pub fn md5_digest(&self) -> [u8; 16] {
         self.md5.clone().compute().into()
     }
 
     /// Returns the number of samples consumed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let mut ctx = Context::new(16, 2);
+    ///
+    /// ctx.update(&[0, -1, -2, 3], 30);
+    /// assert_eq!(ctx.total_samples(), 2);
+    /// ```
     #[inline]
     pub fn total_samples(&self) -> usize {
         self.sample_count
@@ -262,6 +388,7 @@ impl fmt::Debug for Context {
     }
 }
 
+/// Trait representing the input stream for the encoder.
 pub trait Source {
     /// Returns the number of channels.
     fn channels(&self) -> usize;
@@ -269,19 +396,26 @@ pub trait Source {
     fn bits_per_sample(&self) -> usize;
     /// Returns sampling rate in Hz.
     fn sample_rate(&self) -> usize;
-    /// Reads samples to the buffer.
-    #[allow(clippy::missing_errors_doc)]
+    /// Reads samples to `FrameBuf`.
+    ///
+    /// # Errors
+    ///
+    /// This function can return `SourceError` when read is failed.
     fn read_samples(
         &mut self,
         dest: &mut FrameBuf,
         context: &mut Context,
     ) -> Result<usize, SourceError>;
-    /// Returns length of source if it's defined.
+    /// Returns length of source if it's finite and defined.
     fn len_hint(&self) -> Option<usize> {
         None
     }
 }
 
+/// Trait representing seekable variant of `Source`.
+///
+/// This trait is not currently used in the encoder, but some encoding algorithm
+/// may require that the source is seekable.
 pub trait Seekable: Source {
     /// Returns `true` if the source contains no samples.
     fn is_empty(&self) -> bool {
@@ -292,7 +426,10 @@ pub trait Seekable: Source {
     fn len(&self) -> usize;
 
     /// Seeks to the specified offset from the beginning.
-    #[allow(clippy::missing_errors_doc)]
+    ///
+    /// # Errors
+    ///
+    /// This function can return `SourceError` when read is failed.
     fn read_samples_from(
         &mut self,
         offset: usize,
@@ -314,6 +451,15 @@ pub struct MemSource {
 
 impl MemSource {
     /// Constructs `MemSource` from samples.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let src = MemSource::from_samples(&[0, 0, 1, -1, 2, -2, 3, -3], 2, 16, 8000);
+    /// assert_eq!(src.as_slice(), &[0, 0, 1, -1, 2, -2, 3, -3]);
+    /// ```
     pub fn from_samples(
         samples: &[i32],
         channels: usize,
@@ -330,6 +476,15 @@ impl MemSource {
     }
 
     /// Returns sample buffer as a raw slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::*;
+    ///
+    /// let src = MemSource::from_samples(&[0, 0, 1, -1, 2, -2, 3, -3], 2, 16, 8000);
+    /// assert_eq!(src.as_slice(), &[0, 0, 1, -1, 2, -2, 3, -3]);
+    /// ```
     pub fn as_slice(&self) -> &[i32] {
         &self.samples
     }
@@ -393,6 +548,14 @@ impl Seekable for MemSource {
 #[allow(clippy::pedantic, clippy::nursery, clippy::needless_range_loop)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn simple_deinterleave() {
+        let interleaved = [0, 0, -1, -2, 1, 2, -3, 6];
+        let mut dest = vec![0i32; interleaved.len()];
+        deinterleave(&interleaved, 2, &mut dest);
+        assert_eq!(&dest, &[0, -1, 1, -3, 0, -2, 2, 6]);
+    }
 
     #[test]
     fn reading_and_deinterleaving() {

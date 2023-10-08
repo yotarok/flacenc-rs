@@ -139,7 +139,7 @@ impl ParFrameBuf {
                 if read_samples == 0 {
                     break 'feed;
                 }
-                numbuf.frame_number = Some(context.current_frame_number());
+                numbuf.frame_number = context.current_frame_number();
             }
             if self.encode_queue.0.is_empty() {
                 worker_starvation_count += 1;
