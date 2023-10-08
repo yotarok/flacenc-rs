@@ -83,7 +83,7 @@ mod test {
     use super::*;
     use rstest::rstest;
 
-    const FIXED_BLOCK_CONFIGS: [&str; 4] = [
+    const FIXED_BLOCK_CONFIGS: [&str; 5] = [
         "",
         r"
 block_sizes = [512]
@@ -97,6 +97,9 @@ block_sizes = [1024]
 use_direct_mse = true
 mae_optimization_steps = 2
         ",
+        r"
+multithread = false
+        ",
     ];
 
     #[rstest]
@@ -105,7 +108,8 @@ mae_optimization_steps = 2
         #[values(FIXED_BLOCK_CONFIGS[0],
                  FIXED_BLOCK_CONFIGS[1],
                  FIXED_BLOCK_CONFIGS[2],
-                 FIXED_BLOCK_CONFIGS[3])]
+                 FIXED_BLOCK_CONFIGS[3],
+                 FIXED_BLOCK_CONFIGS[4])]
         config: &str,
     ) {
         let signal_len = 16123;
