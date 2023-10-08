@@ -520,7 +520,7 @@ thread_local! {
 }
 
 /// Finds the best configuration for encoding samples and returns a `Frame`.
-pub fn encode_frame(
+fn encode_frame(
     config: &config::Encoder,
     framebuf: &FrameBuf,
     offset: usize,
@@ -540,7 +540,34 @@ pub fn encode_frame(
     ret
 }
 
-/// A variant of `encode_frame` that generates a frame in fixed-size mode.
+/// Encodes `FrameBuf` to `Frame`.
+///
+/// # Examples
+///
+/// ```
+/// # use flacenc::test_helper::*;
+/// # use flacenc::*;
+/// use flacenc::config;
+/// use flacenc::component::StreamInfo;
+/// use flacenc::source::{Context, FrameBuf, MemSource, Source};
+///
+/// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
+/// let signal = constant_plus_noise(signal_len * channels, 0, 10000);
+/// let bits_per_sample = 16;
+///
+/// let mut source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+/// let mut fb = FrameBuf::with_size(channels, block_size);
+/// let mut ctx = Context::new(bits_per_sample, channels);
+/// let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample);
+/// assert!(source.read_samples(&mut fb, &mut ctx).is_ok());
+///
+/// let frame = encode_fixed_size_frame(
+///     &config::Encoder::default(), // block-size in config will be overridden.
+///     &fb,
+///     0,
+///     &stream_info
+/// );
+/// ```
 pub fn encode_fixed_size_frame(
     config: &config::Encoder,
     framebuf: &FrameBuf,
@@ -559,6 +586,28 @@ pub fn encode_fixed_size_frame(
 /// # Errors
 ///
 /// This function returns `SourceError` when it failed to read samples from `src`.
+///
+/// # Panics
+///
+/// This function panics only by an internal error.
+///
+/// # Examples
+///
+/// ```
+/// # use flacenc::test_helper::*;
+/// # use flacenc::*;
+/// use flacenc::config;
+/// use flacenc::source::MemSource;
+///
+/// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
+/// let signal = constant_plus_noise(signal_len * channels, 0, 10000);
+/// let bits_per_sample = 16;
+/// let source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+/// let result = encode_with_fixed_block_size(
+///     &config::Encoder::default(), source, block_size
+/// );
+/// assert!(result.is_ok());
+/// ```
 pub fn encode_with_fixed_block_size<T: Source>(
     config: &config::Encoder,
     mut src: T,
@@ -581,7 +630,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
         let frame = encode_fixed_size_frame(
             config,
             &framebuf,
-            context.current_frame_number(),
+            context.current_frame_number().unwrap(),
             stream.stream_info(),
         );
         stream.add_frame(frame);

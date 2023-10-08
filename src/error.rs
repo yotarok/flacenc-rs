@@ -23,7 +23,7 @@ use super::bitsink::BitSink;
 
 /// Error type that will never happen.
 ///
-/// This is a tentative solution while waiting
+/// This is a tentative solution while waiting for
 /// [`never-type`](https://github.com/rust-lang/rust/issues/35121) feature to
 /// be stabilized.
 #[derive(Clone, Copy, Debug)]
@@ -38,14 +38,16 @@ impl std::fmt::Display for Never {
 impl std::error::Error for Never {}
 
 /// Enum of errors that can be returned in the encoder.
-#[derive(Clone)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
 pub enum OutputError<S>
 where
     S: BitSink,
     S::Error: std::error::Error,
 {
+    /// A parameter in a component doesn't fit in a format.
     Range(RangeError),
+    /// I/O error propagated from `BitSink`.
     Sink(S::Error),
 }
 
@@ -119,7 +121,8 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+/// Error emitted when a parameter is out of the expected range.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
 pub struct RangeError {
     var: String,
@@ -129,7 +132,8 @@ pub struct RangeError {
 
 /// Error object returned when a variable is out of supported range.
 impl RangeError {
-    pub fn from_display<T>(var: &str, reason: &str, actual: &T) -> Self
+    /// Makes range error from `actual: impl Display` that is out of range.
+    pub(crate) fn from_display<T>(var: &str, reason: &str, actual: &T) -> Self
     where
         T: fmt::Display,
     {
@@ -157,8 +161,11 @@ impl fmt::Display for RangeError {
     }
 }
 
-/// Error object returned when data integrity verification failed.
-#[derive(Debug, Hash)]
+/// Error object returned when config integrity verification failed.
+///
+/// This error maintains a path to the component that is actually errorneous
+/// in the nested components.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
 pub struct VerifyError {
     components: Vec<String>,
@@ -166,6 +173,17 @@ pub struct VerifyError {
 }
 
 impl VerifyError {
+    /// Makes range error from `actual: impl Display` that is out of range.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = VerifyError::new("order", "must be non-negative");
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "verification error: `order` is not valid. reason: must be non-negative"
+    /// );
     pub fn new(component: &str, reason: &str) -> Self {
         Self {
             components: vec![component.to_owned()],
@@ -173,6 +191,19 @@ impl VerifyError {
         }
     }
 
+    /// Prepends the name of an enclosing component to the error location.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = VerifyError::new("order", "must be non-negative");
+    /// let err = err.within("encoder");
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "verification error: `encoder.order` is not valid. reason: must be non-negative"
+    /// );
+    /// ```
     #[must_use]
     pub fn within(self, component: &str) -> Self {
         let mut components = self.components;
@@ -181,6 +212,16 @@ impl VerifyError {
         Self { components, reason }
     }
 
+    /// Gets dot-separated path string for the error location.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = VerifyError::new("order", "must be non-negative");
+    /// let err = err.within("encoder");
+    /// assert_eq!(err.path(), "encoder.order");
+    /// ```
     pub fn path(&self) -> String {
         let mut path = String::new();
         for (i, name) in self.components.iter().rev().enumerate() {
@@ -210,6 +251,7 @@ impl fmt::Display for VerifyError {
     }
 }
 
+/// Trait for verifiable structs.
 pub trait Verify {
     /// Verifies there's no internal data inconsistency.
     ///
@@ -219,6 +261,7 @@ pub trait Verify {
     fn verify(&self) -> Result<(), VerifyError>;
 }
 
+/// Struct that wraps errors from `Source`.
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct SourceError {
@@ -227,6 +270,18 @@ pub struct SourceError {
 }
 
 impl SourceError {
+    /// Constructs `SourceError` by choosing a reason.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = SourceError::by_reason(SourceErrorReason::Open);
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "error occured while reading <unknown>. reason: cannot open file."
+    /// );
+    /// ```
     pub const fn by_reason(reason: SourceErrorReason) -> Self {
         Self {
             source_name: None,
@@ -234,12 +289,38 @@ impl SourceError {
         }
     }
 
+    /// Constructs `SourceError` with unknown (hidden) reason.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = SourceError::by_reason(SourceErrorReason::Open);
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "error occured while reading <unknown>. reason: cannot open file."
+    /// );
+    /// ```
     pub const fn from_unknown() -> Self {
         Self {
             source_name: None,
             reason: SourceErrorReason::IO(None),
         }
     }
+
+    /// Constructs `SourceError` from an `io::Error`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// # use std::io;
+    /// let err = SourceError::from_io_error(io::Error::new(io::ErrorKind::Other, "oh no!"));
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "error occured while reading <unknown>. reason: I/O error: oh no!."
+    /// );
+    /// ```
     pub fn from_io_error<E: Error + 'static>(e: E) -> Self {
         Self {
             source_name: None,
@@ -247,6 +328,19 @@ impl SourceError {
         }
     }
 
+    /// Set path as the source name (informative when `Source` is file-based.)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// let err = SourceError::by_reason(SourceErrorReason::Open);
+    /// let err = err.set_path("missing.wav");
+    /// assert_eq!(
+    ///     format!("{}", err),
+    ///     "error occured while reading missing.wav. reason: cannot open file."
+    /// );
+    /// ```
     #[must_use]
     pub fn set_path<P: AsRef<Path>>(self, path: P) -> Self {
         Self {
@@ -256,12 +350,18 @@ impl SourceError {
     }
 }
 
+/// Enum covering possible error reasons from `Source`.
 #[derive(Clone, Debug)]
 pub enum SourceErrorReason {
+    /// The source file cannot be opened.
     Open,
+    /// `FrameBuf` is not properly prepared.
     InvalidBuffer,
+    /// The content of file is not readable.
     InvalidFormat,
+    /// Type of file is not supported.
     UnsupportedFormat,
+    /// Other IO-related error.
     IO(Option<Rc<dyn Error + 'static>>),
 }
 
