@@ -39,11 +39,11 @@ impl<T: seal_signed_bits::Sealed> SignedBits for T {}
 
 /// Storage-agnostic interface trait for bit-based output.
 ///
-/// `BitSink` API is unstable and will be subjected to change in a minor
-/// version up. Therefore, it is not recommended to derive this trait for
-/// supporting new output types. Rather, it is recommended to use
-/// `bitvec::BitVec` or `ByteSink` (in this module) and covert the contents to
-/// a desired type.
+/// The encoder repeatedly generates arrays of code bits that are typically
+/// smaller than a byte (8 bits).  Type implementing `BitSink` is used to
+/// arrange those bits typically in bytes, and transfer them to the backend
+/// storage. `ByteVec` is a standard implementation of `BitSink` that stores
+/// code bits to a `Vec` of `u8`s.
 pub trait BitSink: Sized {
     /// Error type that may happen while writing bits to `BitSink`.
     type Error: std::error::Error;
@@ -111,6 +111,10 @@ pub trait BitSink: Sized {
     }
 }
 
+/// `BitSink` implementation based on `Vec` of bytes.
+///
+/// Since this type store code bits in `u8`s, the internal buffer can directly
+/// be written to, e.g. `std::io::Write` via `write_all` method.
 #[derive(Clone, Debug)]
 pub struct ByteSink {
     bytes: Vec<u8>,
@@ -125,6 +129,15 @@ impl Default for ByteSink {
 
 impl ByteSink {
     /// Creates new `ByteSink` instance with the default capacity.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let sink = ByteSink::new();
+    /// let empty: [u8; 0] = [];
+    /// assert_eq!(&empty, sink.as_byte_slice());
+    /// ```
     #[allow(clippy::missing_const_for_fn)] // for API robustness.
     pub fn new() -> Self {
         Self {
@@ -134,6 +147,15 @@ impl ByteSink {
     }
 
     /// Creates new `ByteSink` instance with the specified capacity (in bits).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::with_capacity(128);
+    /// sink.write_lsbs(0x00FFu16, 10);
+    /// assert!(sink.into_bytes().capacity() > 128 / 8);
+    /// ```
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
             bytes: Vec::with_capacity(capacity_in_bits / 8 + 1),
@@ -142,12 +164,69 @@ impl ByteSink {
     }
 
     /// Clears the vector, removing all values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// sink.write_lsbs(0xAAAAAAAAu32, 14);
+    /// assert_eq!(sink.to_bitstring(), "10101010_101010**");
+    /// sink.clear();
+    /// assert_eq!(sink.to_bitstring(), "");
+    /// ```
     pub fn clear(&mut self) {
         self.bytes.clear();
         self.bitlength = 0;
     }
 
+    /// Returns the number of bits stored in the buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// sink.write(0u64);
+    /// sink.write_msbs(0u8, 6);
+    /// assert_eq!(sink.len(), 70)
+    /// ```
+    #[allow(clippy::missing_const_for_fn)] // for API robustness.
+    pub fn len(&self) -> usize {
+        self.bitlength
+    }
+
+    /// Checks if the buffer is empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// assert!(sink.is_empty());
+    /// sink.write_msbs(0u8, 6);
+    /// assert!(!sink.is_empty());
+    /// ```
+    #[allow(clippy::missing_const_for_fn)] // for API robustness.
+    pub fn is_empty(&self) -> bool {
+        self.bitlength == 0
+    }
+
     /// Reseerves capacity for at least `additional_in_bits` more bits.
+    ///
+    /// This function reserves the 'Vec's capacity so that the allocated size is
+    /// sufficient for storing `self.len() + additional_in_bits` bits.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::with_capacity(1);
+    /// sink.write_bytes_aligned(&[0u8; 128]);
+    /// assert_eq!(sink.len(), 1024);
+    /// sink.reserve(2048);
+    /// assert!(sink.into_bytes().capacity() > (1024 + 2048) / 8);
+    /// ```
     pub fn reserve(&mut self, additional_in_bits: usize) {
         self.bytes.reserve(additional_in_bits / 8 + 1);
     }
@@ -164,14 +243,36 @@ impl ByteSink {
     }
 
     /// Consumes `ByteSink` and returns the internal buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// sink.write_bytes_aligned(&[0xABu8; 4]);
+    /// let v: Vec<u8> = sink.into_bytes();
+    /// assert_eq!(&v, &[0xAB; 4]);
+    /// ```
     #[inline]
     pub fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
 
-    /// Returns bits in a string for tests.
-    #[cfg(test)]
-    fn to_bitstring(&self) -> String {
+    /// Returns bits in a string.
+    ///
+    /// This function formats an internal buffer state to a human-readable
+    /// string. Each byte is shown in eight characters joined by `'_'`, and the
+    /// last bits of the last byte that are not yet filled are shown as `'*'`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0x3456u16, 13);
+    /// assert_eq!(sink.to_bitstring(), "00110100_01010***");
+    /// ```
+    pub fn to_bitstring(&self) -> String {
         let mut ret = String::new();
         for b in &self.bytes {
             ret.push_str(&format!("{b:08b}_"));
@@ -189,6 +290,16 @@ impl ByteSink {
         ret
     }
 
+    /// Returns reference to the internal byte slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0x3456u16, 13);
+    /// assert_eq!(sink.to_bitstring(), "00110100_01010***");
+    /// ```
     pub fn as_byte_slice(&self) -> &[u8] {
         &self.bytes
     }
