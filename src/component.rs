@@ -167,7 +167,6 @@ impl Stream {
     /// let stream = Stream::new(16000, 1, 24);
     /// assert_eq!(stream.stream_info().bits_per_sample(), 24);
     /// ```
-    #[allow(clippy::missing_const_for_fn)]
     pub fn stream_info(&self) -> &StreamInfo {
         // This "allow" is required because `MetadataBlockData` variants other
         // than `StreamInfo` are not implemented yet.
@@ -357,7 +356,6 @@ impl StreamInfo {
     /// let info = StreamInfo::new(16000, 2, 16);
     /// assert_eq!(info.max_frame_size(), 0);
     /// ```
-    #[allow(clippy::missing_const_for_fn)]
     pub fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
         Self {
             min_block_size: u16::MAX,
@@ -389,49 +387,41 @@ impl StreamInfo {
     }
 
     /// Gets `min_frame_size` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn min_frame_size(&self) -> usize {
         self.min_frame_size as usize
     }
 
     /// Gets `max_frame_size` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn max_frame_size(&self) -> usize {
         self.max_frame_size as usize
     }
 
     /// Gets `min_block_size` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn min_block_size(&self) -> usize {
         self.min_block_size as usize
     }
 
     /// Gets `max_block_size` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn max_block_size(&self) -> usize {
         self.max_block_size as usize
     }
 
     /// Gets `sample_rate` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn sample_rate(&self) -> usize {
         self.sample_rate as usize
     }
 
     /// Gets `channels` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn channels(&self) -> usize {
         self.channels as usize
     }
 
     /// Gets `bits_per_sample` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
 
     /// Gets `total_samples` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn total_samples(&self) -> usize {
         self.total_samples as usize
     }
@@ -454,13 +444,11 @@ impl StreamInfo {
     /// info.set_total_samples(ctx.total_samples());
     /// assert_ne!(info.total_samples(), 246);
     /// ```
-    #[allow(clippy::missing_const_for_fn)]
     pub fn set_total_samples(&mut self, n: usize) {
         self.total_samples = n as u64;
     }
 
     /// Gets `md5_digest` field.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn md5_digest(&self) -> &[u8; 16] {
         &self.md5
     }
@@ -483,7 +471,6 @@ impl StreamInfo {
     /// info.set_md5_digest(&ctx.md5_digest());
     /// assert_ne!(info.md5_digest(), &[0x00u8; 16]);
     /// ```
-    #[allow(clippy::missing_const_for_fn)]
     pub fn set_md5_digest(&mut self, digest: &[u8; 16]) {
         self.md5.copy_from_slice(digest);
     }
@@ -528,7 +515,6 @@ pub struct Frame {
 
 impl Frame {
     /// Gets block size of this frame.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn block_size(&self) -> usize {
         self.header.block_size as usize
     }
@@ -536,7 +522,6 @@ impl Frame {
     /// Constructs an empty `Frame`.
     ///
     /// This makes an invalid `Frame`; therefore this shouldn't be "pub" so far.
-    #[allow(clippy::missing_const_for_fn)]
     pub(crate) fn new(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
         let header = FrameHeader::new(block_size, ch_info, offset);
         Self {
@@ -575,7 +560,6 @@ impl Frame {
     }
 
     /// Returns `FrameHeader` of this frame.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn header(&self) -> &FrameHeader {
         &self.header
     }
@@ -803,7 +787,6 @@ impl FrameHeader {
     }
 
     /// Returns `ChannelAssignment` of this frame.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn channel_assignment(&self) -> &ChannelAssignment {
         &self.channel_assignment
     }
@@ -941,13 +924,11 @@ impl Constant {
     }
 
     /// Gets offset value.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn dc_offset(&self) -> i32 {
         self.dc_offset
     }
 
     /// Gets bits-per-sample.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -996,7 +977,6 @@ impl Verbatim {
     }
 
     /// Gets bits-per-sample.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1055,13 +1035,11 @@ impl FixedLpc {
     }
 
     /// Gets a reference to the internal `Residual` component.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
     /// Gets bits-per-sample.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1126,19 +1104,16 @@ impl Lpc {
     }
 
     /// Gets reference to parameter struct.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn parameters(&self) -> &lpc::QuantizedParameters {
         &self.parameters
     }
 
     /// Gets a reference to the internal `Residual` component.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
     /// Gets bits-per-sample.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1239,7 +1214,6 @@ impl Residual {
     }
 
     /// Gets the partition order for the PRC.
-    #[allow(clippy::missing_const_for_fn)]
     pub fn partition_order(&self) -> usize {
         self.partition_order as usize
     }
