@@ -119,7 +119,7 @@ impl ByteSink {
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
-    const fn tail_len(&self) -> usize {
+    const fn paddings(&self) -> usize {
         let r = self.bitlength % 8;
         if r == 0 {
             0
@@ -130,18 +130,27 @@ impl ByteSink {
 
     /// Consumes `ByteSink` and returns the internal buffer.
     #[inline]
-    pub fn bytes(self) -> Vec<u8> {
+    pub fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
 
     /// Returns bits in a string for tests.
     #[cfg(test)]
-    fn to_debug_bitstring(&self) -> String {
+    fn to_bitstring(&self) -> String {
         let mut ret = String::new();
         for b in &self.bytes {
             ret.push_str(&format!("{b:08b}_"));
         }
         ret.pop();
+
+        // Not very efficient but should be okay for non-performance critical
+        // use cases.
+        for _t in 0..self.paddings() {
+            ret.pop();
+        }
+        for _t in 0..self.paddings() {
+            ret.push('*');
+        }
         ret
     }
 
@@ -154,7 +163,7 @@ impl BitSink for ByteSink {
     #[inline]
     fn write<T: PackedBits>(&mut self, val: T) {
         let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
-        let tail = self.tail_len();
+        let tail = self.paddings();
         if tail > 0 {
             self.write_msbs(val, tail);
         }
@@ -166,7 +175,7 @@ impl BitSink for ByteSink {
 
     #[inline]
     fn align_to_byte(&mut self) -> usize {
-        let r = self.tail_len();
+        let r = self.paddings();
         self.bitlength += r;
         r
     }
@@ -187,7 +196,7 @@ impl BitSink for ByteSink {
         let mut val: T = val;
         let mut n = n;
         let nbitlength = self.bitlength + n;
-        let r = self.tail_len();
+        let r = self.paddings();
 
         if r != 0 {
             let b = (val >> (T::PACKED_BITS - r)).to_u8().unwrap();
@@ -315,10 +324,7 @@ mod tests {
         bv.write_msbs(0x0u64, 12);
         bv.write_msbs(0xFFFF_FFFFu32, 9);
         bv.write_msbs(0x0u16, 8);
-        assert_eq!(
-            bv.to_debug_bitstring(),
-            "11100000_00000001_11111111_00000000"
-        );
+        assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000000");
     }
 
     #[test]
@@ -328,9 +334,13 @@ mod tests {
         bv.write_lsbs(0x0u64, 12);
         bv.write_lsbs(0xFFFF_FFFFu32, 9);
         bv.write_lsbs(0x0u16, 8);
-        assert_eq!(
-            bv.to_debug_bitstring(),
-            "11100000_00000001_11111111_00000000"
-        );
+        assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000000");
+
+        let mut bv = ByteSink::new();
+        bv.write_lsbs(0xFFu8, 3);
+        bv.write_lsbs(0x0u64, 12);
+        bv.write_lsbs(0xFFFF_FFFFu32, 9);
+        bv.write_lsbs(0x0u16, 5);
+        assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000***");
     }
 }

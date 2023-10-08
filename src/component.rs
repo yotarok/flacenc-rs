@@ -458,7 +458,7 @@ impl Frame {
         }
         let mut dest = ByteSink::with_capacity(self.count_bits());
         self.write(&mut dest)?;
-        self.precomputed_bitstream = Some(dest.bytes());
+        self.precomputed_bitstream = Some(dest.into_bytes());
         Ok(())
     }
 
