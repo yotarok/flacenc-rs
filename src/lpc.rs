@@ -240,7 +240,7 @@ impl QuantizedParameters {
     ///
     /// This function panics if `errors.len()` is smaller than `signal.len()`.
     #[allow(clippy::collapsible_else_if)]
-    pub fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
+    pub(crate) fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
         assert!(errors.len() >= signal.len());
         let effective_bits = 32
             - signal
@@ -289,7 +289,7 @@ impl QuantizedParameters {
 
     /// Returns `Vec` containing dequantized coefficients.
     #[allow(dead_code)]
-    pub fn dequantized(&self) -> Vec<f32> {
+    pub(crate) fn dequantized(&self) -> Vec<f32> {
         self.coefs()
             .iter()
             .map(|x| dequantize_parameter(*x, self.shift))
