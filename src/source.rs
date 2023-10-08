@@ -15,6 +15,7 @@
 //! Module for input source handling.
 
 use seq_macro::seq;
+use std::fmt;
 
 use super::error::SourceError;
 use super::error::SourceErrorReason;
@@ -126,22 +127,23 @@ impl FrameBuf {
     }
 
     /// Returns samples from the given channel.
-    pub fn channel_slice(&self, ch: usize) -> &[i32] {
+    pub(crate) fn channel_slice(&self, ch: usize) -> &[i32] {
         &self.samples[ch * self.size..(ch + 1) * self.size]
     }
 
     /// Returns mutable samples from the given channel.
-    pub fn channel_slice_mut(&mut self, ch: usize) -> &mut [i32] {
+    pub(crate) fn channel_slice_mut(&mut self, ch: usize) -> &mut [i32] {
         &mut self.samples[ch * self.size..(ch + 1) * self.size]
     }
 
     /// Returns the internal representation of multichannel signals.
     #[cfg(test)]
-    pub fn raw_slice(&self) -> &[i32] {
+    pub(crate) fn raw_slice(&self) -> &[i32] {
         &self.samples
     }
 }
 
+/// Context information being updated while reading from `Source`.
 #[derive(Clone)]
 pub struct Context {
     md5: md5::Context,
@@ -248,6 +250,19 @@ impl Context {
     }
 }
 
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let digest = format!("{:x}", self.md5.clone().compute());
+        f.debug_struct("Context")
+            .field("bytes_per_sample", &self.bytes_per_sample)
+            .field("channels", &self.channels)
+            .field("sample_count", &self.sample_count)
+            .field("frame_count", &self.frame_count)
+            .field("md5", &digest)
+            .finish()
+    }
+}
+
 pub trait Source {
     /// Returns the number of channels.
     fn channels(&self) -> usize;
@@ -290,11 +305,11 @@ pub trait Seekable: Source {
 /// Source with preloaded samples.
 #[derive(Clone, Debug)]
 pub struct PreloadedSignal {
-    pub channels: usize,
-    pub bits_per_sample: usize,
-    pub sample_rate: usize,
-    pub samples: Vec<i32>,
-    pub read_head: usize,
+    channels: usize,
+    bits_per_sample: usize,
+    sample_rate: usize,
+    samples: Vec<i32>,
+    read_head: usize,
 }
 
 impl PreloadedSignal {
