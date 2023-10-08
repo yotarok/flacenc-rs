@@ -19,28 +19,101 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Enum of errors that can be returned in the encoder.
-#[derive(Clone, Debug)]
-#[allow(clippy::module_name_repetitions)]
-pub enum EncodeError {
-    Range(RangeError),
+use super::bitsink::BitSink;
+
+/// Error type that will never happen.
+///
+/// This is a tentative solution while waiting
+/// [`never-type`](https://github.com/rust-lang/rust/issues/35121) feature to
+/// be stabilized.
+#[derive(Clone, Copy, Debug)]
+pub struct Never;
+
+impl std::fmt::Display for Never {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        unreachable!()
+    }
 }
 
-impl Error for EncodeError {
+impl std::error::Error for Never {}
+
+/// Enum of errors that can be returned in the encoder.
+#[derive(Clone)]
+#[allow(clippy::module_name_repetitions)]
+pub enum OutputError<S>
+where
+    S: BitSink,
+    S::Error: std::error::Error,
+{
+    Range(RangeError),
+    Sink(S::Error),
+}
+
+impl<S> OutputError<S>
+where
+    S: BitSink,
+    S::Error: std::error::Error,
+{
+    #[inline]
+    pub(crate) const fn from_sink(e: S::Error) -> Self {
+        Self::Sink(e)
+    }
+
+    pub(crate) fn ignore_sink_error<U>(err: OutputError<U>) -> Self
+    where
+        U: BitSink<Error = Never>,
+    {
+        match err {
+            OutputError::Range(e) => Self::Range(e),
+            OutputError::Sink(_) => unreachable!(),
+        }
+    }
+}
+
+impl<S> Error for OutputError<S>
+where
+    S: BitSink,
+    S::Error: Error,
+{
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         None
     }
 }
 
-impl fmt::Display for EncodeError {
+impl<S> fmt::Display for OutputError<S>
+where
+    S: BitSink,
+    S::Error: std::error::Error,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Range(err) => err.fmt(f),
+            Self::Sink(err) => err.fmt(f),
         }
     }
 }
 
-impl From<RangeError> for EncodeError {
+impl<S> fmt::Debug for OutputError<S>
+where
+    S: BitSink,
+    S::Error: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Range(err) => f
+                .debug_tuple("OutputError::InvalidRange")
+                .field(&err)
+                .finish(),
+            Self::Sink(err) => f.debug_tuple("OutputError::Sink").field(&err).finish(),
+        }
+    }
+}
+
+impl<S> From<RangeError> for OutputError<S>
+where
+    S: BitSink,
+    S::Error: fmt::Debug,
+{
     fn from(e: RangeError) -> Self {
         Self::Range(e)
     }
