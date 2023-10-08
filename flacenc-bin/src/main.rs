@@ -55,7 +55,6 @@ use clap::Parser;
 #[cfg(feature = "pprof")]
 use pprof::protos::Message;
 
-use flacenc::coding;
 use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
@@ -217,7 +216,7 @@ fn run_encoder<S: Source>(
     source: S,
 ) -> Result<Stream, SourceError> {
     let block_size = encoder_config.block_sizes[0];
-    coding::encode_with_fixed_block_size(encoder_config, source, block_size)
+    flacenc::encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
 fn main_body(args: Args) -> Result<(), i32> {

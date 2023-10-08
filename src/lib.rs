@@ -50,7 +50,7 @@
 )]
 
 pub mod bitsink;
-pub mod coding;
+pub(crate) mod coding;
 pub mod component;
 pub mod config;
 pub mod constant;
@@ -71,6 +71,11 @@ use mimalloc::MiMalloc;
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
+
+// import global entry points
+pub use coding::encode_fixed_size_frame;
+
+pub use coding::encode_with_fixed_block_size;
 
 #[cfg(test)]
 mod test {
