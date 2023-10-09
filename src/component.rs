@@ -1550,17 +1550,18 @@ impl BitRepr for Residual {
     #[inline]
     fn count_bits(&self) -> usize {
         let nparts = 1usize << self.partition_order as usize;
-        let mut quotient_bits: usize = 0;
-        for t in self.warmup_length..self.block_size {
-            // plus 1 for stop bits.
-            quotient_bits += self.quotients[t] as usize + 1;
-        }
+
+        // using SIMD for `sum` here didn't help much.
+        let quotient_bits: usize = self.quotients.iter().map(|x| *x as usize).sum::<usize>()
+            + self.block_size
+            - self.warmup_length;
+
         let mut remainder_bits: usize = 0;
+        let part_len = self.block_size / nparts;
         for p in 0..nparts {
-            let part_len: usize =
-                self.block_size / nparts - if p == 0 { self.warmup_length } else { 0 };
             remainder_bits += self.rice_params[p] as usize * part_len;
         }
+        remainder_bits -= self.warmup_length * self.rice_params[0] as usize;
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
 
