@@ -58,6 +58,7 @@ use pprof::protos::Message;
 use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
+use flacenc::error::EncodeError;
 use flacenc::error::SourceError;
 use flacenc::error::SourceErrorReason;
 use flacenc::error::Verify;
@@ -214,7 +215,7 @@ impl Source for HoundSource {
 fn run_encoder<S: Source>(
     encoder_config: &config::Encoder,
     source: S,
-) -> Result<Stream, SourceError> {
+) -> Result<Stream, EncodeError> {
     let block_size = encoder_config.block_sizes[0];
     flacenc::encode_with_fixed_block_size(encoder_config, source, block_size)
 }

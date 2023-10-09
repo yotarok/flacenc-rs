@@ -246,6 +246,20 @@ pub trait Verify {
     fn verify(&self) -> Result<(), VerifyError>;
 }
 
+/// Enum for possible encoder errors.
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Debug)]
+pub enum EncodeError {
+    Source(SourceError),
+}
+
+impl From<SourceError> for EncodeError {
+    fn from(e: SourceError) -> Self {
+        Self::Source(e)
+    }
+}
+
 /// Struct that wraps errors from `Source`.
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]

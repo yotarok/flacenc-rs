@@ -106,4 +106,6 @@ pub(crate) mod panic_msg {
     pub const FRAMENUM_NOT_SET: &str =
         "INTERNAL ERROR: Frame buffer is not properly initialized. (FrameNo. not set).";
     pub const THREAD_JOIN_FAILED: &str = "INTERNAL ERROR: Failed to wait thread termination.";
+    pub const ERROR_NOT_EXPECTED: &str =
+        "INTERNAL ERROR: Error occured in the function where it is not expected.";
 }
