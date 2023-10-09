@@ -436,8 +436,7 @@ impl BitSink for ByteSink {
 
         if r != 0 {
             let b = (val >> (T::PACKED_BITS - r)).to_u8().unwrap();
-            let tail = self.bytes.len() - 1;
-            self.bytes[tail] |= b;
+            *self.bytes.last_mut().unwrap() |= b;
             val <<= r;
             n = n.saturating_sub(r);
         }
@@ -450,9 +449,9 @@ impl BitSink for ByteSink {
         }
         if n > 0 {
             val <<= bytes_to_write * 8;
-            let mask = !((1 << (8 - n)) - 1);
-            let shifted = val >> (T::PACKED_BITS - 8) & mask.into();
-            let tail_byte = shifted.to_u8().unwrap();
+            let mask = !((1u8 << (8 - n)) - 1);
+            let tail_byte: u8 = (val >> (T::PACKED_BITS - 8)).to_le_bytes().as_ref()[0];
+            let tail_byte = tail_byte & mask;
             self.bytes.push(tail_byte);
         }
         self.bitlength = nbitlength;
@@ -569,6 +568,10 @@ mod tests {
         bv.write_msbs(0xFFFF_FFFFu32, 9)?;
         bv.write_msbs(0x0u16, 8)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000000");
+
+        let mut bv = ByteSink::new();
+        bv.write_msbs(0xA0u8, 3)?;
+        assert_eq!(bv.to_bitstring(), "101*****");
         Ok(())
     }
 
