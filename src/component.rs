@@ -209,6 +209,12 @@ impl Stream {
     /// ```
     /// # use flacenc::component::*;
     /// # use flacenc::test_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    ///
+    /// let mut stream = Stream::new(16000, 1, 24);
+    /// stream.add_frame(frame);
+    /// assert_eq!(stream.frame_count(), 1);
     /// ```
     pub fn add_frame(&mut self, frame: Frame) {
         // TODO: Add example section to the doc. Currently, it's not
@@ -447,7 +453,7 @@ impl StreamInfo {
         self.total_samples += u64::from(block_size);
     }
 
-    /// Gets `min_frame_size` field.
+    /// Returns `min_frame_size` field.
     ///
     /// # Examples
     ///
@@ -466,7 +472,7 @@ impl StreamInfo {
         self.min_frame_size as usize
     }
 
-    /// Gets `max_frame_size` field.
+    /// Returns `max_frame_size` field.
     ///
     /// # Examples
     ///
@@ -480,7 +486,7 @@ impl StreamInfo {
         self.max_frame_size as usize
     }
 
-    /// Gets `min_block_size` field.
+    /// Returns `min_block_size` field.
     ///
     /// # Examples
     ///
@@ -499,7 +505,7 @@ impl StreamInfo {
         self.min_block_size as usize
     }
 
-    /// Gets `max_block_size` field.
+    /// Returns `max_block_size` field.
     ///
     /// # Examples
     ///
@@ -513,7 +519,7 @@ impl StreamInfo {
         self.max_block_size as usize
     }
 
-    /// Gets `sample_rate` field.
+    /// Returns `sample_rate` field.
     ///
     /// # Examples
     ///
@@ -526,7 +532,7 @@ impl StreamInfo {
         self.sample_rate as usize
     }
 
-    /// Gets `channels` field.
+    /// Returns `channels` field.
     ///
     /// # Examples
     ///
@@ -539,7 +545,7 @@ impl StreamInfo {
         self.channels as usize
     }
 
-    /// Gets `bits_per_sample` field.
+    /// Returns `bits_per_sample` field.
     ///
     /// # Examples
     ///
@@ -552,7 +558,7 @@ impl StreamInfo {
         self.bits_per_sample as usize
     }
 
-    /// Gets `total_samples` field.
+    /// Returns `total_samples` field.
     ///
     /// # Examples
     ///
@@ -597,7 +603,7 @@ impl StreamInfo {
         self.total_samples = n as u64;
     }
 
-    /// Gets `md5_digest` field.
+    /// Returns `md5_digest` field.
     ///
     /// # Examples
     ///
@@ -682,7 +688,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Gets block size of this frame.
+    /// Returns block size of this frame.
     ///
     /// # Examples
     ///
@@ -1158,9 +1164,13 @@ impl BitRepr for FrameHeader {
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubFrame {
+    /// This variant contains `Constant` sub-frame.
     Constant(Constant),
+    /// This variant contains `Verbatim` sub-frame.
     Verbatim(Verbatim),
+    /// This variant contains `FixedLpc` sub-frame.
     FixedLpc(FixedLpc),
+    /// This variant contains `Lpc` sub-frame.
     Lpc(Lpc),
 }
 
@@ -1224,12 +1234,12 @@ impl Constant {
         }
     }
 
-    /// Gets offset value.
+    /// Returns offset value.
     pub fn dc_offset(&self) -> i32 {
         self.dc_offset
     }
 
-    /// Gets bits-per-sample.
+    /// Returns bits-per-sample.
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1272,12 +1282,12 @@ impl Verbatim {
         8 + block_size * bits_per_sample
     }
 
-    /// Gets a slice for the verbatim samples.
+    /// Returns a slice for the verbatim samples.
     pub fn samples(&self) -> &[i32] {
         &self.data
     }
 
-    /// Gets bits-per-sample.
+    /// Returns bits-per-sample.
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1325,22 +1335,22 @@ impl FixedLpc {
         }
     }
 
-    /// Gets the order of LPC (of fixed LPC).
+    /// Returns the order of LPC (of fixed LPC).
     pub fn order(&self) -> usize {
         self.warm_up.len()
     }
 
-    /// Gets warm-up samples as a slice.
+    /// Returns warm-up samples as a slice.
     pub fn warm_up(&self) -> &[i32] {
         &self.warm_up
     }
 
-    /// Gets a reference to the internal `Residual` component.
+    /// Returns a reference to the internal `Residual` component.
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
-    /// Gets bits-per-sample.
+    /// Returns bits-per-sample.
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1394,27 +1404,27 @@ impl Lpc {
         }
     }
 
-    /// Gets the order of LPC (of fixed LPC).
+    /// Returns the order of LPC (of fixed LPC).
     pub const fn order(&self) -> usize {
         self.parameters.order()
     }
 
-    /// Gets warm-up samples as a slice.
+    /// Returns warm-up samples as a slice.
     pub fn warm_up(&self) -> &[i32] {
         &self.warm_up
     }
 
-    /// Gets reference to parameter struct.
+    /// Returns a reference to parameter struct.
     pub fn parameters(&self) -> &lpc::QuantizedParameters {
         &self.parameters
     }
 
-    /// Gets a reference to the internal `Residual` component.
+    /// Returns a reference to the internal `Residual` component.
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
-    /// Gets bits-per-sample.
+    /// Returns bits-per-sample.
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1514,17 +1524,17 @@ impl Residual {
         }
     }
 
-    /// Gets the partition order for the PRC.
+    /// Returns the partition order for the PRC.
     pub fn partition_order(&self) -> usize {
         self.partition_order as usize
     }
 
-    /// Gets the rice parameter for the `p`-th partition
+    /// Returns the rice parameter for the `p`-th partition
     pub fn rice_param(&self, p: usize) -> usize {
         self.rice_params[p] as usize
     }
 
-    /// Gets the residual value for the `t`-th sample.
+    /// Returns the residual value for the `t`-th sample.
     pub fn residual(&self, t: usize) -> i32 {
         let nparts = 1usize << self.partition_order as usize;
         let part_id = t * nparts / self.block_size;

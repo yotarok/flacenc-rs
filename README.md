@@ -1,5 +1,8 @@
 # flacenc-rs
 
+[![Build Status](https://github.com/yotarok/flacenc-rs/workflows/Unittest/badge.svg)](https://github.com/yotarok/flacenc-rs/actions)
+[![Documentation](https://docs.rs/flacenc/badge.svg)](https://docs.rs/flacenc)
+
 This crate provides some basic modules for building application customized FLAC
 (Free Lossless Audio Codec) encoder in rust programs.
 
@@ -74,9 +77,13 @@ NOTE: Currently, `flacenc` is in its initial development stage
 The current API provides several ways to control the encoding process. The
 possible customization can be categorized into three groups:
 
-1.  Encode behavior customization by configuring `config::Encoder`,
-2.  Input enhancement by implementing `source::Source` trait.
-3.  Add custom post-processing via structs in `component` submodule.
+1.  Encode behavior customization by configuring [`config::Encoder`],
+2.  Input enhancement by implementing [`source::Source`] trait,
+3.  Add custom post-processing via structs in [`component`] submodule.
+
+[`config::Encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
+[`source::Source`]: https://docs.rs/flacenc/latest/flacenc/source/trait.Source.html
+[`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
 
 ## Feature Flags
 
