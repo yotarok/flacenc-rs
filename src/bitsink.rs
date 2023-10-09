@@ -14,7 +14,7 @@
 
 //! Abstract interface for bit-based output.
 
-use super::error::Never;
+use std::convert::Infallible;
 
 /// Trait for the bit-addressible integers.
 ///
@@ -303,7 +303,7 @@ impl ByteSink {
 }
 
 impl BitSink for ByteSink {
-    type Error = Never;
+    type Error = Infallible;
 
     #[inline]
     fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
@@ -418,7 +418,7 @@ mod tests {
         T2: BitStore,
         O2: BitOrder,
     {
-        type Error = Never;
+        type Error = Infallible;
 
         #[inline]
         fn align_to_byte(&mut self) -> Result<usize, Self::Error> {
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn align_to_byte_with_bitvec() -> Result<(), Never> {
+    fn align_to_byte_with_bitvec() -> Result<(), Infallible> {
         let mut sink: BitVec<u8> = BitVec::new();
         sink.write_lsbs(0x01u8, 1)?;
         sink.align_to_byte()?;
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn twoc_writing() -> Result<(), Never> {
+    fn twoc_writing() -> Result<(), Infallible> {
         let mut sink: BitVec<u8> = BitVec::new();
         sink.write_twoc(-7, 4)?;
         assert_eq!(sink, bits![1, 0, 0, 1]);
@@ -472,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn bytevec_write_msb() -> Result<(), Never> {
+    fn bytevec_write_msb() -> Result<(), Infallible> {
         let mut bv = ByteSink::new();
         bv.write_msbs(0xFFu8, 3)?;
         bv.write_msbs(0x0u64, 12)?;
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn bytevec_write_lsb() -> Result<(), Never> {
+    fn bytevec_write_lsb() -> Result<(), Infallible> {
         let mut bv = ByteSink::new();
         bv.write_lsbs(0xFFu8, 3)?;
         bv.write_lsbs(0x0u64, 12)?;

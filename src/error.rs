@@ -14,28 +14,13 @@
 
 //! Error and verification traits
 
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
 use super::bitsink::BitSink;
-
-/// Error type that will never happen.
-///
-/// This is a tentative solution while waiting for
-/// [`never-type`](https://github.com/rust-lang/rust/issues/35121) feature to
-/// be stabilized.
-#[derive(Clone, Copy, Debug)]
-pub struct Never;
-
-impl std::fmt::Display for Never {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        unreachable!()
-    }
-}
-
-impl std::error::Error for Never {}
 
 /// Enum of errors that can be returned in the encoder.
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -63,7 +48,7 @@ where
 
     pub(crate) fn ignore_sink_error<U>(err: OutputError<U>) -> Self
     where
-        U: BitSink<Error = Never>,
+        U: BitSink<Error = Infallible>,
     {
         match err {
             OutputError::Range(e) => Self::Range(e),
