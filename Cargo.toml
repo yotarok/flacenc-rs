@@ -1,6 +1,6 @@
 [package]
 name = "flacenc"
-version = "0.1.1"
+version = "0.2.0"
 description = "FLAC encoder written in Rust."
 readme = "README.md"
 license = "Apache-2.0"
@@ -26,7 +26,7 @@ crc = "2.1"
 crossbeam-channel = { version = "0.5.8", optional = true }
 heapless = "0.7.10"
 md5 = "0.7.0"
-mimalloc = { version = "*", default-features = false, optional = true }
+mimalloc = { version = "0.1.39", default-features = false, optional = true }
 nalgebra = { version = "0.31", optional = true }
 num-traits = "0.2"
 seq-macro = "0.3"

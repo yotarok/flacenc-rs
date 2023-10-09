@@ -1,6 +1,6 @@
 [package]
 name = "flacenc-bin"
-version = "0.1.1"
+version = "0.2.0"
 description = "FLAC encoder written in Rust. CLI tool for encoding."
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,7 +24,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
-flacenc = { version = "0.1.1", path = "..", features = ["experimental"] }
+flacenc = { version = "0.2.0", path = "..", features = ["experimental"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 toml = "0.5"
