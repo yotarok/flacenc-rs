@@ -18,7 +18,7 @@ use std::convert::Infallible;
 
 /// Trait for the bit-addressible integers.
 ///
-/// This trait is seaked so the user cannot implement it. Currently, this trait
+/// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: `u8`, `u16`, `u32`, and `u64`.
 pub trait PackedBits: seal_packed_bits::Sealed {
     const PACKED_BITS: usize;
@@ -31,7 +31,7 @@ impl<T: seal_packed_bits::Sealed> PackedBits for T {
 
 /// Trait for the signed integers that can be provided to bitsink.
 ///
-/// This trait is seaked so the user cannot implement it. Currently, this trait
+/// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: `i8`, `i16`, `i32`, and `i64`.
 pub trait SignedBits: seal_signed_bits::Sealed {}
 
@@ -57,6 +57,22 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    /// let mut sink = ByteSink::new();
+    ///
+    /// sink.write_lsbs(0xFFu8, 3);
+    /// assert_eq!(sink.len(), 3);
+    ///
+    /// let pads = sink.align_to_byte()?;
+    /// assert_eq!(pads, 5);
+    /// assert_eq!(sink.len(), 8);
+    /// # Ok(())}
+    /// ```
     fn align_to_byte(&mut self) -> Result<usize, Self::Error>;
 
     /// Writes bytes after alignment, and returns padded bits.
@@ -64,6 +80,22 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    /// let mut sink = ByteSink::new();
+    ///
+    /// sink.write_lsbs(0xFFu8, 3);
+    /// assert_eq!(sink.len(), 3);
+    ///
+    /// sink.write_bytes_aligned(&[0xB7, 0x7D])?;
+    ///
+    /// assert_eq!(sink.to_bitstring(), "11100000_10110111_01111101");
+    /// # Ok(())}
+    /// ```
     #[inline]
     fn write_bytes_aligned(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
         let ret = self.align_to_byte()?;
@@ -78,6 +110,20 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    ///
+    /// let mut sink = ByteSink::new();
+    /// sink.write_lsbs(0x0Fu8, 3);
+    ///
+    /// assert_eq!(sink.len(), 3);
+    /// assert_eq!(sink.to_bitstring(), "111*****");
+    /// # Ok(())}
+    /// ```
     fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
     /// Writes `n` MSBs to the sink.
@@ -85,6 +131,19 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    ///
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0xF0u8, 3);
+    ///
+    /// assert_eq!(sink.to_bitstring(), "111*****");
+    /// # Ok(())}
+    /// ```
     fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
     /// Writes all bits in `val: PackedBits`.
@@ -92,6 +151,21 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    ///
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0xF0u8, 3);
+    ///
+    /// sink.write(0x5555u16);
+    ///
+    /// assert_eq!(sink.to_bitstring(), "11101010_10101010_101*****");
+    /// # Ok(())}
+    /// ```
     fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error>;
 
     /// Writes `val` in two's coplement format.
@@ -99,6 +173,22 @@ pub trait BitSink: Sized {
     /// # Errors
     ///
     /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    ///
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0xF0u8, 3);
+    /// assert_eq!(sink.to_bitstring(), "111*****");
+    ///
+    /// // two's complement of 00011 in 11101
+    /// sink.write_twoc(-3i32, 5);
+    /// assert_eq!(sink.to_bitstring(), "11111101");
+    /// # Ok(())}
+    /// ```
     #[inline]
     fn write_twoc<T: SignedBits>(
         &mut self,
@@ -134,7 +224,7 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let sink = ByteSink::new();
+    /// let mut sink = ByteSink::new();
     /// let empty: [u8; 0] = [];
     /// assert_eq!(&empty, sink.as_byte_slice());
     /// ```
@@ -287,7 +377,7 @@ impl ByteSink {
         ret
     }
 
-    /// Returns reference to the internal byte slice.
+    /// Returns a reference to the internal bytes.
     ///
     /// # Examples
     ///
