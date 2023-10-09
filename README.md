@@ -1,6 +1,7 @@
 # flacenc-rs
 
 [![Build Status](https://github.com/yotarok/flacenc-rs/workflows/Unittest/badge.svg)](https://github.com/yotarok/flacenc-rs/actions)
+[![Crate](https://img.shields.io/crates/v/flacenc.svg)](https://crates.io/crates/flacenc)
 [![Documentation](https://docs.rs/flacenc/badge.svg)](https://docs.rs/flacenc)
 
 This crate provides some basic modules for building application customized FLAC
@@ -15,7 +16,7 @@ encoder compared to
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = { version = "0.2", feature = ["fakesimd"] }
+flacenc = { version = "0.2.0", feature = ["fakesimd"] }
 ```
 
 This crate is intended to be, and primarily developed with
@@ -25,7 +26,7 @@ toolchain. If you are using a nightly toolchain, use this crate without
 `fakesimd` as follows:
 
 ```toml
-flacenc = "0.2"
+flacenc = "0.2.0"
 ```
 
 ## Examples
@@ -57,7 +58,7 @@ flac_stream.write(&mut sink);
 // Then, e.g. you can write it to a file.
 std::fs::write("/dev/null", sink.as_byte_slice());
 
-// or you can only get a specific frame.
+// or you can write only a specific frame.
 let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.frame(0).unwrap().write(&mut sink);
 ```
