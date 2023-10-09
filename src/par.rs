@@ -27,6 +27,7 @@ use super::config;
 use super::constant;
 use super::constant::envvar_key;
 use super::constant::panic_msg;
+use super::error::EncodeError;
 use super::error::SourceError;
 use super::source::Context;
 use super::source::FrameBuf;
@@ -248,7 +249,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     config: &config::Encoder,
     src: T,
     block_size: usize,
-) -> Result<Stream, SourceError> {
+) -> Result<Stream, EncodeError> {
     let config = Arc::new(config.clone());
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
     let worker_count = determine_worker_count(&config)?;
@@ -267,7 +268,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
             let config = Arc::clone(&config);
             thread::spawn(move || {
                 while let Some(bufid) = parbuf.pop_encode_queue() {
-                    let (frame_number, mut frame) = {
+                    let (frame_number, encode_result) = {
                         let numbuf = &parbuf.lock_buffer(bufid);
                         let frame_number = numbuf.frame_number.expect(panic_msg::FRAMENUM_NOT_SET);
                         (
@@ -280,9 +281,16 @@ pub fn encode_with_fixed_block_size<T: Source>(
                             ),
                         )
                     };
-                    parbuf.enqueue_refill(bufid);
-                    frame.precompute_bitstream();
-                    parsink.push(frame_number, frame);
+                    encode_result.map_or_else(
+                        |e| {
+                            unreachable!("{}, err={:?}", panic_msg::ERROR_NOT_EXPECTED, e);
+                        },
+                        |mut frame| {
+                            parbuf.enqueue_refill(bufid);
+                            frame.precompute_bitstream();
+                            parsink.push(frame_number, frame);
+                        },
+                    );
                 }
             })
         })
