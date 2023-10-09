@@ -25,6 +25,7 @@ use super::bitsink::BitSink;
 /// Enum of errors that can be returned in the encoder.
 #[derive(Clone, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
+#[non_exhaustive]
 pub enum OutputError<S>
 where
     S: BitSink,
@@ -351,6 +352,7 @@ impl SourceError {
 
 /// Enum covering possible error reasons from `Source`.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum SourceErrorReason {
     /// The source file cannot be opened.
     Open,
