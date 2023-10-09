@@ -325,6 +325,7 @@ impl BitRepr for MetadataBlock {
 
 /// Enum for `BLOCK_TYPE` in `METADATA_BLOCK_HEADER`.
 #[allow(dead_code)]
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug)]
 enum MetadataBlockType {
     StreamInfo = 0,
