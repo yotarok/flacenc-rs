@@ -59,18 +59,24 @@ let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.frame(0).unwrap().write(&mut sink);
 ```
 
-`samples` here is an interleaved sequence, e.g. in the caes with stereo inputs,
+`samples` here is an interleaved sequence, e.g. in the case with stereo inputs,
 it is a sequence like `[left_t0, right_t0, left_t1, right_t1, ...]` where
 `{left|right}_tN` denotes the `N`-th sample from the left or right channel. All
 samples are assumed to be in the range of `- 2.pow(bits_per_samples - 1) ..
 2.pow(bits_per_samples - 1)`, i.e. if `bits_per_samples == 16`, `samples[t]`
 must be `-32768 <= samples[t] <= 32767`.
 
-### Next steps for further customization
+### Customizing Encoder Behaviors
 
-1.  Implement `Source` trait for supporting various input types.
-2.  Explore `config` module for changing the behavior of the encoder.
-3.  Build a function that calls `encode_frame` directly for finer control.
+NOTE: Currently, `flacenc` is in its initial development stage
+([major version zero](https://semver.org/#spec-item-4)).
+
+The current API provides several ways to control the encoding process. The
+possible customization can be categorized into three groups:
+
+1.  Encode behavior customization by configuring `config::Encoder`,
+2.  Input enhancement by implementing `source::Source` trait.
+3.  Add custom post-processing via structs in `component` submodule.
 
 ## Feature Flags
 

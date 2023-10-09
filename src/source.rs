@@ -329,12 +329,9 @@ impl Context {
     /// assert_eq!(ctx.current_frame_number(), Some(0usize));
     /// ```
     #[inline]
+    #[allow(clippy::unnecessary_lazy_evaluations)] // false-alarm
     pub fn current_frame_number(&self) -> Option<usize> {
-        if self.frame_count > 0 {
-            Some(self.frame_count - 1)
-        } else {
-            None
-        }
+        (self.frame_count > 0).then(|| self.frame_count - 1)
     }
 
     /// Returns MD5 digest of the consumed samples.

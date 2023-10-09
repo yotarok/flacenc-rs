@@ -369,11 +369,7 @@ fn encode_subframe(
         });
         let est_lpc = if config.use_lpc {
             let candidate = estimated_qlpc(config, samples, bits_per_sample);
-            if candidate.count_bits() < baseline_bits {
-                Some(candidate)
-            } else {
-                None
-            }
+            (candidate.count_bits() < baseline_bits).then_some(candidate)
         } else {
             None
         };
