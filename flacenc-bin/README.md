@@ -2,15 +2,28 @@
 
 See [flacenc-rs](https://github.com/yotarok/flacenc-rs) for project overview.
 
-
 ## Usage
+
+To install (with using nightly rust):
+
+```bash
+rustup default nightly && cargo install flacenc-bin
+```
+
+Or, if you want to use stable channel:
+
+```bash
+cargo install flacenc-bin --features fakesimd
+```
+
+To encode a wav file:
 
 ```bash
 flacenc --output output.flac input.wav
 ```
 
-If you want to customize encoder behavior, you can specify an additional config
-toml file. To do so, first, you may generate the default config file by:
+If you want to customize the encoder behavior, you can specify an additional
+config toml file. To do so, first, you may generate the default config file by:
 
 ```bash
 flacenc --output output.flac --dump-config config.toml input.wav
@@ -21,4 +34,3 @@ Then, you can edit `config.toml` and do:
 ```bash
 flacenc --output output.flac --config config.toml input.wav
 ```
-
