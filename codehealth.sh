@@ -18,7 +18,7 @@ set -e
 rustup default nightly
 cargo rustc --release -- -D warnings
 cargo build --release
-cargo test --features test_helper,experimental,par
+cargo test --features "test_helper,experimental,par"
 cargo fmt --check
 cargo clippy --tests -- -D warnings
 cargo doc
