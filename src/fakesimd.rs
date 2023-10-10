@@ -37,26 +37,64 @@ pub struct Mask<T: SimdElement, const LANES: usize> {
 // ===
 pub trait SimdElement: Copy + std::fmt::Debug {
     type Mask;
+
+    fn simd_element_add(self, rhs: Self) -> Self;
+    fn simd_element_sub(self, rhs: Self) -> Self;
 }
 
 impl SimdElement for i16 {
     type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
 }
 
 impl SimdElement for i32 {
     type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
 }
 
 impl SimdElement for u32 {
     type Mask = Self;
-}
 
-impl SimdElement for f32 {
-    type Mask = Self;
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
 }
 
 impl SimdElement for i64 {
     type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
+impl SimdElement for f32 {
+    type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self + rhs
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self - rhs
+    }
 }
 
 pub trait SupportedLaneCount {}
@@ -116,6 +154,7 @@ pub type i32x16 = Simd<i32, 16>;
 pub type u32x16 = Simd<u32, 16>;
 
 #[allow(non_camel_case_types)]
+#[allow(dead_code)]
 pub type f32x32 = Simd<f32, 32>;
 
 // ===
@@ -263,48 +302,52 @@ where
 // ===
 // IMPLEMENTATION OF OPERATOR OVERRIDES
 // ===
+
 macro_rules! def_binop {
-    ($trait_name:ident, $fn_name:ident, $expr:expr) => {
-        impl<T, const N: usize> std::ops::$trait_name<Self> for Simd<T, N>
+    ($trait:ident, $fnname:ident, $var_x:ident, $var_y:ident, $body:block) => {
+        impl<T, const N: usize> std::ops::$trait<Self> for Simd<T, N>
         where
-            T: SimdElement + std::ops::$trait_name<T, Output = T>,
+            T: SimdElement + std::ops::$trait<T, Output = T>,
         {
             type Output = Self;
-            #[allow(clippy::redundant_closure_call)]
+
             #[inline]
-            #[allow(clippy::redundant_closure_call)]
-            fn $fn_name(self, rhs: Self) -> Self::Output {
-                Self(array::from_fn(|i| ($expr)(self.0[i], rhs.0[i])))
+            fn $fnname(self, rhs: Self) -> Self::Output {
+                Self(array::from_fn(|i| {
+                    let $var_x = self.0[i];
+                    let $var_y = rhs.0[i];
+                    $body
+                }))
             }
         }
     };
 }
 
 macro_rules! def_binop_assign {
-    ($trait_name:ident, $binop_name: ident, $fn_name:ident, $expr:expr) => {
-        impl<U, T, const N: usize> std::ops::$trait_name<U> for Simd<T, N>
+    ($trait:ident, $binop: ident, $fnname:ident, $var_x:ident, $var_y:ident, $body:block) => {
+        impl<U, T, const N: usize> std::ops::$trait<U> for Simd<T, N>
         where
             T: SimdElement,
-            Self: std::ops::$binop_name<U, Output = Self>,
+            Self: std::ops::$binop<U, Output = Self>,
         {
             #[inline]
-            #[allow(clippy::redundant_closure_call)]
-            fn $fn_name(&mut self, rhs: U) {
-                *self = ($expr)(*self, rhs);
+            fn $fnname(&mut self, $var_y: U) {
+                let $var_x = *self;
+                *self = $body;
             }
         }
     };
 }
 
-def_binop!(Add, add, |x, y| x + y);
-def_binop!(Sub, sub, |x, y| x - y);
-def_binop!(Mul, mul, |x, y| x * y);
-def_binop!(Div, div, |x, y| x / y);
-def_binop!(BitAnd, bitand, |x, y| x & y);
-def_binop!(Shr, shr, |x, y| x >> y);
+def_binop!(Add, add, x, y, { x.simd_element_add(y) });
+def_binop!(Sub, sub, x, y, { x.simd_element_sub(y) });
+def_binop!(Mul, mul, x, y, { x * y });
+def_binop!(Div, div, x, y, { x / y });
+def_binop!(BitAnd, bitand, x, y, { x & y });
+def_binop!(Shr, shr, x, y, { x >> y });
 
-def_binop_assign!(AddAssign, Add, add_assign, |x, y| x + y);
-def_binop_assign!(SubAssign, Sub, sub_assign, |x, y| x - y);
+def_binop_assign!(AddAssign, Add, add_assign, x, y, { x + y });
+def_binop_assign!(SubAssign, Sub, sub_assign, x, y, { x - y });
 
 impl<T, const N: usize> std::convert::AsRef<[T; N]> for Simd<T, N>
 where
