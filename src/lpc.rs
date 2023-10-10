@@ -321,35 +321,32 @@ pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>
 #[inline]
 #[allow(clippy::needless_range_loop)] // for readability
 #[allow(dead_code)] // not used in "fakesimd" but should still be compilable.
-fn weighted_auto_correlation_simd<F>(order: usize, signal: &[f32], dest: &mut [f32], weight_fn: F)
-where
+fn weighted_auto_correlation_simd<F, const N: usize>(
+    order: usize,
+    signal: &[f32],
+    dest: &mut [f32],
+    weight_fn: F,
+) where
     F: Fn(usize) -> f32,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     assert!(dest.len() >= order);
+    assert!(order <= N);
 
-    let mut lagged = simd::f32x32::splat(0f32);
-    // acc0 is computed separately for better SIMD alignment.
-    let mut acc0 = 0.0f32;
-    let mut acc = simd::f32x32::splat(0f32);
-    for tau in 0..order - 1 {
+    let mut lagged = simd::Simd::<f32, N>::splat(0f32);
+    let mut acc = simd::Simd::<f32, N>::splat(0f32);
+    for tau in 0..(order - 1) {
         lagged[tau] = signal[order - 2 - tau];
     }
     for t in (order - 1)..signal.len() {
         let w = weight_fn(t);
         let y = signal[t];
-        acc0 += w * y * y;
-        acc += simd::f32x32::splat(w * y) * lagged;
         lagged = lagged.rotate_lanes_right::<1>();
         lagged[0] = y;
+        acc += simd::Simd::<f32, N>::splat(w * y) * lagged;
     }
     for (tau, mut_p) in dest.iter_mut().enumerate() {
-        *mut_p = if tau == 0 {
-            acc0
-        } else if tau < order {
-            acc[tau - 1]
-        } else {
-            0.0
-        };
+        *mut_p = if tau < order { acc[tau] } else { 0.0 };
     }
 }
 
@@ -366,7 +363,21 @@ where
     {
         // The current implementation is inefficient with fakesimd when order
         // is low. So, here we still have a scalar version of it.
-        weighted_auto_correlation_simd(order, signal, dest, weight_fn);
+        if order <= 4 {
+            weighted_auto_correlation_simd::<_, 4>(order, signal, dest, weight_fn);
+        } else if order <= 8 {
+            weighted_auto_correlation_simd::<_, 8>(order, signal, dest, weight_fn);
+        } else if order <= 16 {
+            weighted_auto_correlation_simd::<_, 16>(order, signal, dest, weight_fn);
+        } else if order <= 32 {
+            weighted_auto_correlation_simd::<_, 32>(order, signal, dest, weight_fn);
+        } else {
+            assert!(order == 33);
+            // this is inefficient because there's only 1 element that doesn't fit
+            // to Simd with LANE==32. However, this is so far okay as it is rather
+            // rare to use order == 33 (i.e. lpc_order == 32).
+            weighted_auto_correlation_simd::<_, 64>(order, signal, dest, weight_fn);
+        }
     }
     #[cfg(feature = "fakesimd")]
     {
