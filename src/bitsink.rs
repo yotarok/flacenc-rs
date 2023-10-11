@@ -19,7 +19,7 @@ use std::convert::Infallible;
 /// Trait for the bit-addressible integers.
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
-/// covers: `u8`, `u16`, `u32`, and `u64`.
+/// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
 pub trait PackedBits: seal_packed_bits::Sealed {
     const PACKED_BITS: usize;
 }
@@ -32,7 +32,7 @@ impl<T: seal_packed_bits::Sealed> PackedBits for T {
 /// Trait for the signed integers that can be provided to bitsink.
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
-/// covers: `i8`, `i16`, `i32`, and `i64`.
+/// covers: [`i8`], [`i16`], [`i32`], and [`i64`].
 pub trait SignedBits: seal_signed_bits::Sealed {}
 
 impl<T: seal_signed_bits::Sealed> SignedBits for T {}
@@ -42,8 +42,8 @@ impl<T: seal_signed_bits::Sealed> SignedBits for T {}
 /// The encoder repeatedly generates arrays of code bits that are typically
 /// smaller than a byte (8 bits).  Type implementing `BitSink` is used to
 /// arrange those bits typically in bytes, and transfer them to the backend
-/// storage. `ByteVec` is a standard implementation of `BitSink` that stores
-/// code bits to a `Vec` of `u8`s.
+/// storage. [`ByteSink`] is a standard implementation of `BitSink` that stores
+/// code bits to a `Vec` of [`u8`]s.
 pub trait BitSink: Sized {
     /// Error type that may happen while writing bits to `BitSink`.
     type Error: std::error::Error;
@@ -235,10 +235,12 @@ pub trait BitSink: Sized {
     }
 }
 
-/// `BitSink` implementation based on `Vec` of bytes.
+/// `BitSink` implementation based on [`Vec`] of bytes.
 ///
-/// Since this type store code bits in `u8`s, the internal buffer can directly
-/// be written to, e.g. `std::io::Write` via `write_all` method.
+/// Since this type store code bits in [`u8`]s, the internal buffer can directly
+/// be written to, e.g. [`std::io::Write`] via [`write_all`] method.
+///
+/// [`write_all`]: std::io::Write::write_all
 #[derive(Clone, Debug)]
 pub struct ByteSink {
     bytes: Vec<u8>,

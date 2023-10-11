@@ -41,7 +41,9 @@ pub(crate) mod envvar_key {
 
 /// Constants related to par-mode (multithreading.)
 pub mod par {
-    /// The number of `FrameBuf`s for each worker thread in par-mode.
+    /// The number of [`FrameBuf`]s for each worker thread in par-mode.
+    ///
+    /// [`FrameBuf`]: crate::source::FrameBuf
     pub const FRAMEBUF_MULTIPLICITY: usize = 2;
 }
 

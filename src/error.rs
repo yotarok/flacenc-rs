@@ -33,7 +33,7 @@ where
 {
     /// A parameter in a component doesn't fit in a format.
     Range(RangeError),
-    /// I/O error propagated from `BitSink`.
+    /// I/O error propagated from [`BitSink`].
     Sink(S::Error),
 }
 
@@ -261,7 +261,9 @@ impl From<SourceError> for EncodeError {
     }
 }
 
-/// Struct that wraps errors from `Source`.
+/// Struct that wraps errors from [`Source`].
+///
+/// [`Source`]: crate::source::Source
 #[derive(Clone, Debug)]
 #[allow(clippy::module_name_repetitions)]
 pub struct SourceError {
@@ -308,7 +310,9 @@ impl SourceError {
         }
     }
 
-    /// Constructs `SourceError` from an `io::Error`.
+    /// Constructs `SourceError` from an [`io::Error`].
+    ///
+    /// [`io::Error`]: std::io::Error
     ///
     /// # Examples
     ///
@@ -328,7 +332,9 @@ impl SourceError {
         }
     }
 
-    /// Set path as the source name (informative when `Source` is file-based.)
+    /// Set path as the source name (informative when [`Source`] is file-based.)
+    ///
+    /// [`Source`]: crate::source::Source
     ///
     /// # Examples
     ///
@@ -350,13 +356,17 @@ impl SourceError {
     }
 }
 
-/// Enum covering possible error reasons from `Source`.
+/// Enum covering possible error reasons from [`Source`].
+///
+/// [`Source`]: crate::source::Source
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum SourceErrorReason {
     /// The source file cannot be opened.
     Open,
-    /// `FrameBuf` is not properly prepared.
+    /// [`FrameBuf`] is not properly prepared.
+    ///
+    /// [`FrameBuf`]: crate::source::FrameBuf
     InvalidBuffer,
     /// The content of file is not readable.
     InvalidFormat,
