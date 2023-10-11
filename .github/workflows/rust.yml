@@ -26,12 +26,12 @@ jobs:
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-targets --all-features
+        args: --verbose --all-features
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-targets --all-features
+        args: --verbose --all-features
         directory: flacenc-bin
 
   build_stable:
@@ -47,7 +47,7 @@ jobs:
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-targets --features fakesimd
+        args: --verbose --features fakesimd
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
@@ -74,8 +74,6 @@ jobs:
       with:
         command: clippy
         args: --tests -- -D warnings
-    - name: Generate docs (for doc syntax checking)
-      run: cargo doc
     - name: Code format check (CLI tools)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
@@ -93,3 +91,4 @@ jobs:
       with:
         command: clippy
         args: --tests --features "fakesimd" -- -D warnings
+
