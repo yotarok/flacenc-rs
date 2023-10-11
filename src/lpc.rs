@@ -18,6 +18,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use seq_macro::seq;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -546,11 +547,32 @@ impl LpcEstimator {
         }
     }
 
+    #[allow(clippy::identity_op)] // false-alarm when OFFSET == 0
     fn fill_windowed_signal(&mut self, signal: &[i32], window: &[f32]) {
-        self.windowed_signal.clear();
-        for (t, &v) in signal.iter().enumerate() {
-            self.windowed_signal.push(v as f32 * window[t]);
+        // We are still not sure how we should SIMD-ize this part.
+        // Probably, we will need an alternative of `Vec` that can ensure
+        // same alignment between `window` and `signal`.
+        // At the moment, we resort to loop-unrolling and compiler optimization.
+
+        debug_assert!(window.len() >= signal.len());
+
+        self.windowed_signal
+            .resize((signal.len() + 15) / 16 * 16, 0.0);
+
+        let mut t = 0;
+        let t_end = signal.len();
+
+        while t < t_end {
+            seq!(OFFSET in 0..16 {
+                self.windowed_signal[t + OFFSET] = if t + OFFSET < t_end {
+                    signal[t + OFFSET] as f32 * window[t + OFFSET]
+                } else {
+                    0.0
+                };
+            });
+            t += 16;
         }
+        self.windowed_signal.truncate(signal.len());
     }
 
     #[allow(clippy::range_plus_one)]
