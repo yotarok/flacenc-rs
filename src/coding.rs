@@ -551,14 +551,13 @@ fn encode_frame(
 /// # Examples
 ///
 /// ```
-/// # use flacenc::test_helper::*;
 /// # use flacenc::*;
 /// use flacenc::config;
 /// use flacenc::component::StreamInfo;
 /// use flacenc::source::{Context, FrameBuf, MemSource, Source};
 ///
 /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
-/// let signal = constant_plus_noise(signal_len * channels, 0, 10000);
+/// let signal = vec![0i32; signal_len * channels];
 /// let bits_per_sample = 16;
 ///
 /// let mut source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
@@ -605,13 +604,15 @@ pub fn encode_fixed_size_frame(
 /// # Examples
 ///
 /// ```
-/// # use flacenc::test_helper::*;
 /// # use flacenc::*;
+/// # #[path = "doctest_helper.rs"]
+/// # mod doctest_helper;
+/// # use doctest_helper::*;
 /// use flacenc::config;
 /// use flacenc::source::MemSource;
 ///
 /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
-/// let signal = constant_plus_noise(signal_len * channels, 0, 10000);
+/// let signal = vec![0i32; signal_len * channels];
 /// let bits_per_sample = 16;
 /// let source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
 /// let result = encode_with_fixed_block_size(

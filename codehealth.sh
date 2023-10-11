@@ -18,7 +18,7 @@ set -e
 rustup default nightly
 cargo rustc --release -- -D warnings
 cargo build --release
-cargo test --features "test_helper,experimental,par"
+cargo test --features "experimental,par"
 cargo fmt --check
 cargo clippy --tests -- -D warnings
 cargo doc
@@ -33,5 +33,5 @@ rustup default stable
 cargo rustc --release --features "fakesimd" -- -D warnings
 cargo build --release --features "fakesimd"
 cargo clippy --tests --features "fakesimd"
-cargo test --features "fakesimd,test_helper,experimental,par"
+cargo test --features "fakesimd,experimental,par"
 rustup default nightly
