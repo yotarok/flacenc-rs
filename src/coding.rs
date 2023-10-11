@@ -174,15 +174,19 @@ where
     simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
     dest.clear();
-    let mut v = simd::Simd::<T, LANES>::splat(0i8.into());
-    for slice in src.chunks(LANES) {
-        if slice.len() < LANES {
-            v.as_mut_array()[0..slice.len()].copy_from_slice(slice);
-            v.as_mut_array()[slice.len()..LANES].fill(0i8.into());
-        } else {
-            v.as_mut_array().copy_from_slice(slice);
-        }
+    let zero = 0i8.into();
+    let mut t = 0;
+    let t_end = src.len();
+    while t < t_end {
+        let v = simd::Simd::from_array(std::array::from_fn(|offset| {
+            if t + offset < t_end {
+                src[t + offset]
+            } else {
+                zero
+            }
+        }));
         dest.push(v);
+        t += LANES;
     }
 }
 
