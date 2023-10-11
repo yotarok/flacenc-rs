@@ -21,9 +21,9 @@ flacenc = { version = "0.2.0", feature = ["fakesimd"] }
 
 This crate is intended to be, and primarily developed with
 [`portable_simd`](https://github.com/rust-lang/project-portable-simd), and the
-`fakesimd` feature above is just for emulating this features in a stable
-toolchain. If you are using a nightly toolchain, use this crate without
-`fakesimd` as follows:
+`fakesimd` feature above is for emulating `portable_simd` in a stable toolchain.
+If you are using a nightly toolchain, use this crate without `fakesimd` as
+follows:
 
 ```toml
 flacenc = "0.2.0"
@@ -64,8 +64,8 @@ flac_stream.frame(0).unwrap().write(&mut sink);
 ```
 
 `samples` here is an interleaved sequence, e.g. in the case with stereo inputs,
-it is a sequence like `[left_t0, right_t0, left_t1, right_t1, ...]` where
-`{left|right}_tN` denotes the `N`-th sample from the left or right channel. All
+it is a sequence like `[left_0, right_0, left_1, right_1, ...]` where
+`{left|right}_N` denotes the `N`-th sample from the left or right channel. All
 samples are assumed to be in the range of `- 2.pow(bits_per_samples - 1) ..
 2.pow(bits_per_samples - 1)`, i.e. if `bits_per_samples == 16`, `samples[t]`
 must be `-32768 <= samples[t] <= 32767`.

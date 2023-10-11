@@ -159,7 +159,7 @@ impl Stream {
         }
     }
 
-    /// Returns a reference to `StreamInfo` associated with `self`.
+    /// Returns a reference to [`StreamInfo`] associated with `self`.
     ///
     /// # Panics
     ///
@@ -182,7 +182,7 @@ impl Stream {
         }
     }
 
-    /// Returns a mutable reference to `StreamInfo` associated with `self`.
+    /// Returns a mutable reference to [`StreamInfo`] associated with `self`.
     ///
     /// # Panics
     ///
@@ -197,7 +197,7 @@ impl Stream {
         }
     }
 
-    /// Appends `Frame` to this `Stream` and updates `StreamInfo`.
+    /// Appends [`Frame`] to this `Stream` and updates [`StreamInfo`].
     ///
     /// This also updates frame statistics in `stream_info` but does not update
     /// MD5 checksums and the total number of samples.  For updating those,
@@ -224,7 +224,7 @@ impl Stream {
         self.frames.push(frame);
     }
 
-    /// Returns `Frame` for the given frame number.
+    /// Returns [`Frame`] for the given frame number.
     ///
     /// # Examples
     ///
@@ -242,7 +242,7 @@ impl Stream {
         self.frames.get(n)
     }
 
-    /// Returns the number of `Frame`s in the stream.
+    /// Returns the number of [`Frame`]s in the stream.
     ///
     /// # Examples
     ///
@@ -257,7 +257,7 @@ impl Stream {
         self.frames.len()
     }
 
-    /// Returns `Frame`s as a slice.
+    /// Returns [`Frame`]s as a slice.
     #[allow(dead_code)]
     pub(crate) fn frames(&self) -> &[Frame] {
         &self.frames
@@ -349,7 +349,7 @@ enum MetadataBlockType {
 #[derive(Clone, Debug)]
 /// Enum that covers all variants of `METADATA_BLOCK`.
 ///
-/// Currently only `StreamInfo` is covered in this enum.
+/// Currently only [`StreamInfo`] is covered in this enum.
 #[non_exhaustive]
 enum MetadataBlockData {
     StreamInfo(StreamInfo),
@@ -390,12 +390,12 @@ impl StreamInfo {
     ///
     /// For unspecified fields, the following default values are used:
     ///
-    /// -  `min_block_size`: `u16::MAX`,
+    /// -  `min_block_size`: [`u16::MAX`],
     /// -  `max_block_size`: `0`,
-    /// -  `min_frame_size`: `u32::MAX`,
+    /// -  `min_frame_size`: [`u32::MAX`],
     /// -  `max_frame_size`: `0`,
     /// -  `total_samples`: `0`,
-    /// -  `md5_digest`: all-zero (indicating verification disabled.)
+    /// -  `md5_digest`: `[0u8; 16]` (indicating verification disabled.)
     ///
     /// # Examples
     ///
@@ -583,10 +583,13 @@ impl StreamInfo {
 
     /// Sets `total_samples` field.
     ///
-    /// `total_samples` is updated during the encoding. However, since `Frame`
+    /// `total_samples` is updated during the encoding. However, since [`Frame`]
     /// only knows its frame size, the effective number of samples is not
-    /// visible after paddings.  Similar to `set_md5_digest`, this field should
-    /// be finalized by propagating information from `Context`.
+    /// visible after paddings.  Similar to [`set_md5_digest`], this
+    /// field should be finalized by propagating information from [`Context`].
+    ///
+    /// [`set_md5_digest`]: StreamInfo::set_md5_digest
+    /// [`Context`]: crate::source::Context
     ///
     /// # Examples
     ///
@@ -629,9 +632,12 @@ impl StreamInfo {
 
     /// Resets MD5 digest value by the given slice.
     ///
-    /// MD5 computation is not performed in in `update_frame_info`, and is
-    /// expected to be done externally (by `source::Context`). This function
-    /// is called to set MD5 bytes after we read all input samples.
+    /// MD5 computation is not performed in in [`update_frame_info`], and is
+    /// expected to be done externally (by [`Context`]). This function is called
+    /// to set MD5 bytes after we read all input samples.
+    ///
+    /// [`Context`]: crate::source::Context
+    /// [`update_frame_info`]: StreamInfo::update_frame_info
     ///
     /// # Examples
     ///
@@ -716,7 +722,7 @@ impl Frame {
         }
     }
 
-    /// Constructs Frame from `FrameHeader` and `SubFrame`s.
+    /// Constructs Frame from [`FrameHeader`] and [`SubFrame`]s.
     pub(crate) fn from_parts<I>(header: FrameHeader, subframes: I) -> Self
     where
         I: Iterator<Item = SubFrame>,
@@ -757,7 +763,7 @@ impl Frame {
             .expect("Exceeded maximum number of channels.");
     }
 
-    /// Returns `FrameHeader` of this frame.
+    /// Returns a reference to [`FrameHeader`] of this frame.
     ///
     /// # Examples
     ///
@@ -772,12 +778,12 @@ impl Frame {
         &self.header
     }
 
-    /// Returns a mutable reference to `FrameHeader` of this frame.
+    /// Returns a mutable reference to [`FrameHeader`] of this frame.
     pub(crate) fn header_mut(&mut self) -> &mut FrameHeader {
         &mut self.header
     }
 
-    /// Returns `SubFrame` for the given channel.
+    /// Returns [`SubFrame`] for the given channel.
     ///
     /// # Examples
     ///
@@ -796,7 +802,7 @@ impl Frame {
         self.subframes.get(ch)
     }
 
-    /// Returns the number of `SubFrame`s in this `Frame`.
+    /// Returns the number of [`SubFrame`]s in this `Frame`.
     ///
     /// # Examples
     ///
@@ -1046,7 +1052,7 @@ impl FrameHeader {
         self.channel_assignment = channel_assignment;
     }
 
-    /// Resets `sample_size` field from `StreamInfo`.
+    /// Resets `sample_size` field using [`StreamInfo`].
     ///
     /// This field must be specified for Claxon compatibility.
     pub(crate) fn reset_sample_size(&mut self, stream_info: &StreamInfo) {
@@ -1079,7 +1085,7 @@ impl FrameHeader {
         self.block_size as usize
     }
 
-    /// Returns `ChannelAssignment` of this frame.
+    /// Returns [`ChannelAssignment`] of this frame.
     ///
     /// # Examples
     ///
@@ -1164,13 +1170,13 @@ impl BitRepr for FrameHeader {
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubFrame {
-    /// This variant contains `Constant` sub-frame.
+    /// This variant contains [`Constant`] sub-frame.
     Constant(Constant),
-    /// This variant contains `Verbatim` sub-frame.
+    /// This variant contains [`Verbatim`] sub-frame.
     Verbatim(Verbatim),
-    /// This variant contains `FixedLpc` sub-frame.
+    /// This variant contains [`FixedLpc`] sub-frame.
     FixedLpc(FixedLpc),
-    /// This variant contains `Lpc` sub-frame.
+    /// This variant contains [`Lpc]` sub-frame.
     Lpc(Lpc),
 }
 
@@ -1345,7 +1351,7 @@ impl FixedLpc {
         &self.warm_up
     }
 
-    /// Returns a reference to the internal `Residual` component.
+    /// Returns a reference to the internal [`Residual`] component.
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
@@ -1419,7 +1425,7 @@ impl Lpc {
         &self.parameters
     }
 
-    /// Returns a reference to the internal `Residual` component.
+    /// Returns a reference to the internal [`Residual`] component.
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
@@ -1565,7 +1571,7 @@ impl BitRepr for Residual {
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
 
-    /// Writes `Residual` to the `BitSink`
+    /// Writes `Residual` to the [`BitSink`].
     ///
     /// This is the most inner-loop of the output part of the encoder, so
     /// computational efficiecy is prioritized more than readability.

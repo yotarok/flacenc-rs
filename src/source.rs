@@ -76,11 +76,6 @@ fn deinterleave_ch1(interleaved: &[i32], dest: &mut [i32]) {
 }
 
 /// Deinterleaves channel interleaved samples to the channel-major order.
-///
-/// # Examples
-///
-/// ```
-/// ```
 pub(crate) fn deinterleave(interleaved: &[i32], channels: usize, dest: &mut [i32]) {
     seq!(CH in 1..=8 {
         if channels == CH {
@@ -118,7 +113,7 @@ impl FrameBuf {
         }
     }
 
-    /// Returns the size in the number of inter-channel samples.
+    /// Returns the size in the number of per-channel samples.
     ///
     /// # Examples
     ///
@@ -190,11 +185,11 @@ impl FrameBuf {
     }
 }
 
-/// Context information being updated while reading from `Source`.
+/// Context information being updated while reading from [`Source`].
 ///
 /// Some information such as MD5 of the input waveform is better handled in
-/// `Source`-side rather than inside of encoder algorithms. `Context` is for
-/// handling such context variables.
+/// [`Source`]-side rather than via frame buffers. `Context` is for handling
+/// such context variables.
 #[derive(Clone)]
 pub struct Context {
     md5: md5::Context,
@@ -249,7 +244,7 @@ impl Context {
 
     /// Updates the context with the read samples.
     ///
-    /// This function is typically called from `Source::read_samples`.
+    /// This function is intended to be called from [`Source::read_samples`].
     ///
     /// # Errors
     ///
@@ -276,8 +271,10 @@ impl Context {
 
     /// Updates the context with the read bytes.
     ///
-    /// This function is a short-cut version of `update` that can be used when
-    /// `Source` already have a WAV-file-like sample buffer.
+    /// This function is a short-cut version of [`update`] that can be used when
+    /// [`Source`] already have a WAV-file-like sample buffer.
+    ///
+    /// [`update`]: Self::update
     ///
     /// # Errors
     ///
@@ -354,7 +351,7 @@ impl Context {
         self.md5.clone().compute().into()
     }
 
-    /// Returns the number of samples consumed.
+    /// Returns the number of samples loaded.
     ///
     /// # Examples
     ///
@@ -393,11 +390,24 @@ pub trait Source {
     fn bits_per_sample(&self) -> usize;
     /// Returns sampling rate in Hz.
     fn sample_rate(&self) -> usize;
-    /// Reads samples to `FrameBuf`.
+    /// Reads samples to [`FrameBuf`].
+    ///
+    /// Typical implementation of this function must do two things:
+    ///
+    /// 1.  Call [`dest.fill_from_interleaved`] for loading samples to
+    ///     `FrameBuf`.
+    /// 2.  Either [`context.update`] or [`context.update_with_le_bytes`] for
+    ///     updating the load context information.
+    ///
+    /// and returns the number of per-channel samples read.
+    ///
+    /// [`dest.fill_from_interleaved`]: FrameBuf::fill_from_interleaved
+    /// [`context.update`]: Context::update
+    /// [`context.update_with_le_bytes]: Context::update_with_le_bytes
     ///
     /// # Errors
     ///
-    /// This function can return `SourceError` when read is failed.
+    /// This function can return [`SourceError`] when read is failed.
     fn read_samples(
         &mut self,
         dest: &mut FrameBuf,
@@ -409,24 +419,24 @@ pub trait Source {
     }
 }
 
-/// Trait representing seekable variant of `Source`.
+/// Trait representing seekable variant of [`Source`].
 ///
 /// This trait is not currently used in the encoder, but some encoding algorithm
-/// may require that the source is seekable.
+/// in future may require that a source is seekable.
 pub trait Seekable: Source {
     /// Returns `true` if the source contains no samples.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Gets the length in inter-channel samples
+    /// Returns the length in per-channel samples
     fn len(&self) -> usize;
 
     /// Seeks to the specified offset from the beginning.
     ///
     /// # Errors
     ///
-    /// This function can return `SourceError` when read is failed.
+    /// This function can return [`SourceError`] when read is failed.
     fn read_samples_from(
         &mut self,
         offset: usize,

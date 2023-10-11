@@ -540,7 +540,7 @@ fn encode_frame(
     ret
 }
 
-/// Encodes `FrameBuf` to `Frame`.
+/// Encodes [`FrameBuf`] to [`Frame`].
 ///
 /// # Errors
 ///
@@ -587,11 +587,16 @@ pub fn encode_fixed_size_frame(
     Ok(ret)
 }
 
-/// Encoder entry function for fixed block-size encoding.
+/// Encodes [`Source`] to [`Stream`].
+///
+/// This is the main entry point of this library crate.
 ///
 /// # Errors
 ///
-/// This function returns `SourceError` when it failed to read samples from `src`.
+/// This function returns [`EncodeError`] that contains a [`SourceError`] when
+/// it failed to read samples from `src`.
+///
+/// [`SourceError`]: crate::error::SourceError
 ///
 /// # Panics
 ///
