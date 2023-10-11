@@ -108,13 +108,34 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
         .expect("Failed to write a bitstream to the file.");
 }
 
+/// Implementation for each bytes-per-sample (BPS) setting.
+fn bytes_to_ints_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
+    let mut t = 0;
+    let mut n = 0;
+    let t_end = bytes.len();
+    while t < t_end {
+        dest[n] = i32::from_le_bytes(std::array::from_fn(|i| {
+            if i < (4 - BPS) {
+                0u8
+            } else {
+                bytes[t + i - (4 - BPS)]
+            }
+        })) >> ((4 - BPS) * 8);
+        n += 1;
+        t += BPS;
+    }
+}
+
 /// Converts a byte-sequence of little-endian integers to integers (i32).
 fn bytes_to_ints(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize) {
-    let bitshift = bytes_per_sample * 8;
-    let pad = 4 - bytes_per_sample;
-    for (vals, dest_p) in bytes.chunks(bytes_per_sample).zip(dest.iter_mut()) {
-        let bs = std::array::from_fn(|n| if n < pad { 0 } else { vals[n - pad] });
-        *dest_p = i32::from_le_bytes(bs) >> bitshift;
+    if bytes_per_sample == 2 {
+        bytes_to_ints_impl::<2>(bytes, dest);
+    } else if bytes_per_sample == 3 {
+        bytes_to_ints_impl::<3>(bytes, dest);
+    } else if bytes_per_sample == 1 {
+        bytes_to_ints_impl::<1>(bytes, dest);
+    } else {
+        panic!("bytes_per_sample={bytes_per_sample} is not supported.");
     }
 }
 
