@@ -1565,6 +1565,10 @@ impl BitRepr for Residual {
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
 
+    /// Writes `Residual` to the `BitSink`
+    ///
+    /// This is the most inner-loop of the output part of the encoder, so
+    /// computational efficiecy is prioritized more than readability.
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
         // The number of partitions with 00 (indicating 4-bit mode) prepended.
         dest.write_lsbs(self.partition_order, 6)
@@ -1576,8 +1580,13 @@ impl BitRepr for Residual {
         // expanded buffer that has the same length as `self.quotients` and
         // `self.remainders`, and do serialization with an unrolled loop for
         // encouraging auto-vectorization.
-        for p in 0..nparts {
-            dest.write_lsbs(self.rice_params[p], 4)
+
+        // unforunatelly, the overhead due to the use of iterators is visible
+        // here. so we back-off to integer-based loops.
+        let mut p = 0;
+        while p < nparts {
+            let rice_p = self.rice_params[p];
+            dest.write_lsbs(rice_p, 4)
                 .map_err(OutputError::<S>::from_sink)?;
             let start = std::cmp::max(
                 self.warmup_length,
@@ -1585,14 +1594,18 @@ impl BitRepr for Residual {
             );
             let end = ((p + 1) * self.block_size) >> self.partition_order;
 
-            let startbit = 1 << self.rice_params[p];
-            for t in start..end {
+            let startbit: u32 = 1u32 << rice_p;
+            let rice_p_plus_1 = rice_p + 1;
+            let mut t = start;
+            while t < end {
                 let q = self.quotients[t] as usize;
                 dest.write_zeros(q).map_err(OutputError::<S>::from_sink)?;
                 let r_plus_startbit = self.remainders[t] | startbit;
-                dest.write_lsbs(r_plus_startbit, self.rice_params[p] as usize + 1)
+                dest.write_lsbs(r_plus_startbit, rice_p_plus_1 as usize)
                     .map_err(OutputError::<S>::from_sink)?;
+                t += 1;
             }
+            p += 1;
         }
         Ok(())
     }
