@@ -67,8 +67,12 @@ pub(crate) mod par;
 pub(crate) mod rice;
 pub mod source;
 
-#[cfg(any(test, doctest, feature = "test_helper"))]
+#[cfg(test)]
 pub mod test_helper;
+
+// this is for including "doctest_helper.rs" in lintting and auto-formating.
+#[cfg(feature = "cargo-clippy")]
+mod doctest_helper;
 
 #[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;

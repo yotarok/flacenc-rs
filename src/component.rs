@@ -208,7 +208,9 @@ impl Stream {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     ///
@@ -230,7 +232,9 @@ impl Stream {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
     /// let stream = make_example_stream(signal_len, block_size, channels, sample_rate);
     /// let frame0 = stream.frame(0).expect("0-th frame is not found.");
@@ -248,7 +252,9 @@ impl Stream {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
     /// let stream = make_example_stream(signal_len, block_size, channels, sample_rate);
     /// assert_eq!(stream.frame_count(), 200);
@@ -427,7 +433,9 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
     /// let mut info = StreamInfo::new(16000, 2, 16);
@@ -459,7 +467,9 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let mut info = StreamInfo::new(16000, 2, 16);
     ///
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
@@ -492,7 +502,9 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let mut info = StreamInfo::new(16000, 2, 16);
     ///
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
@@ -564,7 +576,9 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
     /// let mut info = StreamInfo::new(16000, 2, 16);
@@ -612,7 +626,9 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
     /// let mut info = StreamInfo::new(16000, 2, 16);
@@ -700,7 +716,9 @@ impl Frame {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     ///
@@ -740,7 +758,9 @@ impl Frame {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     ///
@@ -769,7 +789,9 @@ impl Frame {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     /// assert_eq!(frame.header().block_size(), 160);
@@ -789,7 +811,9 @@ impl Frame {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     /// for ch in 0..frame.subframe_count() {
@@ -808,7 +832,9 @@ impl Frame {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     /// for ch in 0..frame.subframe_count() {
@@ -828,7 +854,9 @@ impl Frame {
     /// ```
     /// # use flacenc::bitsink::*;
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let mut frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     /// let frame_cloned = frame.clone();
@@ -1028,7 +1056,9 @@ impl FrameHeader {
     /// ```
     /// # use flacenc::bitsink::*;
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let mut header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
     ///
@@ -1075,7 +1105,9 @@ impl FrameHeader {
     /// ```
     /// # use flacenc::bitsink::*;
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
     ///
@@ -1092,7 +1124,9 @@ impl FrameHeader {
     /// ```
     /// # use flacenc::bitsink::*;
     /// # use flacenc::component::*;
-    /// # use flacenc::test_helper::*;
+    /// # #[path = "doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 1, 16000);
     /// let header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
     ///

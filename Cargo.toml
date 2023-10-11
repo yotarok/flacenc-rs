@@ -20,7 +20,6 @@ experimental = ["dep:nalgebra"]
 par = ["dep:crossbeam-channel"]
 fakesimd = []
 mimalloc = ["dep:mimalloc"]
-test_helper = ["dep:claxon", "dep:once_cell", "dep:rand", "dep:tempfile"]
 
 [dependencies]
 crc = "2.1"
@@ -33,15 +32,6 @@ num-traits = "0.2"
 seq-macro = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.5"
-
-# Followings are pasted from "dev-dependencies" for "test_helper" feature,
-# that enables "test_helper" submodule in a release build. This is done for
-# doctest where "cargo test --doc" build the crate to be tested with a normal
-# config flags. There must be a better way to avoid this issue.
-claxon = { version = "0.4.3", optional = true }
-once_cell = { version = "1.10.0", optional = true }
-rand = { version = "0.8.5", optional = true }
-tempfile = { version = "3", optional = true }
 
 [dev-dependencies]
 bitvec = "1.0.0"
