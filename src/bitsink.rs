@@ -199,6 +199,40 @@ pub trait BitSink: Sized {
         let shifted = (val << (64 - bits_per_sample)) as u64;
         self.write_msbs(shifted, bits_per_sample)
     }
+
+    /// Writes `n`-bits of zeros.
+    ///
+    /// A default implementation using `write_msbs` is provided. An impl can
+    /// provide a faster short-cut for writing zeros.
+    ///
+    /// # Errors
+    ///
+    /// It can emit errors describing backend issues.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{ByteSink, BitSink};
+    ///
+    /// let mut sink = ByteSink::new();
+    /// sink.write_msbs(0xF0u8, 3);
+    /// assert_eq!(sink.to_bitstring(), "111*****");
+    ///
+    /// sink.write_zeros(6);
+    /// assert_eq!(sink.to_bitstring(), "11100000_0*******");
+    /// # Ok(())}
+    /// ```
+    #[inline]
+    fn write_zeros(&mut self, n: usize) -> Result<(), Self::Error> {
+        let mut n = n;
+        while n > 64 {
+            self.write(0u64)?;
+            n -= 64;
+        }
+        self.write_msbs(0u64, n)?;
+        Ok(())
+    }
 }
 
 /// `BitSink` implementation based on `Vec` of bytes.
@@ -464,6 +498,23 @@ impl BitSink for ByteSink {
             return Ok(());
         }
         self.write_msbs(val << (T::PACKED_BITS - n), n)
+    }
+
+    #[inline]
+    fn write_zeros(&mut self, n: usize) -> Result<(), Self::Error> {
+        let pad = self.paddings();
+        if n <= pad {
+            self.bitlength += n;
+            return Ok(());
+        }
+        self.bitlength += pad;
+        let n = n - pad;
+
+        let bytes = (n + 7) / 8;
+        self.bytes.resize(self.bytes.len() + bytes, 0u8);
+        self.bitlength += n;
+
+        Ok(())
     }
 }
 

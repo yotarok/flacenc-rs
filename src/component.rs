@@ -1570,6 +1570,12 @@ impl BitRepr for Residual {
         dest.write_lsbs(self.partition_order, 6)
             .map_err(OutputError::<S>::from_sink)?;
         let nparts = 1usize << self.partition_order as usize;
+
+        // NOTE:
+        // It might be an option to store `self.rice_params` first to an
+        // expanded buffer that has the same length as `self.quotients` and
+        // `self.remainders`, and do serialization with an unrolled loop for
+        // encouraging auto-vectorization.
         for p in 0..nparts {
             dest.write_lsbs(self.rice_params[p], 4)
                 .map_err(OutputError::<S>::from_sink)?;
@@ -1578,15 +1584,13 @@ impl BitRepr for Residual {
                 (p * self.block_size) >> self.partition_order,
             );
             let end = ((p + 1) * self.block_size) >> self.partition_order;
+
+            let startbit = 1 << self.rice_params[p];
             for t in start..end {
-                let mut q = self.quotients[t] as usize;
-                while q >= 64 {
-                    dest.write(0u64).map_err(OutputError::<S>::from_sink)?;
-                    q -= 64;
-                }
-                dest.write_lsbs(1u64, q + 1)
-                    .map_err(OutputError::<S>::from_sink)?;
-                dest.write_lsbs(self.remainders[t], self.rice_params[p] as usize)
+                let q = self.quotients[t] as usize;
+                dest.write_zeros(q).map_err(OutputError::<S>::from_sink)?;
+                let r_plus_startbit = self.remainders[t] | startbit;
+                dest.write_lsbs(r_plus_startbit, self.rice_params[p] as usize + 1)
                     .map_err(OutputError::<S>::from_sink)?;
             }
         }
