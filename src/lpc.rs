@@ -178,7 +178,7 @@ impl QuantizedParameters {
             .rsplitn(2, |&x| x != 0)
             .next()
             .map_or(0, <[i32]>::len);
-        let order = q_coefs.len() - tail_zeros;
+        let order = std::cmp::max(1, q_coefs.len() - tail_zeros);
 
         let coefs_v = simd::i16x32::from_array(std::array::from_fn(|i| {
             if i < q_coefs.len() {

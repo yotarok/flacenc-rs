@@ -231,6 +231,9 @@ impl Verify for Qlpc {
                 &format!("Must not exceed {MAX_LPC_ORDER}"),
             ));
         }
+        if self.lpc_order == 0 {
+            return Err(VerifyError::new("lpc_order", "Must not be zero"));
+        }
         if self.quant_precision > QLPC_MAX_PRECISION {
             return Err(VerifyError::new(
                 "quant_precision",
