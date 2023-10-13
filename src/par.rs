@@ -30,6 +30,7 @@ use super::constant::panic_msg;
 use super::error::EncodeError;
 use super::error::SourceError;
 use super::source::Context;
+use super::source::Fill;
 use super::source::FrameBuf;
 use super::source::Source;
 
@@ -108,61 +109,6 @@ impl ParFrameBuf {
         }
     }
 
-    /// Reads from source, feeds samples to buffers, and refreshes todo list.
-    ///
-    /// This function is intended to be called from the main (single) thread.
-    ///
-    /// # Errors
-    ///
-    /// It propagates errors from `Source::read_samples`.
-    pub fn feed<T: Source>(
-        &self,
-        src: T,
-        context: &mut Context,
-        workers: usize,
-    ) -> Result<FeedStats, SourceError> {
-        let mut src = src;
-        let mut frame_count = 0usize;
-        let mut worker_starvation_count = 0usize;
-
-        'feed: loop {
-            let bufid = self
-                .refill_queue
-                .1
-                .recv()
-                .expect(panic_msg::MPMC_RECV_FAILED);
-
-            {
-                let mut numbuf = self.buffers[bufid]
-                    .lock()
-                    .expect(panic_msg::MUTEX_LOCK_FAILED);
-                let read_samples = src.read_samples(&mut numbuf.framebuf, context)?;
-                if read_samples == 0 {
-                    break 'feed;
-                }
-                numbuf.frame_number = context.current_frame_number();
-            }
-            if self.encode_queue.0.is_empty() {
-                worker_starvation_count += 1;
-            }
-            frame_count += 1;
-            self.encode_queue
-                .0
-                .send(Some(bufid))
-                .expect(panic_msg::MPMC_SEND_FAILED);
-        }
-        for _i in 0..workers {
-            self.encode_queue
-                .0
-                .send(None)
-                .expect(panic_msg::MPMC_SEND_FAILED);
-        }
-        Ok(FeedStats {
-            frame_count,
-            worker_starvation_count,
-        })
-    }
-
     /// Gets the id for `FrameBuf` to be encoded first.
     ///
     /// If this returns None, workder thread must immediately stop.
@@ -190,6 +136,82 @@ impl ParFrameBuf {
             .send(bufid)
             .expect(panic_msg::MPMC_SEND_FAILED);
     }
+
+    #[inline]
+    pub fn recv_refill_request(&self) -> usize {
+        self.refill_queue
+            .1
+            .recv()
+            .expect(panic_msg::MPMC_RECV_FAILED)
+    }
+
+    #[inline]
+    pub fn enqueue_encode(&self, bufid: usize) -> bool {
+        let starved = self.encode_queue.0.is_empty();
+        self.encode_queue
+            .0
+            .send(Some(bufid))
+            .expect(panic_msg::MPMC_SEND_FAILED);
+        starved
+    }
+
+    #[inline]
+    pub fn request_stop(&self, workers: usize) {
+        for _i in 0..workers {
+            self.encode_queue
+                .0
+                .send(None)
+                .expect(panic_msg::MPMC_SEND_FAILED);
+        }
+    }
+}
+
+/// Reads from source, feeds samples to buffers, and enqueues.
+///
+/// This function is intended to be called from the main (single) thread. This
+/// function consumes the initial context value (`context`) and returns the
+/// updated context.
+///
+/// # Errors
+///
+/// It propagates errors from `Source::read_samples`.
+fn feed_fixed_block_size<T: Source, C: Fill>(
+    src: T,
+    block_size: usize,
+    workers: usize,
+    parbuf: &ParFrameBuf,
+    mut context: C,
+) -> Result<(FeedStats, C), SourceError> {
+    let mut src = src;
+    let mut frame_count = 0usize;
+    let mut worker_starvation_count = 0usize;
+
+    'feed: loop {
+        let bufid = parbuf.recv_refill_request();
+        {
+            let mut numbuf = parbuf.buffers[bufid]
+                .lock()
+                .expect(panic_msg::MUTEX_LOCK_FAILED);
+            let mut framebuf_and_ctx = (&mut numbuf.framebuf, &mut context);
+            let read_samples = src.read_samples(block_size, &mut framebuf_and_ctx)?;
+            if read_samples == 0 {
+                break 'feed;
+            }
+            numbuf.frame_number = Some(frame_count);
+        }
+        frame_count += 1;
+        if parbuf.enqueue_encode(bufid) {
+            worker_starvation_count += 1;
+        }
+    }
+    parbuf.request_stop(workers);
+    Ok((
+        FeedStats {
+            frame_count,
+            worker_starvation_count,
+        },
+        context,
+    ))
 }
 
 /// Determines worker counts considering various cues.
@@ -297,8 +319,9 @@ pub fn encode_with_fixed_block_size<T: Source>(
         .collect();
 
     let src_len_hint = src.len_hint();
-    let mut context = Context::new(src.bits_per_sample(), src.channels());
-    let feed_stats = parbuf.feed(src, &mut context, worker_count)?;
+    let context = Context::new(src.bits_per_sample(), src.channels(), block_size);
+    let (feed_stats, context) =
+        feed_fixed_block_size(src, block_size, worker_count, &parbuf, context)?;
 
     if let Ok(path_str) = std::env::var(envvar_key::RUNSTATS_OUTPUT) {
         let run_stat = ParRunStats::new(worker_count, feed_stats);
@@ -372,8 +395,9 @@ mod tests {
                     }
                 }
                 let src = source::MemSource::from_samples(&signal, channels, 16, 16000);
-                let mut ctx = Context::new(16, channels);
-                pfb.feed(src, &mut ctx, workers).expect("Feeding failed");
+                let mut ctx = Context::new(16, channels, block_size);
+                feed_fixed_block_size(src, block_size, workers, &pfb, &mut ctx)
+                    .expect("Feeding failed");
             });
         }
         thread::sleep(std::time::Duration::from_secs_f32(0.1));

@@ -219,9 +219,6 @@ impl Stream {
     /// assert_eq!(stream.frame_count(), 1);
     /// ```
     pub fn add_frame(&mut self, frame: Frame) {
-        // TODO: Add example section to the doc. Currently, it's not
-        // straightforward as we don't have a public method for generating
-        // a single `Frame` except for encoders.
         self.stream_info_mut().update_frame_info(&frame);
         self.frames.push(frame);
     }
@@ -609,10 +606,11 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
+    /// # use flacenc::source::{Context, Fill};
     /// # use flacenc::*;
-    /// let mut ctx = source::Context::new(16, 2);
+    /// let mut ctx = Context::new(16, 2, 123);
     /// let mut info = StreamInfo::new(16000, 2, 16);
-    /// ctx.update(&[0x0000_0FFFi32; 246], 123);
+    /// ctx.fill_interleaved(&[0x0000_0FFFi32; 246]);
     /// info.set_total_samples(ctx.total_samples());
     /// assert_ne!(info.total_samples(), 246);
     /// ```
@@ -660,10 +658,11 @@ impl StreamInfo {
     /// ```
     /// # use flacenc::component::*;
     /// # use flacenc::*;
-    /// let mut ctx = source::Context::new(16, 2);
+    /// # use flacenc::source::{Context, Fill};
+    /// let mut ctx = Context::new(16, 2, 128);
     /// let mut info = StreamInfo::new(16000, 2, 16);
     /// assert_eq!(info.md5_digest(), &[0x00u8; 16]);
-    /// ctx.update(&[0x0000_0FFFi32; 256], 128);
+    /// ctx.fill_interleaved(&[0x0000_0FFFi32; 256]);
     /// info.set_md5_digest(&ctx.md5_digest());
     /// assert_ne!(info.md5_digest(), &[0x00u8; 16]);
     /// ```

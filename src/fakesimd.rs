@@ -99,6 +99,7 @@ impl SimdElement for f32 {
 
 pub trait SupportedLaneCount {}
 pub struct LaneCount<const LANES: usize>();
+impl SupportedLaneCount for LaneCount<4> {}
 impl SupportedLaneCount for LaneCount<8> {}
 impl SupportedLaneCount for LaneCount<16> {}
 impl SupportedLaneCount for LaneCount<32> {}
@@ -144,6 +145,10 @@ pub trait SimdOrd {
 // ===
 // TYPE ALIASES
 // ===
+#[allow(non_camel_case_types)]
+#[allow(dead_code)] // only for tests currently.
+pub type i16x4 = Simd<i16, 4>;
+
 #[allow(non_camel_case_types)]
 pub type i16x32 = Simd<i16, 32>;
 
