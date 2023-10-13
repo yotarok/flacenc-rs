@@ -53,6 +53,7 @@
     clippy::wildcard_enum_match_arm
 )]
 
+pub mod arrayutils;
 pub mod bitsink;
 pub(crate) mod coding;
 pub mod component;

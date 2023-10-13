@@ -65,8 +65,7 @@ use flacenc::error::EncodeError;
 use flacenc::error::SourceError;
 use flacenc::error::SourceErrorReason;
 use flacenc::error::Verify;
-use flacenc::source::Context;
-use flacenc::source::FrameBuf;
+use flacenc::source::Fill;
 use flacenc::source::Source;
 
 /// FLAC encoder.
@@ -108,37 +107,6 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
         .expect("Failed to write a bitstream to the file.");
 }
 
-/// Implementation for each bytes-per-sample (BPS) setting.
-fn bytes_to_ints_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
-    let mut t = 0;
-    let mut n = 0;
-    let t_end = bytes.len();
-    while t < t_end {
-        dest[n] = i32::from_le_bytes(std::array::from_fn(|i| {
-            if i < (4 - BPS) {
-                0u8
-            } else {
-                bytes[t + i - (4 - BPS)]
-            }
-        })) >> ((4 - BPS) * 8);
-        n += 1;
-        t += BPS;
-    }
-}
-
-/// Converts a byte-sequence of little-endian integers to integers (i32).
-fn bytes_to_ints(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize) {
-    if bytes_per_sample == 2 {
-        bytes_to_ints_impl::<2>(bytes, dest);
-    } else if bytes_per_sample == 3 {
-        bytes_to_ints_impl::<3>(bytes, dest);
-    } else if bytes_per_sample == 1 {
-        bytes_to_ints_impl::<1>(bytes, dest);
-    } else {
-        panic!("bytes_per_sample={bytes_per_sample} is not supported.");
-    }
-}
-
 /// An example of `flacenc::source::Source` based on `hound::WavReader`.
 ///
 /// To mitigate I/O overhead due to sample-by-sample retrieval in hound API,
@@ -150,7 +118,6 @@ struct HoundSource {
     duration: usize,
     reader: BufReader<File>,
     bytes_per_sample: usize,
-    buf: Vec<i32>,
     bytebuf: Vec<u8>,
     current_offset: usize,
 }
@@ -175,7 +142,6 @@ impl HoundSource {
                 duration,
                 reader: reader.into_inner(),
                 bytes_per_sample: (spec.bits_per_sample as usize + 7) / 8,
-                buf: Vec::new(),
                 bytebuf: Vec::new(),
                 current_offset: 0,
             })
@@ -204,31 +170,25 @@ impl Source for HoundSource {
     }
 
     #[inline]
-    fn read_samples(
+    fn read_samples<F: Fill>(
         &mut self,
-        dest: &mut FrameBuf,
-        context: &mut Context,
+        block_size: usize,
+        dest: &mut F,
     ) -> Result<usize, SourceError> {
-        self.buf.clear();
         self.bytebuf.clear();
-        let to_read = std::cmp::min(self.duration - self.current_offset, dest.size());
-        let to_read_bytes = to_read * self.bytes_per_sample * self.channels();
+        let to_read = std::cmp::min(self.duration - self.current_offset, block_size);
 
+        let to_read_bytes = to_read * self.bytes_per_sample * self.channels();
         self.bytebuf.resize(to_read_bytes, 0u8);
         let read_bytes = self
             .reader
             .read(&mut self.bytebuf)
             .map_err(SourceError::from_io_error)?;
+
         self.current_offset += to_read;
+        dest.fill_le_bytes(&self.bytebuf, self.bytes_per_sample)?;
 
-        self.buf.resize(read_bytes / self.bytes_per_sample, 0);
-        bytes_to_ints(&self.bytebuf, &mut self.buf, self.bytes_per_sample);
-
-        dest.fill_from_interleaved(&self.buf);
-        if !self.buf.is_empty() {
-            context.update_with_le_bytes(&self.bytebuf, dest.size())?;
-        }
-        Ok(self.buf.len() / self.channels())
+        Ok(read_bytes / self.channels() / self.bytes_per_sample)
     }
 
     fn len_hint(&self) -> Option<usize> {
@@ -309,16 +269,4 @@ where
 #[allow(clippy::expect_used)]
 fn main() -> Result<(), i32> {
     run_with_profiler_if_requested(Args::parse(), main_body)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    pub fn test_bytes_to_ints() {
-        let bs = [0x34, 0x12, 0x56, 0x34, 0x78, 0x56, 0xCC, 0xED, 0x00, 0x00];
-        let mut ints = [0i32; 5];
-        bytes_to_ints(&bs, &mut ints, 2);
-        assert_eq!(ints, [0x1234, 0x3456, 0x5678, -0x1234, 0x0000]);
-    }
 }

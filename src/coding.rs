@@ -16,6 +16,9 @@
 
 use std::cell::RefCell;
 
+use super::arrayutils::is_constant;
+use super::arrayutils::pack_into_simd_vec;
+use super::arrayutils::unpack_simds;
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
 use super::component::Constant;
@@ -43,16 +46,6 @@ use super::source::Source;
 use super::fakesimd as simd;
 #[cfg(not(feature = "fakesimd"))]
 use std::simd;
-
-/// Returns true if samples are all same.
-fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
-    for t in 1..samples.len() {
-        if samples[0] != samples[t] {
-            return false;
-        }
-    }
-    true
-}
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
 #[inline]
@@ -165,44 +158,6 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
         quotients,
         remainders,
     )
-}
-
-/// Pack scalars into `Vec` of `Simd`s.
-fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
-where
-    T: simd::SimdElement + From<i8>,
-    simd::LaneCount<LANES>: simd::SupportedLaneCount,
-{
-    dest.clear();
-    let zero = 0i8.into();
-    let mut t = 0;
-    let t_end = src.len();
-    while t < t_end {
-        let v = simd::Simd::from_array(std::array::from_fn(|offset| {
-            if t + offset < t_end {
-                src[t + offset]
-            } else {
-                zero
-            }
-        }));
-        dest.push(v);
-        t += LANES;
-    }
-}
-
-/// Unpack slice of `Simd` into `Vec` of elements.
-fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
-where
-    T: simd::SimdElement + From<i8>,
-    simd::LaneCount<LANES>: simd::SupportedLaneCount,
-{
-    dest.resize(src.len() * LANES, 0i8.into());
-    let mut offset = 0;
-    for v in src {
-        let arr = <[T; LANES]>::from(*v);
-        dest[offset..offset + LANES].copy_from_slice(&arr);
-        offset += LANES;
-    }
 }
 
 /// Helper struct holding working memory for fixed LPC.
@@ -562,9 +517,8 @@ fn encode_frame(
 ///
 /// let mut source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
 /// let mut fb = FrameBuf::with_size(channels, block_size);
-/// let mut ctx = Context::new(bits_per_sample, channels);
 /// let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample);
-/// assert!(source.read_samples(&mut fb, &mut ctx).is_ok());
+/// assert!(source.read_samples(block_size, &mut fb).is_ok());
 ///
 /// let frame = encode_fixed_size_frame(
 ///     &config::Encoder::default(), // block-size in config will be overridden.
@@ -632,21 +586,25 @@ pub fn encode_with_fixed_block_size<T: Source>(
         }
     }
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
-    let mut framebuf = FrameBuf::with_size(src.channels(), block_size);
-    let mut context = Context::new(src.bits_per_sample(), src.channels());
+    let mut framebuf_and_context = (
+        FrameBuf::with_size(src.channels(), block_size),
+        Context::new(src.bits_per_sample(), src.channels(), block_size),
+    );
     loop {
-        let read_samples = src.read_samples(&mut framebuf, &mut context)?;
+        let read_samples = src.read_samples(block_size, &mut framebuf_and_context)?;
         if read_samples == 0 {
             break;
         }
         let frame = encode_fixed_size_frame(
             config,
-            &framebuf,
-            context.current_frame_number().unwrap(),
+            &framebuf_and_context.0,
+            framebuf_and_context.1.current_frame_number().unwrap(),
             stream.stream_info(),
         )?;
         stream.add_frame(frame);
     }
+
+    let (_, context) = framebuf_and_context;
     stream
         .stream_info_mut()
         .set_md5_digest(&context.md5_digest());
@@ -661,15 +619,6 @@ mod tests {
     use super::*;
     use crate::source;
     use crate::test_helper;
-
-    #[test]
-    fn constant_detector() {
-        let signal = vec![5; 64];
-        assert!(super::is_constant(&signal));
-
-        let signal = vec![-3; 192];
-        assert!(super::is_constant(&signal));
-    }
 
     #[test]
     fn fixed_lpc_encoder() {

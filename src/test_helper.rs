@@ -23,6 +23,7 @@ use rand::distributions::Distribution;
 use rand::distributions::Uniform;
 use tempfile::NamedTempFile;
 
+use super::arrayutils::le_bytes_to_i32s;
 use super::bitsink::ByteSink;
 use super::component::BitRepr;
 use super::component::Stream;
@@ -90,18 +91,14 @@ pub fn constant_plus_noise(block_size: usize, dc_offset: i32, noise_width: i32) 
 }
 
 #[allow(clippy::similar_names)]
-fn read_le16(src: &[u8]) -> Vec<i16> {
+fn read_le16(src: &[u8]) -> Vec<i32> {
     assert!(src.len() % 2 == 0);
-    let mut ret = Vec::with_capacity(src.len() / 2);
-    for bs in src.chunks(2) {
-        let (lsbs, msbs) = (bs[0], bs[1]);
-        let u: u16 = u16::from(lsbs) + u16::from(msbs) * 0x100u16;
-        ret.push(u as i16);
-    }
+    let mut ret = vec![0i32; src.len() / 2];
+    le_bytes_to_i32s(src, &mut ret, 2);
     ret
 }
 
-static TEST_SIGNALS: Lazy<BTreeMap<(&str, usize), Vec<i16>>> = Lazy::new(|| {
+static TEST_SIGNALS: Lazy<BTreeMap<(&str, usize), Vec<i32>>> = Lazy::new(|| {
     BTreeMap::from([
         (
             ("sus109", 0),
@@ -144,10 +141,7 @@ pub fn test_signal(src: &str, ch: usize) -> Vec<i32> {
     TEST_SIGNALS
         .get(&(src, ch))
         .expect("Specified test signal not found.")
-        .iter()
-        .copied()
-        .map(i32::from)
-        .collect()
+        .clone()
 }
 
 /// Runs an integrity test over the given encoding function.
