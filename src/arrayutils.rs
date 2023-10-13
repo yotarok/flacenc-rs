@@ -140,6 +140,20 @@ pub fn le_bytes_to_i32s(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize)
     }
 }
 
+/// Converts i32s to little-endian bytes.
+///
+/// NOTE: Currenty, this function is not used in "flacenc-bin", and therefore
+/// this might be slow.
+pub fn i32s_to_le_bytes(ints: &[i32], dest: &mut [u8], bytes_per_sample: usize) {
+    let mut n = 0;
+    for v in ints {
+        for offset in 0..bytes_per_sample {
+            dest[n] = v.to_le_bytes()[offset];
+            n += 1;
+        }
+    }
+}
+
 /// Returns true if all elements are equal.
 pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
     for t in 1..samples.len() {

@@ -20,6 +20,10 @@ use super::arrayutils::deinterleave;
 use super::arrayutils::le_bytes_to_i32s;
 use super::error::SourceError;
 
+/// Traits for the buffers-like objects filled by [`Source`].
+///
+/// An implementation is [`Source::read_samples`] is expected to call one
+/// of the `fill_*` method declared in this trait.
 pub trait Fill {
     /// Fills the target variable with the given interleaved samples.
     ///
@@ -235,6 +239,12 @@ impl Context {
             frame_count: 0,
             current_block_size: block_size,
         }
+    }
+
+    /// Returns bytes-per-sample configuration of this `Context`.
+    #[inline]
+    pub fn bytes_per_sample(&self) -> usize {
+        self.bytes_per_sample
     }
 
     /// Sets the block size for this `Context`.
