@@ -19,9 +19,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use seq_macro::seq;
-use serde::Deserialize;
-use serde::Serialize;
 
+use super::config::Window;
+use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
@@ -33,82 +33,75 @@ use std::simd;
 
 use simd::SimdInt;
 
-/// Analysis window descriptor.
-///
-/// This enum is `Serializable` and `Deserializable` because this will be
-/// directly used in config structs.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "type")]
-pub enum Window {
-    Rectangle,
-    Tukey { alpha: f32 },
-}
-
-impl Eq for Window {}
-
-impl PartialOrd for Window {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(format!("{self:?}").cmp(&format!("{other:?}")))
-    }
-}
-
-impl Ord for Window {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other)
-            .expect("INTERNAL ERROR: This should not happen.")
-    }
-}
-
-impl Window {
-    #[inline]
-    pub fn weights(&self, len: usize) -> Vec<f32> {
-        match *self {
-            Self::Rectangle => vec![1.0f32; len],
-            Self::Tukey { alpha } => {
-                let max_t = len as f32 - 1.0;
-                let alpha_len = alpha * max_t;
-                let mut ret = Vec::with_capacity(len);
-                for t in 0..len {
-                    let t = t as f32;
-                    let w = if t < alpha_len / 2.0 {
-                        0.5 * (1.0 - (2.0 * std::f32::consts::PI * t / alpha_len).cos())
-                    } else if t < max_t - alpha_len / 2.0 {
-                        1.0
-                    } else {
-                        0.5 * (1.0 - (2.0 * std::f32::consts::PI * (max_t - t) / alpha_len).cos())
-                    };
-                    ret.push(w);
-                }
-                ret
+#[inline]
+pub fn window_weights(win: &Window, len: usize) -> Vec<f32> {
+    match *win {
+        Window::Rectangle => vec![1.0f32; len],
+        Window::Tukey { alpha } => {
+            let max_t = len as f32 - 1.0;
+            let alpha_len = alpha * max_t;
+            let mut ret = Vec::with_capacity(len);
+            for t in 0..len {
+                let t = t as f32;
+                let w = if t < alpha_len / 2.0 {
+                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * t / alpha_len).cos())
+                } else if t < max_t - alpha_len / 2.0 {
+                    1.0
+                } else {
+                    0.5 * (1.0 - (2.0 * std::f32::consts::PI * (max_t - t) / alpha_len).cos())
+                };
+                ret.push(w);
             }
+            ret
         }
     }
 }
 
-impl Default for Window {
-    fn default() -> Self {
-        Self::Tukey { alpha: 0.1 }
+fn fingerprint_window(w: &Window) -> u64 {
+    match *w {
+        Window::Rectangle => 0x01_00_00_00_00_00_00_00u64,
+        Window::Tukey { alpha } => {
+            let qalpha = (alpha * 65535.0) as u64;
+            assert!(qalpha < 65536, "alpha is larger than 1");
+            0x02_00_00_00_00_00_00_00u64 + qalpha
+        }
     }
 }
 
-type WindowMap = BTreeMap<(usize, Window), Rc<[f32]>>;
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct WindowKey {
+    size: usize,
+    fingerprint: u64,
+}
+
+impl WindowKey {
+    fn new(size: usize, params: &Window) -> Self {
+        Self {
+            size,
+            fingerprint: fingerprint_window(params),
+        }
+    }
+}
+
+type WindowMap = BTreeMap<WindowKey, Rc<[f32]>>;
+
 thread_local! {
     static WINDOW_CACHE: RefCell<WindowMap> = RefCell::new(BTreeMap::new());
 }
 
 fn get_window(window: &Window, size: usize) -> Rc<[f32]> {
-    let key = (size, window.clone());
+    let key = WindowKey::new(size, window);
     WINDOW_CACHE.with(|caches| {
         if caches.borrow().get(&key).is_none() {
             caches
                 .borrow_mut()
-                .insert(key.clone(), Rc::from(window.weights(size)));
+                .insert(key.clone(), Rc::from(window_weights(window, size)));
         }
         Rc::clone(
             caches
                 .borrow()
                 .get(&key)
-                .expect("INTERNAL ERROR: window cache was not properly populated"),
+                .expect(panic_msg::ERROR_NOT_EXPECTED),
         )
     })
 }
