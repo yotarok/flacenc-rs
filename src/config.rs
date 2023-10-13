@@ -21,6 +21,7 @@ use serde::Serialize;
 
 use super::constant::qlpc::DEFAULT_ORDER as QLPC_DEFAULT_ORDER;
 use super::constant::qlpc::DEFAULT_PRECISION as QLPC_DEFAULT_PRECISION;
+use super::constant::qlpc::DEFAULT_TUKEY_ALPHA;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_PRECISION as QLPC_MAX_PRECISION;
 use super::constant::rice::MAX_RICE_PARAMETER;
@@ -28,7 +29,6 @@ use super::constant::MAX_BLOCKSIZE;
 use super::constant::MIN_BLOCKSIZE;
 use super::error::Verify;
 use super::error::VerifyError;
-use super::lpc::Window;
 
 /// Configuration for encoder.
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -256,7 +256,47 @@ impl Verify for Qlpc {
             ));
         }
 
+        self.window.verify().map_err(|err| err.within("window"))?;
         Ok(())
+    }
+}
+
+/// Analysis window descriptor.
+///
+/// This implements Ord as it can be used as a keys for window cache.
+#[derive(Clone, Debug, Deserialize, PartialEq, PartialOrd, Serialize)]
+#[serde(tag = "type")]
+#[non_exhaustive]
+pub enum Window {
+    Rectangle,
+    Tukey { alpha: f32 },
+}
+
+impl Eq for Window {}
+
+impl Default for Window {
+    fn default() -> Self {
+        Self::Tukey {
+            alpha: DEFAULT_TUKEY_ALPHA,
+        }
+    }
+}
+
+impl Verify for Window {
+    fn verify(&self) -> Result<(), VerifyError> {
+        match *self {
+            Self::Rectangle => Ok(()),
+            Self::Tukey { alpha } => {
+                if (0.0..=1.0).contains(&alpha) {
+                    Ok(())
+                } else {
+                    Err(VerifyError::new(
+                        "tukey.alpha",
+                        "alpha must be in range between 0 and 1",
+                    ))
+                }
+            }
+        }
     }
 }
 

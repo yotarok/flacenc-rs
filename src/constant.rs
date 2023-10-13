@@ -73,6 +73,9 @@ pub mod qlpc {
 
     /// Default precision for storing QLPC coefficients.
     pub const DEFAULT_PRECISION: usize = 12;
+
+    /// Default alpha parameter for Tukey window.
+    pub const DEFAULT_TUKEY_ALPHA: f32 = 0.1;
 }
 
 /// Constants related to partitioned rice coding (PRC).
@@ -95,7 +98,7 @@ pub mod rice {
 
 /// Module for internal error messages.
 ///
-/// Use `panic!` and those messages only for env-related unrecoveralbe errors.
+/// Use `panic!` and those messages only for env-related unrecoverable errors.
 /// It's okay to use them in tests, but it's not okay to add another variable
 /// only for test functions.
 pub(crate) mod panic_msg {
