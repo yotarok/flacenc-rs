@@ -102,6 +102,8 @@ pub mod rice {
 /// It's okay to use them in tests, but it's not okay to add another variable
 /// only for test functions.
 pub(crate) mod panic_msg {
+    pub const NO_ERROR_EXPECTED: &str =
+        "INTERNAL ERROR: Error emitted from the function designed not to return err.";
     pub const MPMC_SEND_FAILED: &str =
         "INTERNAL ERROR: Critical error occured in multi-thread communication channel.";
     pub const MPMC_RECV_FAILED: &str =

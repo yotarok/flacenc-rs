@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
+use super::arrayutils::i32s_to_le_bytes;
 use super::coding;
 use super::component::Frame;
 use super::component::Stream;
@@ -163,6 +164,83 @@ impl ParFrameBuf {
                 .send(None)
                 .expect(panic_msg::MPMC_SEND_FAILED);
         }
+    }
+}
+
+/// A wrapper that makes the inner `Context` to be filled asynchronously.
+struct ParContext {
+    inner: Arc<Mutex<Context>>,
+    thread_handle: thread::JoinHandle<()>,
+    bytebuf: Vec<u8>,
+    bytes_per_sample: usize,
+    process_queue: (Sender<Vec<u8>>, Receiver<Vec<u8>>),
+}
+
+impl ParContext {
+    fn new(inner: Context) -> Self {
+        let process_queue = crossbeam_channel::bounded(16);
+        let bytes_per_sample = inner.bytes_per_sample();
+        let inner = Arc::new(Mutex::new(inner));
+
+        let thread_handle = {
+            let receiver = process_queue.1.clone();
+            let inner = Arc::clone(&inner);
+            thread::spawn(move || loop {
+                let data: Vec<u8> = receiver.recv().expect(panic_msg::MPMC_RECV_FAILED);
+                if data.is_empty() {
+                    break;
+                }
+                let mut inner = inner.lock().expect(panic_msg::MUTEX_LOCK_FAILED);
+                inner
+                    .fill_le_bytes(&data, bytes_per_sample)
+                    .expect(panic_msg::NO_ERROR_EXPECTED);
+            })
+        };
+        Self {
+            inner,
+            thread_handle,
+            bytebuf: vec![],
+            bytes_per_sample,
+            process_queue,
+        }
+    }
+
+    fn enqueue_buffer(&self) {
+        self.process_queue
+            .0
+            .send(self.bytebuf.clone())
+            .expect(panic_msg::MPMC_SEND_FAILED);
+    }
+
+    fn request_stop(&self) {
+        self.process_queue
+            .0
+            .send(vec![])
+            .expect(panic_msg::MPMC_SEND_FAILED);
+    }
+
+    fn finalize(self) -> Context {
+        self.thread_handle
+            .join()
+            .expect(panic_msg::THREAD_JOIN_FAILED);
+        Arc::into_inner(self.inner).unwrap().into_inner().unwrap()
+    }
+}
+
+impl Fill for ParContext {
+    fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
+        let bps = self.bytes_per_sample;
+        self.bytebuf.resize(interleaved.len() * bps, 0u8);
+        i32s_to_le_bytes(interleaved, &mut self.bytebuf, bps);
+        self.enqueue_buffer();
+        Ok(())
+    }
+
+    fn fill_le_bytes(&mut self, bytes: &[u8], _bytes_per_sample: usize) -> Result<(), SourceError> {
+        self.bytebuf.clear();
+        self.bytebuf.extend_from_slice(bytes);
+        self.enqueue_buffer();
+        Ok(())
     }
 }
 
@@ -319,9 +397,15 @@ pub fn encode_with_fixed_block_size<T: Source>(
         .collect();
 
     let src_len_hint = src.len_hint();
-    let context = Context::new(src.bits_per_sample(), src.channels(), block_size);
+    let context = ParContext::new(Context::new(
+        src.bits_per_sample(),
+        src.channels(),
+        block_size,
+    ));
     let (feed_stats, context) =
         feed_fixed_block_size(src, block_size, worker_count, &parbuf, context)?;
+    context.request_stop();
+    let context = context.finalize();
 
     if let Ok(path_str) = std::env::var(envvar_key::RUNSTATS_OUTPUT) {
         let run_stat = ParRunStats::new(worker_count, feed_stats);
