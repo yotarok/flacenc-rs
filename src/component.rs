@@ -1612,24 +1612,19 @@ impl BitRepr for Residual {
             .map_err(OutputError::<S>::from_sink)?;
         let nparts = 1usize << self.partition_order as usize;
 
-        // NOTE:
-        // It might be an option to store `self.rice_params` first to an
-        // expanded buffer that has the same length as `self.quotients` and
-        // `self.remainders`, and do serialization with an unrolled loop for
-        // encouraging auto-vectorization.
-
         // unforunatelly, the overhead due to the use of iterators is visible
-        // here. so we back-off to integer-based loops.
+        // here. so we back-off to integer-based loops. (drawback of index-loop
+        // is boundary check, but this will be skipped in release builds.)
+        let part_len = self.block_size >> self.partition_order;
         let mut p = 0;
+        let mut offset = 0;
         while p < nparts {
             let rice_p = self.rice_params[p];
             dest.write_lsbs(rice_p, 4)
                 .map_err(OutputError::<S>::from_sink)?;
-            let start = std::cmp::max(
-                self.warmup_length,
-                (p * self.block_size) >> self.partition_order,
-            );
-            let end = ((p + 1) * self.block_size) >> self.partition_order;
+            let start = std::cmp::max(self.warmup_length, offset);
+            offset += part_len;
+            let end = offset;
 
             let startbit: u32 = 1u32 << rice_p;
             let rice_p_plus_1 = rice_p + 1;
