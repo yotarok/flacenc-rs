@@ -283,7 +283,7 @@ impl ByteSink {
     /// ```
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity(capacity_in_bits / 8 + 1),
+            bytes: Vec::with_capacity((capacity_in_bits >> 3) + 1),
             bitlength: 0usize,
         }
     }
@@ -351,18 +351,13 @@ impl ByteSink {
     /// assert!(sink.into_bytes().capacity() > (1024 + 2048) / 8);
     /// ```
     pub fn reserve(&mut self, additional_in_bits: usize) {
-        self.bytes.reserve(additional_in_bits / 8 + 1);
+        self.bytes.reserve((additional_in_bits >> 3) + 1);
     }
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
     const fn paddings(&self) -> usize {
-        let r = self.bitlength % 8;
-        if r == 0 {
-            0
-        } else {
-            8 - r
-        }
+        ((!self.bitlength).wrapping_add(1)) & 7
     }
 
     /// Consumes `ByteSink` and returns the internal buffer.
@@ -461,36 +456,46 @@ impl BitSink for ByteSink {
     }
 
     #[inline]
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+    fn write_msbs<T: PackedBits>(&mut self, mut val: T, mut n: usize) -> Result<(), Self::Error> {
         if n == 0 {
             return Ok(());
         }
-        let mut val: T = val;
-        let mut n = n;
-        let nbitlength = self.bitlength + n;
         let r = self.paddings();
+        self.bitlength += n;
+        val = val & !((T::one() << (T::PACKED_BITS - n)) - T::one());
 
         if r != 0 {
-            let b = (val >> (T::PACKED_BITS - r)).to_u8().unwrap();
+            let b = (val >> (T::PACKED_BITS - r)).as_();
             *self.bytes.last_mut().unwrap() |= b;
             val <<= r;
-            n = n.saturating_sub(r);
+            if r >= n {
+                return Ok(());
+            }
+            n -= r;
         }
-        let bytes_to_write = n / 8;
+        let bytes_to_write = n >> 3;
         if bytes_to_write > 0 {
-            let bytes = val.to_be_bytes();
-            self.bytes
-                .extend_from_slice(&bytes.as_ref()[0..bytes_to_write]);
-            n %= 8;
+            let bytes = val.to_ne_bytes();
+            let bytes = bytes.as_ref();
+            #[cfg(target_endian = "little")]
+            {
+                for i in 0..bytes_to_write {
+                    self.bytes.push(bytes[std::mem::size_of::<T>() - i - 1]);
+                }
+            }
+            #[cfg(target_endian = "big")]
+            {
+                for i in 0..bytes_to_write {
+                    self.bytes.push(bytes[i]);
+                }
+            }
+            n &= 7;
         }
         if n > 0 {
-            val <<= bytes_to_write * 8;
-            let mask = !((1u8 << (8 - n)) - 1);
-            let tail_byte: u8 = (val >> (T::PACKED_BITS - 8)).to_le_bytes().as_ref()[0];
-            let tail_byte = tail_byte & mask;
+            val <<= bytes_to_write << 3;
+            let tail_byte: u8 = (val >> (T::PACKED_BITS - 8)).as_();
             self.bytes.push(tail_byte);
         }
-        self.bitlength = nbitlength;
         Ok(())
     }
 
@@ -512,7 +517,7 @@ impl BitSink for ByteSink {
         self.bitlength += pad;
         let n = n - pad;
 
-        let bytes = (n + 7) / 8;
+        let bytes = (n + 7) >> 3;
         self.bytes.resize(self.bytes.len() + bytes, 0u8);
         self.bitlength += n;
 
@@ -521,10 +526,18 @@ impl BitSink for ByteSink {
 }
 
 mod seal_packed_bits {
+    use num_traits::AsPrimitive;
+    use num_traits::One;
     use num_traits::PrimInt;
     use num_traits::ToBytes;
     pub trait Sealed:
-        ToBytes + From<u8> + Into<u64> + PrimInt + std::ops::ShlAssign<usize>
+        ToBytes
+        + From<u8>
+        + Into<u64>
+        + PrimInt
+        + std::ops::ShlAssign<usize>
+        + AsPrimitive<u8>
+        + One
     {
     }
 
@@ -585,7 +598,7 @@ mod tests {
         }
 
         fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
-            self.write_lsbs(val, std::mem::size_of::<T>() * 8)?;
+            self.write_lsbs(val, std::mem::size_of::<T>() << 3)?;
             Ok(())
         }
     }
@@ -625,6 +638,13 @@ mod tests {
         let mut bv = ByteSink::new();
         bv.write_msbs(0xA0u8, 3)?;
         assert_eq!(bv.to_bitstring(), "101*****");
+
+        let mut bv = ByteSink::new();
+        bv.write_msbs(0x00u8, 2)?;
+        bv.write_msbs(0xFFu8, 3)?;
+        bv.write_msbs(0x00u8, 2)?;
+        assert_eq!(bv.to_bitstring(), "0011100*");
+
         Ok(())
     }
 
