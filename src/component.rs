@@ -889,6 +889,7 @@ impl Frame {
 thread_local! {
     static FRAME_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
 }
+static FRAME_CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&CRC_16_FLAC);
 
 impl BitRepr for Frame {
     #[inline]
@@ -924,10 +925,8 @@ impl BitRepr for Frame {
                 dest.write_bytes_aligned(frame_buffer.as_byte_slice())
                     .unwrap();
 
-                dest.write(
-                    crc::Crc::<u16>::new(&CRC_16_FLAC).checksum(frame_buffer.as_byte_slice()),
-                )
-                .map_err(OutputError::<S>::from_sink)
+                dest.write(FRAME_CRC.checksum(frame_buffer.as_byte_slice()))
+                    .map_err(OutputError::<S>::from_sink)
             })
         }
     }
@@ -1141,6 +1140,7 @@ impl FrameHeader {
 thread_local! {
     static HEADER_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
 }
+static HEADER_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&CRC_8_FLAC);
 
 impl BitRepr for FrameHeader {
     #[inline]
@@ -1190,10 +1190,8 @@ impl BitRepr for FrameHeader {
 
             dest.write_bytes_aligned(header_buffer.borrow().as_byte_slice())
                 .map_err(OutputError::<S>::from_sink)?;
-            dest.write(
-                crc::Crc::<u8>::new(&CRC_8_FLAC).checksum(header_buffer.borrow().as_byte_slice()),
-            )
-            .map_err(OutputError::<S>::from_sink)?;
+            dest.write(HEADER_CRC.checksum(header_buffer.borrow().as_byte_slice()))
+                .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         })
     }
