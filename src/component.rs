@@ -20,6 +20,7 @@ use std::cmp::min;
 
 use super::bitsink::BitSink;
 use super::bitsink::ByteSink;
+use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
 use super::error::OutputError;
@@ -704,7 +705,11 @@ impl BitRepr for StreamInfo {
 #[derive(Clone, Debug)]
 pub struct Frame {
     header: FrameHeader,
-    subframes: heapless::Vec<SubFrame, MAX_CHANNELS>,
+    // this making this `heapless` is inefficient in typical use cases.
+    // as there're only few use cases that requires `MAX_CHANNELS`. It is
+    // shown that with `mimalloc` the performance deficit by making it on
+    // heap was negligible.
+    subframes: Vec<SubFrame>,
     precomputed_bitstream: Option<Vec<u8>>,
 }
 
@@ -734,7 +739,7 @@ impl Frame {
         let header = FrameHeader::new(block_size, ch_info, offset);
         Self {
             header,
-            subframes: heapless::Vec::new(),
+            subframes: Vec::with_capacity(MAX_CHANNELS),
             precomputed_bitstream: None,
         }
     }
@@ -767,7 +772,7 @@ impl Frame {
     ///
     /// assert_eq!(subframes.len(), 2);
     /// ```
-    pub fn into_parts(self) -> (FrameHeader, heapless::Vec<SubFrame, MAX_CHANNELS>) {
+    pub fn into_parts(self) -> (FrameHeader, Vec<SubFrame>) {
         (self.header, self.subframes)
     }
 
@@ -777,9 +782,8 @@ impl Frame {
     ///
     /// Panics when the number of subframes added exceeded the `MAX_CHANNELS`.
     pub(crate) fn add_subframe(&mut self, subframe: SubFrame) {
-        self.subframes
-            .push(subframe)
-            .expect("Exceeded maximum number of channels.");
+        self.subframes.push(subframe);
+        assert!(self.subframes.len() <= MAX_CHANNELS);
     }
 
     /// Returns a reference to [`FrameHeader`] of this frame.
@@ -878,6 +882,29 @@ impl Frame {
         if self.write(&mut dest).is_ok() {
             self.precomputed_bitstream = Some(dest.into_bytes());
         }
+    }
+
+    /// Consumes `self` and returns the parts if `self` is a stereo frame.
+    ///
+    /// # Errors
+    ///
+    /// When `self.subframe_count() != 2`, this function returns the
+    /// reconstructed self. On error, this allocates from the heap, and it is
+    /// not efficient.
+    ///
+    /// # Panics
+    ///
+    /// Should not panic except for memory error.
+    #[inline]
+    pub fn into_stereo_channels(self) -> Result<(FrameHeader, SubFrame, SubFrame), Self> {
+        if self.subframe_count() != 2 {
+            return Err(self);
+        }
+        let (header, subframes) = self.into_parts();
+        let mut iter = subframes.into_iter();
+        let ch0 = iter.next().expect(panic_msg::DATA_INCONSISTENT);
+        let ch1 = iter.next().expect(panic_msg::DATA_INCONSISTENT);
+        Ok((header, ch0, ch1))
     }
 
     #[cfg(test)]
@@ -1899,5 +1926,11 @@ mod tests {
         frame.write(&mut bv)?;
         assert_eq!(bv, bv_ref);
         Ok(())
+    }
+
+    #[test]
+    fn channel_assignment_is_small_enough() {
+        let size = std::mem::size_of::<ChannelAssignment>();
+        assert_eq!(size, 2);
     }
 }
