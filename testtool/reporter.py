@@ -225,10 +225,6 @@ def main():
     testenc_out_root = report_root / "testenc_out"
     report_md_out = report_root / "report.md"
 
-    # build
-    logged(subprocess.check_call)(
-        ["bash", "-c", f"cd {project_root}/flacenc-bin; cargo build --release"]
-    )
     print("Running reference encoder.")
     ref_run_results = run_encoder(
         inputs, refenc_out_root, REFERENCE_BINPATH, REFERENCE_ENCODER_OPTS

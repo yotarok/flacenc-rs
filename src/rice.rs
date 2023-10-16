@@ -23,9 +23,9 @@ use super::constant::rice::MIN_PARTITION_SIZE as MIN_RICE_PARTITION_SIZE;
 use crate::reusable;
 use crate::reuse;
 
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 use super::fakesimd as simd;
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 use std::simd;
 
 use simd::SimdInt;

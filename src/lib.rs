@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #![doc = include_str!("../README.md")]
-#![cfg_attr(not(feature = "fakesimd"), feature(portable_simd))]
+#![cfg_attr(feature = "simd-nightly", feature(portable_simd))]
 // Note that clippy attributes should be in sync with those declared in "main.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
@@ -60,7 +60,7 @@ pub mod component;
 pub mod config;
 pub mod constant;
 pub mod error;
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 pub(crate) mod fakesimd;
 pub(crate) mod lpc;
 #[cfg(feature = "par")]

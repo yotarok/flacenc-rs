@@ -43,9 +43,9 @@ use super::source::Source;
 use crate::reusable;
 use crate::reuse;
 
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 use super::fakesimd as simd;
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 use std::simd;
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
@@ -58,7 +58,7 @@ const fn quotients_and_remainders(err: i32, rice_p: u8) -> (u32, u32) {
 
 /// Computes rice encoding of a SIMD vector (used in `encode_residual`.)
 #[inline]
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 fn quotients_and_remainders_simd<const N: usize>(
     err_v: simd::Simd<i32, N>,
     rice_p: u8,
@@ -84,7 +84,7 @@ fn quotients_and_remainders_simd<const N: usize>(
 ///
 /// TODO: Probably, it's better to introduce another abstraction for `as_simd`
 /// e.g. SIMD-version of `map` so we can do conditional compilation there.
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 #[inline]
 fn encode_residual_partition(
     start: usize,
@@ -118,7 +118,7 @@ fn encode_residual_partition(
 }
 
 /// Computes encoding of each residual partition. (without SIMD)
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 #[inline]
 fn encode_residual_partition(
     start: usize,
