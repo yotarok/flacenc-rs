@@ -7,7 +7,7 @@
 This crate provides some basic modules for building application customized FLAC
 (Free Lossless Audio Codec) encoder in rust programs.
 
-See [the auto-generated report](report/report.md) for the characteristics of the
+See [the auto-generated report](report/report.nightly.md) for the characteristics of the
 encoder compared to
 [FLAC reference implementation](https://xiph.org/flac/download.html).
 
@@ -16,18 +16,20 @@ encoder compared to
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = { version = "0.2.0", feature = ["fakesimd"] }
+flacenc = { version = "0.2.0", default-features = false, features = ["par", "mimalloc"] }
 ```
 
 This crate is intended to be, and primarily developed with
 [`portable_simd`](https://github.com/rust-lang/project-portable-simd), and the
-`fakesimd` feature above is for emulating `portable_simd` in a stable toolchain.
-If you are using a nightly toolchain, use this crate without `fakesimd` as
-follows:
+`default-features = false` above is for backing-off to the fake SIMD
+implementation that can be compiled with a stable toolchain.  If you are using
+a nightly toolchain, use this crate with the default features as follows:
 
 ```toml
 flacenc = "0.2.0"
 ```
+
+This implicitly activates "simd-nightly" feature.
 
 ## Examples
 

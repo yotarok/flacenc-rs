@@ -28,6 +28,13 @@ pytype testtool | true
 flake8 testtool
 
 pushd flacenc-bin
+cargo build --release --no-default-features
+popd
+python ./testtool/reporter.py
+mv report/report.md report/report.stable.md
+
+pushd flacenc-bin
 cargo build --release
 popd
 python ./testtool/reporter.py
+mv report/report.md report/report.nightly.md

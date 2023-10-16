@@ -47,12 +47,12 @@ jobs:
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --features fakesimd
+        args: --verbose --no-default-features --features "par,mimalloc"
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-targets --features fakesimd
+        args: --verbose --all-targets --no-default-features
         directory: flacenc-bin
 
   lints:
@@ -86,9 +86,3 @@ jobs:
         command: clippy
         args: --tests -- -D warnings
         directory: flacenc-bin
-    - name: Clippy (with fakesimd feature)
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: clippy
-        args: --tests --features "fakesimd" -- -D warnings
-

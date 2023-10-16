@@ -21,15 +21,15 @@ codegen-units = 1
 name = "flacenc"
 path = "src/main.rs"
 
-
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
-flacenc = { version = "0.2.0", path = "..", features = ["experimental", "mimalloc"] }
+flacenc = { version = "0.2.0", path = "..", default-features = false, features = ["experimental", "mimalloc"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 toml = "0.5"
 
 
 [features]
+default = ["simd-nightly"]
 pprof = ["dep:pprof"]
-fakesimd = ["flacenc/fakesimd"]
+simd-nightly = ["flacenc/simd-nightly"]

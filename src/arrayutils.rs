@@ -16,9 +16,9 @@
 
 use seq_macro::seq;
 
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 use super::fakesimd as simd;
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 use std::simd;
 
 // deinterleaver is often used in the I/O thread which can be a performance

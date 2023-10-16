@@ -27,9 +27,9 @@ use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
 use crate::reusable;
 use crate::reuse;
 
-#[cfg(feature = "fakesimd")]
+#[cfg(not(feature = "simd-nightly"))]
 use super::fakesimd as simd;
-#[cfg(not(feature = "fakesimd"))]
+#[cfg(feature = "simd-nightly")]
 use std::simd;
 
 use simd::SimdInt;
@@ -344,7 +344,7 @@ pub fn weighted_auto_correlation<F>(order: usize, signal: &[f32], dest: &mut [f3
 where
     F: Fn(usize) -> f32,
 {
-    #[cfg(not(feature = "fakesimd"))]
+    #[cfg(feature = "simd-nightly")]
     {
         // The current implementation is inefficient with fakesimd when order
         // is low. So, here we still have a scalar version of it.
@@ -364,7 +364,7 @@ where
             weighted_auto_correlation_simd::<_, 64>(order, signal, dest, weight_fn);
         }
     }
-    #[cfg(feature = "fakesimd")]
+    #[cfg(not(feature = "simd-nightly"))]
     {
         assert!(dest.len() >= order);
         for p in &mut *dest {
