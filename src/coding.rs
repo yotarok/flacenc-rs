@@ -30,6 +30,7 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
+use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::error::EncodeError;
 use super::lpc;
@@ -355,15 +356,12 @@ fn encode_frame_impl(
 // Recombines stereo frame.
 #[inline]
 fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame {
-    let (_header, lr) = indep.into_parts();
-    let (_header, ms) = ms.into_parts();
-    let mut lr_iter = lr.into_iter();
-    let l = lr_iter.next().unwrap();
-    let r = lr_iter.next().unwrap();
-
-    let mut ms_iter = ms.into_iter();
-    let m = ms_iter.next().unwrap();
-    let s = ms_iter.next().unwrap();
+    let (_header, l, r) = indep
+        .into_stereo_channels()
+        .expect(panic_msg::DATA_INCONSISTENT);
+    let (_header, m, s) = ms
+        .into_stereo_channels()
+        .expect(panic_msg::DATA_INCONSISTENT);
 
     let chans = header.channel_assignment().select_channels(l, r, m, s);
     Frame::from_parts(
@@ -374,6 +372,7 @@ fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame
 
 reusable!(MSFRAMEBUF: FrameBuf = FrameBuf::with_size(2, 4096));
 
+/// Tries several stereo channel recombinations and returns the best.
 fn try_stereo_coding(
     config: &config::Encoder,
     framebuf: &FrameBuf,
@@ -408,41 +407,32 @@ fn try_stereo_coding(
         );
 
         let combinations = [
-            (
-                config.stereo_coding.use_leftside,
-                ChannelAssignment::LeftSide,
-                bits_l + bits_s,
-            ),
-            (
-                config.stereo_coding.use_rightside,
-                ChannelAssignment::RightSide,
-                bits_r + bits_s,
-            ),
-            (
-                config.stereo_coding.use_midside,
-                ChannelAssignment::MidSide,
-                bits_m + bits_s,
-            ),
+            config
+                .stereo_coding
+                .use_leftside
+                .then_some((ChannelAssignment::LeftSide, bits_l + bits_s)),
+            config
+                .stereo_coding
+                .use_rightside
+                .then_some((ChannelAssignment::RightSide, bits_r + bits_s)),
+            config
+                .stereo_coding
+                .use_midside
+                .then_some((ChannelAssignment::MidSide, bits_m + bits_s)),
         ];
 
         let envelope_bits = indep.header().count_bits() + 16;
         let mut min_bits = indep.count_bits();
-        let mut min_idx = None;
-        for (idx, (allowed, _ch_info, body_bits)) in combinations.iter().enumerate() {
-            if !allowed {
-                continue;
-            }
+        let mut min_ch_info = ChannelAssignment::Independent(2);
+        for (ch_info, body_bits) in combinations.iter().flatten() {
             let bits = envelope_bits + body_bits;
             if bits < min_bits {
                 min_bits = bits;
-                min_idx = Some(idx);
+                min_ch_info = ch_info.clone();
             }
         }
-        let ch_info = min_idx.map_or(ChannelAssignment::Independent(2), |idx| {
-            combinations[idx].1.clone()
-        });
         let mut header = ms_frame.header().clone();
-        header.reset_channel_assignment(ch_info);
+        header.reset_channel_assignment(min_ch_info);
         recombine_stereo_frame(header, indep, ms_frame)
     })
 }
