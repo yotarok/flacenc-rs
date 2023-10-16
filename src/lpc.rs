@@ -14,7 +14,6 @@
 
 //! Algorithms for quantized linear-prediction coding (QLPC).
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -25,6 +24,8 @@ use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
+use crate::reusable;
+use crate::reuse;
 
 #[cfg(feature = "fakesimd")]
 use super::fakesimd as simd;
@@ -84,25 +85,15 @@ impl WindowKey {
 }
 
 type WindowMap = BTreeMap<WindowKey, Rc<[f32]>>;
-
-thread_local! {
-    static WINDOW_CACHE: RefCell<WindowMap> = RefCell::new(BTreeMap::new());
-}
+reusable!(WINDOW_CACHE: WindowMap);
 
 fn get_window(window: &Window, size: usize) -> Rc<[f32]> {
     let key = WindowKey::new(size, window);
-    WINDOW_CACHE.with(|caches| {
-        if caches.borrow().get(&key).is_none() {
-            caches
-                .borrow_mut()
-                .insert(key.clone(), Rc::from(window_weights(window, size)));
+    reuse!(WINDOW_CACHE, |caches: &mut WindowMap| {
+        if caches.get(&key).is_none() {
+            caches.insert(key.clone(), Rc::from(window_weights(window, size)));
         }
-        Rc::clone(
-            caches
-                .borrow()
-                .get(&key)
-                .expect(panic_msg::ERROR_NOT_EXPECTED),
-        )
+        Rc::clone(caches.get(&key).expect(panic_msg::ERROR_NOT_EXPECTED))
     })
 }
 
@@ -716,10 +707,7 @@ impl LpcEstimator {
     }
 }
 
-thread_local! {
-    /// Global (thread-local) working buffer for LPC estimation.
-    static LPC_ESTIMATOR: RefCell<LpcEstimator> = RefCell::new(LpcEstimator::new());
-}
+reusable!(LPC_ESTIMATOR: LpcEstimator = LpcEstimator::new());
 
 /// Estimates LPC coefficients with auto-correlation method.
 #[allow(clippy::module_name_repetitions)]

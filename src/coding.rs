@@ -14,8 +14,6 @@
 
 //! Controller connecting coding algorithms.
 
-use std::cell::RefCell;
-
 use super::arrayutils::is_constant;
 use super::arrayutils::pack_into_simd_vec;
 use super::arrayutils::unpack_simds;
@@ -41,6 +39,8 @@ use super::rice;
 use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Source;
+use crate::reusable;
+use crate::reuse;
 
 #[cfg(feature = "fakesimd")]
 use super::fakesimd as simd;
@@ -161,6 +161,7 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
 }
 
 /// Helper struct holding working memory for fixed LPC.
+#[derive(Default)]
 struct FixedLpcEncoder {
     errors: Vec<simd::i32x16>,
     /// Length of errors in the number of samples (scalars).
@@ -170,14 +171,6 @@ struct FixedLpcEncoder {
 }
 
 impl FixedLpcEncoder {
-    pub const fn new() -> Self {
-        Self {
-            errors: vec![],
-            error_len_in_samples: 0,
-            unpacked_errors: vec![],
-        }
-    }
-
     /// Constructs `FixedLpc` using the current `self.errors`.
     fn make_subframe(
         &mut self,
@@ -231,10 +224,7 @@ impl FixedLpcEncoder {
     }
 }
 
-thread_local! {
-    /// Global (thread-local) working buffer for fixed LPC.
-    static FIXED_LPC_ENCODER: RefCell<FixedLpcEncoder> = RefCell::new(FixedLpcEncoder::new());
-}
+reusable!(FIXED_LPC_ENCODER: FixedLpcEncoder);
 
 /// Tries 0..4-th order fixed LPC and returns the smallest `SubFrame`.
 ///
@@ -250,10 +240,8 @@ fn fixed_lpc(
     baseline_bits: usize,
 ) -> Option<SubFrame> {
     assert!(bits_per_sample < 30);
-    FIXED_LPC_ENCODER.with(|encoder| {
-        encoder
-            .borrow_mut()
-            .apply(config, signal, bits_per_sample, baseline_bits)
+    reuse!(FIXED_LPC_ENCODER, |encoder: &mut FixedLpcEncoder| {
+        encoder.apply(config, signal, bits_per_sample, baseline_bits)
     })
 }
 
@@ -384,39 +372,29 @@ fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame
     )
 }
 
-/// Helper struct holding working memory for stereo coding (mid-side).
-struct StereoCodingHelper {
-    midside_framebuf: FrameBuf,
-}
+reusable!(MSFRAMEBUF: FrameBuf = FrameBuf::with_size(2, 4096));
 
-impl StereoCodingHelper {
-    pub fn new() -> Self {
-        Self {
-            midside_framebuf: FrameBuf::with_size(2, 4096),
-        }
-    }
-
-    pub fn apply(
-        &mut self,
-        config: &config::Encoder,
-        framebuf: &FrameBuf,
-        indep: Frame,
-        offset: usize,
-        stream_info: &StreamInfo,
-    ) -> Frame {
-        self.midside_framebuf.resize(framebuf.size());
+fn try_stereo_coding(
+    config: &config::Encoder,
+    framebuf: &FrameBuf,
+    indep: Frame,
+    offset: usize,
+    stream_info: &StreamInfo,
+) -> Frame {
+    reuse!(MSFRAMEBUF, |ms_framebuf: &mut FrameBuf| {
+        ms_framebuf.resize(framebuf.size());
 
         for t in 0..framebuf.size() {
             let l = framebuf.channel_slice(0)[t];
             let r = framebuf.channel_slice(1)[t];
             let (ch0, ch1) = ((l + r) >> 1, l - r);
-            self.midside_framebuf.channel_slice_mut(0)[t] = ch0;
-            self.midside_framebuf.channel_slice_mut(1)[t] = ch1;
+            ms_framebuf.channel_slice_mut(0)[t] = ch0;
+            ms_framebuf.channel_slice_mut(1)[t] = ch1;
         }
 
         let ms_frame = encode_frame_impl(
             config,
-            &self.midside_framebuf,
+            ms_framebuf,
             offset,
             stream_info,
             &ChannelAssignment::MidSide,
@@ -466,12 +444,7 @@ impl StereoCodingHelper {
         let mut header = ms_frame.header().clone();
         header.reset_channel_assignment(ch_info);
         recombine_stereo_frame(header, indep, ms_frame)
-    }
-}
-
-thread_local! {
-    /// Global (thread-local) working buffer for stereo coding algorithms.
-    static STEREO_CODING_HELPER: RefCell<StereoCodingHelper> = RefCell::new(StereoCodingHelper::new());
+    })
 }
 
 /// Finds the best configuration for encoding samples and returns a `Frame`.
@@ -486,11 +459,7 @@ fn encode_frame(
     let mut ret = encode_frame_impl(config, framebuf, offset, stream_info, &ch_info);
 
     if nchannels == 2 {
-        ret = STEREO_CODING_HELPER.with(|helper| {
-            helper
-                .borrow_mut()
-                .apply(config, framebuf, ret, offset, stream_info)
-        });
+        ret = try_stereo_coding(config, framebuf, ret, offset, stream_info);
     }
     ret
 }
@@ -622,7 +591,7 @@ mod tests {
 
     #[test]
     fn fixed_lpc_encoder() {
-        let mut encoder = FixedLpcEncoder::new();
+        let mut encoder = FixedLpcEncoder::default();
         let signal = test_helper::sinusoid_plus_noise(64, 32, 10000.0, 128);
         pack_into_simd_vec(&signal, &mut encoder.errors);
         encoder.error_len_in_samples = signal.len();
