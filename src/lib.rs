@@ -65,6 +65,7 @@ pub(crate) mod fakesimd;
 pub(crate) mod lpc;
 #[cfg(feature = "par")]
 pub(crate) mod par;
+pub(crate) mod reuse;
 pub(crate) mod rice;
 pub mod source;
 

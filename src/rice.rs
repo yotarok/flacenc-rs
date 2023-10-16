@@ -14,14 +14,14 @@
 
 //! Functions for partitioned rice coding (PRC).
 
-use std::cell::RefCell;
-
 use seq_macro::seq;
 
 use super::constant::rice::MAX_PARTITIONS as MAX_RICE_PARTITIONS;
 use super::constant::rice::MAX_PARTITION_ORDER as MAX_RICE_PARTITION_ORDER;
 use super::constant::rice::MAX_RICE_PARAMETER;
 use super::constant::rice::MIN_PARTITION_SIZE as MIN_RICE_PARTITION_SIZE;
+use crate::reusable;
+use crate::reuse;
 
 #[cfg(feature = "fakesimd")]
 use super::fakesimd as simd;
@@ -195,6 +195,7 @@ impl PrcParameter {
 }
 
 /// Helper object that holds pre-allocated buffer for PRC optimization.
+#[derive(Default)]
 struct PrcParameterFinder {
     pub errors: Vec<u32>,
     pub tables: Vec<PrcBitTable>,
@@ -203,15 +204,6 @@ struct PrcParameterFinder {
 }
 
 impl PrcParameterFinder {
-    pub const fn new() -> Self {
-        Self {
-            errors: Vec::new(),
-            tables: Vec::new(),
-            ps: Vec::new(),
-            min_ps: Vec::new(),
-        }
-    }
-
     pub fn find(&mut self, signal: &[i32], warmup_length: usize, max_p: usize) -> PrcParameter {
         let mut partition_order = finest_partition_order(
             signal.len(),
@@ -258,16 +250,16 @@ impl PrcParameterFinder {
     }
 }
 
-thread_local! {
-    static RICE_PARAMETER_FINDER: RefCell<PrcParameterFinder> = RefCell::new(PrcParameterFinder::new());
-}
+reusable!(PRC_FINDER: PrcParameterFinder);
 
 pub fn find_partitioned_rice_parameter(
     signal: &[i32],
     warmup_length: usize,
     max_p: usize,
 ) -> PrcParameter {
-    RICE_PARAMETER_FINDER.with(|finder| finder.borrow_mut().find(signal, warmup_length, max_p))
+    reuse!(PRC_FINDER, |finder: &mut PrcParameterFinder| {
+        finder.find(signal, warmup_length, max_p)
+    })
 }
 
 #[cfg(test)]
