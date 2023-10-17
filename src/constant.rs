@@ -39,6 +39,11 @@ pub(crate) mod envvar_key {
     pub const RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
 }
 
+pub mod fixed {
+    /// Maximum order of fixed LPC supported. (excl.)
+    pub const MAX_LPC_ORDER: usize = 4;
+}
+
 /// Constants related to par-mode (multithreading.)
 pub mod par {
     /// The number of [`FrameBuf`]s for each worker thread in par-mode.

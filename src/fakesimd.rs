@@ -429,3 +429,14 @@ where
         &mut self.as_mut_array()[index]
     }
 }
+
+impl<T, const N: usize> Default for Simd<T, N>
+where
+    T: SimdElement + Default,
+    LaneCount<N>: SupportedLaneCount,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::splat(T::default())
+    }
+}

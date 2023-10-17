@@ -14,7 +14,6 @@
 
 //! Components to be written in the output file.
 
-use std::cell::RefCell;
 use std::cmp::max;
 use std::cmp::min;
 
@@ -27,6 +26,9 @@ use super::error::OutputError;
 use super::error::RangeError;
 use super::lpc;
 use super::rice;
+
+use crate::reusable;
+use crate::reuse;
 
 // re-export quantized parameters
 pub use lpc::QuantizedParameters;
@@ -913,9 +915,7 @@ impl Frame {
     }
 }
 
-thread_local! {
-    static FRAME_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
-}
+reusable!(FRAME_CRC_BUFFER: ByteSink = ByteSink::new());
 static FRAME_CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&CRC_16_FLAC);
 
 impl BitRepr for Frame {
@@ -935,8 +935,7 @@ impl BitRepr for Frame {
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         } else {
-            FRAME_CRC_BUFFER.with(|frame_buffer| {
-                let frame_buffer: &mut ByteSink = &mut frame_buffer.borrow_mut();
+            reuse!(FRAME_CRC_BUFFER, |frame_buffer: &mut ByteSink| {
                 frame_buffer.clear();
                 frame_buffer.reserve(self.count_bits());
 
@@ -1164,9 +1163,7 @@ impl FrameHeader {
     }
 }
 
-thread_local! {
-    static HEADER_CRC_BUFFER: RefCell<ByteSink> = RefCell::new(ByteSink::new());
-}
+reusable!(HEADER_CRC_BUFFER: ByteSink = ByteSink::new());
 static HEADER_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&CRC_8_FLAC);
 
 impl BitRepr for FrameHeader {
@@ -1184,40 +1181,37 @@ impl BitRepr for FrameHeader {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        HEADER_CRC_BUFFER.with(|header_buffer| {
-            {
-                let dest: &mut ByteSink = &mut header_buffer.borrow_mut();
-                dest.clear();
-                dest.reserve(self.count_bits());
+        reuse!(HEADER_CRC_BUFFER, |header_buffer: &mut ByteSink| {
+            header_buffer.clear();
+            header_buffer.reserve(self.count_bits());
 
-                // sync-code + reserved 1-bit + variable-block indicator
-                let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
-                // ^ `from` converts true to 1 and false to 0.
-                dest.write_lsbs(header_word, 16).unwrap();
+            // sync-code + reserved 1-bit + variable-block indicator
+            let header_word = 0xFFF8u16 + u16::from(self.variable_block_size);
+            // ^ `from` converts true to 1 and false to 0.
+            header_buffer.write_lsbs(header_word, 16).unwrap();
 
-                let (head, foot, footsize) = block_size_spec(self.block_size);
-                // head + 4-bit sample rate specifier.
-                dest.write_lsbs(head << 4, 8).unwrap();
-                self.channel_assignment
-                    .write(dest)
-                    .map_err(OutputError::<S>::ignore_sink_error)?;
+            let (head, foot, footsize) = block_size_spec(self.block_size);
+            // head + 4-bit sample rate specifier.
+            header_buffer.write_lsbs(head << 4, 8).unwrap();
+            self.channel_assignment
+                .write(header_buffer)
+                .map_err(OutputError::<S>::ignore_sink_error)?;
 
-                // sample size specifier + 1-bit reserved (zero)
-                dest.write_lsbs(self.sample_size << 1, 4).unwrap();
+            // sample size specifier + 1-bit reserved (zero)
+            header_buffer.write_lsbs(self.sample_size << 1, 4).unwrap();
 
-                if self.variable_block_size {
-                    let v = encode_to_utf8like(self.start_sample_number)?;
-                    dest.write_bytes_aligned(&v).unwrap();
-                } else {
-                    let v = encode_to_utf8like(self.frame_number.into())?;
-                    dest.write_bytes_aligned(&v).unwrap();
-                }
-                dest.write_lsbs(foot, footsize).unwrap();
+            if self.variable_block_size {
+                let v = encode_to_utf8like(self.start_sample_number)?;
+                header_buffer.write_bytes_aligned(&v).unwrap();
+            } else {
+                let v = encode_to_utf8like(self.frame_number.into())?;
+                header_buffer.write_bytes_aligned(&v).unwrap();
             }
+            header_buffer.write_lsbs(foot, footsize).unwrap();
 
-            dest.write_bytes_aligned(header_buffer.borrow().as_byte_slice())
+            dest.write_bytes_aligned(header_buffer.as_byte_slice())
                 .map_err(OutputError::<S>::from_sink)?;
-            dest.write(HEADER_CRC.checksum(header_buffer.borrow().as_byte_slice()))
+            dest.write(HEADER_CRC.checksum(header_buffer.as_byte_slice()))
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         })

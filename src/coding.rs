@@ -30,6 +30,7 @@ use super::component::StreamInfo;
 use super::component::SubFrame;
 use super::component::Verbatim;
 use super::config;
+use super::constant::fixed::MAX_LPC_ORDER as MAX_FIXED_LPC_ORDER;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::error::EncodeError;
@@ -163,70 +164,33 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
 
 /// Helper struct holding working memory for fixed LPC.
 #[derive(Default)]
-struct FixedLpcEncoder {
-    errors: Vec<simd::i32x16>,
+struct FixedLpcError {
+    pub errors: [Vec<simd::i32x16>; MAX_FIXED_LPC_ORDER + 1],
     /// Length of errors in the number of samples (scalars).
-    error_len_in_samples: usize,
+    pub block_size: usize,
 }
 
-impl FixedLpcEncoder {
-    /// Constructs `FixedLpc` using the current `self.errors`.
-    fn make_subframe(
-        &mut self,
-        config: &config::Prc,
-        warmup_samples: &[i32],
-        bits_per_sample: u8,
-    ) -> FixedLpc {
-        let order = warmup_samples.len();
-        let residual = encode_residual(
-            config,
-            &transmute_and_flatten_simd(&self.errors)[0..self.error_len_in_samples],
-            order,
-        );
-        FixedLpc::new(warmup_samples, residual, bits_per_sample as usize)
-    }
+impl FixedLpcError {
+    fn fill(&mut self, signal: &[i32]) {
+        pack_into_simd_vec(signal, &mut self.errors[0]);
+        let simd_len = self.errors[0].len();
 
-    /// Performs `e_{t} -= e_{t-1}`, where `e` is unpacked `self.errors`.
-    fn increment_error_order(&mut self) {
-        let mut carry = 0i32;
-        for i in 0..self.errors.len() {
-            let mut shifted = self.errors[i].rotate_lanes_right::<1>();
-            (shifted[0], carry) = (carry, shifted[0]);
-            self.errors[i] -= shifted;
-        }
-    }
-
-    /// Finds the smallest config for `FixedLpc`.
-    pub fn apply(
-        &mut self,
-        config: &config::SubFrameCoding,
-        signal: &[i32],
-        bits_per_sample: u8,
-        baseline_bits: usize,
-    ) -> Option<SubFrame> {
-        let mut minimizer = None;
-        let mut min_bits = baseline_bits;
-
-        pack_into_simd_vec(signal, &mut self.errors);
-        self.error_len_in_samples = signal.len();
-
-        for order in 0..=4 {
-            let subframe: SubFrame = self
-                .make_subframe(&config.prc, &signal[0..order], bits_per_sample)
-                .into();
-            let bits = subframe.count_bits();
-            if bits < min_bits {
-                minimizer = Some(subframe);
-                min_bits = bits;
+        for order in 0..MAX_FIXED_LPC_ORDER {
+            let next_order = order + 1;
+            self.errors[next_order].resize(simd_len, simd::i32x16::default());
+            let mut carry = 0i32;
+            for i in 0..simd_len {
+                let x = self.errors[order][i];
+                let mut shifted = x.rotate_lanes_right::<1>();
+                (shifted[0], carry) = (carry, shifted[0]);
+                self.errors[next_order][i] = x - shifted;
             }
-            self.increment_error_order();
         }
-        minimizer
+        self.block_size = signal.len();
     }
 }
 
-reusable!(FIXED_LPC_ENCODER: FixedLpcEncoder);
-
+reusable!(FIXED_LPC_ERROR: FixedLpcError);
 /// Tries 0..4-th order fixed LPC and returns the smallest `SubFrame`.
 ///
 /// # Panics
@@ -241,8 +205,24 @@ fn fixed_lpc(
     baseline_bits: usize,
 ) -> Option<SubFrame> {
     assert!(bits_per_sample < 30);
-    reuse!(FIXED_LPC_ENCODER, |encoder: &mut FixedLpcEncoder| {
-        encoder.apply(config, signal, bits_per_sample, baseline_bits)
+
+    reuse!(FIXED_LPC_ERROR, |errbuf: &mut FixedLpcError| {
+        errbuf.fill(signal);
+        let mut minimizer = None;
+        let mut min_bits = baseline_bits;
+        for order in 0..=4 {
+            let cur_error: &[i32] =
+                &transmute_and_flatten_simd(&errbuf.errors[order])[0..errbuf.block_size];
+            let residual = encode_residual(&config.prc, cur_error, order);
+            let subframe: SubFrame =
+                FixedLpc::new(&signal[0..order], residual, bits_per_sample as usize).into();
+            let bits = subframe.count_bits();
+            if bits < min_bits {
+                minimizer = Some(subframe);
+                min_bits = bits;
+            }
+        }
+        minimizer
     })
 }
 
@@ -581,17 +561,14 @@ mod tests {
 
     #[test]
     fn fixed_lpc_encoder() {
-        let mut encoder = FixedLpcEncoder::default();
+        let mut errbuf = FixedLpcError::default();
         let signal = test_helper::sinusoid_plus_noise(64, 32, 10000.0, 128);
-        pack_into_simd_vec(&signal, &mut encoder.errors);
-        encoder.error_len_in_samples = signal.len();
-        encoder.increment_error_order();
-        let unpacked = transmute_and_flatten_simd(&encoder.errors);
+        errbuf.fill(&signal);
+        let unpacked = transmute_and_flatten_simd(&errbuf.errors[1]);
         for t in 1..signal.len() {
             assert_eq!(unpacked[t], signal[t] - signal[t - 1]);
         }
-        encoder.increment_error_order();
-        let unpacked = transmute_and_flatten_simd(&encoder.errors);
+        let unpacked = transmute_and_flatten_simd(&errbuf.errors[2]);
         for t in 2..signal.len() {
             assert_eq!(unpacked[t], signal[t] - 2 * signal[t - 1] + signal[t - 2]);
         }
