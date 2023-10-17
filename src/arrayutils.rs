@@ -205,6 +205,30 @@ where
     }
 }
 
+/// Transmutes a slice of `[Simd]`s into a slice of scalars.
+///
+/// This hides an unsafe block. The operation is basically safe as rust ensures
+/// that:
+///   1. array is contiguous, i.e. `size_of::<[T; N]>() == size_of::<T>() * N`.
+///      <https://doc.rust-lang.org/beta/reference/type-layout.html#array-layout>
+///   2. `Simd` is bit-equivalent with array, i.e.
+///      `size_of::<Simd<T, N>>() == size_of::<T>() * N`.
+///      <https://github.com/rust-lang/portable-simd/blob/master/beginners-guide.md#size-alignment-and-unsafe-code>
+/// Still, there's a possibility that some architecture uses a different
+/// element (or bit) order inside since the above conditions only for there
+/// will be no memory violations. For the orders, we only rely on unittests.
+///
+/// In future, we may rely on `zerocopy` crate that only support raw
+/// (non-portable) simd types, currently.
+pub fn transmute_and_flatten_simd<T, const N: usize>(simds: &[simd::Simd<T, N>]) -> &[T]
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let newlen = simds.len() * N;
+    unsafe { std::slice::from_raw_parts(simds.as_ptr().cast(), newlen) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,5 +312,34 @@ mod tests {
         let mut dest = vec![1, 2, 3];
         unpack_simds(&vs, &mut dest);
         assert_eq!(dest, []);
+    }
+
+    #[test]
+    fn simd_ref_can_be_flattened() {
+        let vs = [
+            simd::i16x4::from_array([0, 1, 2, 3]),
+            simd::i16x4::from_array([4, 5, 6, 0]),
+        ];
+        assert_eq!(transmute_and_flatten_simd(&vs), &[0, 1, 2, 3, 4, 5, 6, 0]);
+
+        // small simd struct
+        let vs = [
+            simd::i8x1::from_array([-1]),
+            simd::i8x1::from_array([-2]),
+            simd::i8x1::from_array([-3]),
+        ];
+        assert_eq!(transmute_and_flatten_simd(&vs), &[-1, -2, -3]);
+
+        // large simd struct
+        let vs = [
+            simd::u64x64::from_array(std::array::from_fn(|d| d as u64)),
+            simd::u64x64::from_array(std::array::from_fn(|d| d as u64 + 1)),
+            simd::u64x64::from_array(std::array::from_fn(|d| d as u64 + 2)),
+        ];
+        let flat_view = transmute_and_flatten_simd(&vs);
+        for (i, v) in flat_view.iter().enumerate() {
+            let offset = i as u64 / 64;
+            assert_eq!(*v, offset + i as u64 % 64);
+        }
     }
 }
