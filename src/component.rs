@@ -17,8 +17,11 @@
 use std::cmp::max;
 use std::cmp::min;
 
+use seq_macro::seq;
+
 use super::bitsink::BitSink;
 use super::bitsink::ByteSink;
+use super::bitsink::MemSink;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
@@ -915,7 +918,7 @@ impl Frame {
     }
 }
 
-reusable!(FRAME_CRC_BUFFER: ByteSink = ByteSink::new());
+reusable!(FRAME_CRC_BUFFER: (MemSink<u64>, Vec<u8>) = (MemSink::new(), Vec::new()));
 static FRAME_CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&CRC_16_FLAC);
 
 impl BitRepr for Frame {
@@ -935,23 +938,28 @@ impl BitRepr for Frame {
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         } else {
-            reuse!(FRAME_CRC_BUFFER, |frame_buffer: &mut ByteSink| {
-                frame_buffer.clear();
-                frame_buffer.reserve(self.count_bits());
+            reuse!(FRAME_CRC_BUFFER, |buf: &mut (MemSink<u64>, Vec<u8>)| {
+                let frame_sink = &mut buf.0;
+                let bytebuf = &mut buf.1;
+
+                frame_sink.clear();
+                frame_sink.reserve(self.count_bits());
 
                 self.header
-                    .write(frame_buffer)
+                    .write(frame_sink)
                     .map_err(OutputError::<S>::ignore_sink_error)?;
                 for sub in &self.subframes {
-                    sub.write(frame_buffer)
+                    sub.write(frame_sink)
                         .map_err(OutputError::<S>::ignore_sink_error)?;
                 }
-                frame_buffer.align_to_byte().unwrap();
+                frame_sink.align_to_byte().unwrap();
 
-                dest.write_bytes_aligned(frame_buffer.as_byte_slice())
-                    .unwrap();
+                bytebuf.resize(frame_sink.len() >> 3, 0u8);
+                frame_sink.write_to_byte_slice(&mut *bytebuf);
 
-                dest.write(FRAME_CRC.checksum(frame_buffer.as_byte_slice()))
+                dest.write_bytes_aligned(&*bytebuf).unwrap();
+
+                dest.write(FRAME_CRC.checksum(&*bytebuf))
                     .map_err(OutputError::<S>::from_sink)
             })
         }
@@ -1648,15 +1656,22 @@ impl BitRepr for Residual {
             let end = offset;
 
             let startbit: u32 = 1u32 << rice_p;
-            let rice_p_plus_1 = rice_p + 1;
-            let mut t = start;
-            while t < end {
-                let q = self.quotients[t] as usize;
-                dest.write_zeros(q).map_err(OutputError::<S>::from_sink)?;
-                let r_plus_startbit = self.remainders[t] | startbit;
-                dest.write_lsbs(r_plus_startbit, rice_p_plus_1 as usize)
-                    .map_err(OutputError::<S>::from_sink)?;
-                t += 1;
+            let rice_p_plus_1: usize = (rice_p + 1) as usize;
+            let mut t0 = start;
+            'partition: while t0 < end {
+                seq!(OFFSET in 0..16 {
+                    #[allow(clippy::identity_op)]
+                    let t = t0 + OFFSET;
+                    if t >= end {
+                        break 'partition;
+                    }
+                    let q = self.quotients[t] as usize;
+                    let r_plus_startbit = (self.remainders[t] | startbit) << (32 - rice_p_plus_1);
+                    dest.write_zeros(q).map_err(OutputError::<S>::from_sink)?;
+                    dest.write_msbs(r_plus_startbit, rice_p_plus_1)
+                        .map_err(OutputError::<S>::from_sink)?;
+                });
+                t0 += 16;
             }
             p += 1;
         }
