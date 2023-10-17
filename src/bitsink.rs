@@ -21,12 +21,14 @@ use std::convert::Infallible;
 /// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
 pub trait PackedBits: seal_packed_bits::Sealed {
-    const PACKED_BITS: usize;
+    const PACKED_BITS: usize = 1usize << Self::PACKED_BITS_LOG2;
+    const PACKED_BYTES: usize = Self::PACKED_BITS / 8usize;
+    const PACKED_BITS_LOG2: usize;
 }
 
 impl<T: seal_packed_bits::Sealed> PackedBits for T {
     /// The number of bits packed in this type. Synonym of `T::BITS`.
-    const PACKED_BITS: usize = std::mem::size_of::<T>() * 8;
+    const PACKED_BITS_LOG2: usize = (std::mem::size_of::<T>() * 8).ilog2() as usize;
 }
 
 /// Trait for the signed integers that can be provided to bitsink.
@@ -235,55 +237,59 @@ pub trait BitSink: Sized {
     }
 }
 
-/// `BitSink` implementation based on [`Vec`] of bytes.
+/// `BitSink` implementation based on [`Vec`] of unsigned ints.
+#[derive(Clone, Debug)]
+pub struct MemSink<S> {
+    storage: Vec<S>,
+    bitlength: usize,
+}
+
+/// `BitSink` implementation based on [`Vec`] of [`u8`]s.
 ///
 /// Since this type store code bits in [`u8`]s, the internal buffer can directly
 /// be written to, e.g. [`std::io::Write`] via [`write_all`] method.
 ///
 /// [`write_all`]: std::io::Write::write_all
-#[derive(Clone, Debug)]
-pub struct ByteSink {
-    bytes: Vec<u8>,
-    bitlength: usize,
-}
+pub type ByteSink = MemSink<u8>;
 
-impl Default for ByteSink {
+impl<S: PackedBits> Default for MemSink<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ByteSink {
-    /// Creates new `ByteSink` instance with the default capacity.
+impl<S: PackedBits> MemSink<S> {
+    /// Creates new `MemSink` instance with the default capacity.
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// let empty: [u8; 0] = [];
+    /// // note thatc `as_byte_slice` is only implemented for <u8>.
     /// assert_eq!(&empty, sink.as_byte_slice());
     /// ```
     pub fn new() -> Self {
         Self {
-            bytes: vec![],
+            storage: vec![],
             bitlength: 0usize,
         }
     }
 
-    /// Creates new `ByteSink` instance with the specified capacity (in bits).
+    /// Creates new `MemSink` instance with the specified capacity (in bits).
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::with_capacity(128);
+    /// let mut sink = MemSink::<u8>::with_capacity(128);
     /// sink.write_lsbs(0x00FFu16, 10);
     /// assert!(sink.into_bytes().capacity() > 128 / 8);
     /// ```
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity((capacity_in_bits >> 3) + 1),
+            storage: Vec::with_capacity((capacity_in_bits >> S::PACKED_BITS_LOG2) + 1),
             bitlength: 0usize,
         }
     }
@@ -294,14 +300,14 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// sink.write_lsbs(0xAAAAAAAAu32, 14);
     /// assert_eq!(sink.to_bitstring(), "10101010_101010**");
     /// sink.clear();
     /// assert_eq!(sink.to_bitstring(), "");
     /// ```
     pub fn clear(&mut self) {
-        self.bytes.clear();
+        self.storage.clear();
         self.bitlength = 0;
     }
 
@@ -311,7 +317,7 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// sink.write(0u64);
     /// sink.write_msbs(0u8, 6);
     /// assert_eq!(sink.len(), 70)
@@ -326,7 +332,7 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// assert!(sink.is_empty());
     /// sink.write_msbs(0u8, 6);
     /// assert!(!sink.is_empty());
@@ -344,36 +350,27 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::with_capacity(1);
+    /// let mut sink = MemSink::<u8>::with_capacity(1);
     /// sink.write_bytes_aligned(&[0u8; 128]);
     /// assert_eq!(sink.len(), 1024);
     /// sink.reserve(2048);
     /// assert!(sink.into_bytes().capacity() > (1024 + 2048) / 8);
     /// ```
     pub fn reserve(&mut self, additional_in_bits: usize) {
-        self.bytes.reserve((additional_in_bits >> 3) + 1);
+        self.storage
+            .reserve((additional_in_bits >> S::PACKED_BITS_LOG2) + 1);
     }
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
     const fn paddings(&self) -> usize {
-        ((!self.bitlength).wrapping_add(1)) & 7
+        ((!self.bitlength).wrapping_add(1)) & (S::PACKED_BITS - 1)
     }
 
-    /// Consumes `ByteSink` and returns the internal buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
-    /// sink.write_bytes_aligned(&[0xABu8; 4]);
-    /// let v: Vec<u8> = sink.into_bytes();
-    /// assert_eq!(&v, &[0xAB; 4]);
-    /// ```
+    /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.bytes
+    const fn paddings_to_byte(&self) -> usize {
+        ((!self.bitlength).wrapping_add(1)) & 7
     }
 
     /// Returns bits in a string.
@@ -386,14 +383,17 @@ impl ByteSink {
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// sink.write_msbs(0x3456u16, 13);
     /// assert_eq!(sink.to_bitstring(), "00110100_01010***");
     /// ```
     pub fn to_bitstring(&self) -> String {
         let mut ret = String::new();
-        for b in &self.bytes {
-            ret.push_str(&format!("{b:08b}_"));
+        for v in &self.storage {
+            for b in v.to_be_bytes().as_ref() {
+                ret.push_str(&format!("{b:08b}"));
+            }
+            ret.push('_');
         }
         ret.pop();
 
@@ -408,22 +408,55 @@ impl ByteSink {
         ret
     }
 
+    pub fn write_to_byte_slice(&self, dest: &mut [u8]) {
+        let destlen = dest.len();
+        let mut head = 0;
+        'outer: for v in &self.storage {
+            for b in v.to_be_bytes().as_ref() {
+                if head >= destlen {
+                    break 'outer;
+                }
+                dest[head] = *b;
+                head += 1;
+            }
+        }
+    }
+}
+
+impl MemSink<u8> {
+    /// Consumes `ByteSink` and returns the internal buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = MemSink::<u8>::new();
+    /// sink.write_bytes_aligned(&[0xABu8; 4]);
+    /// let v: Vec<u8> = sink.into_bytes();
+    /// assert_eq!(&v, &[0xAB; 4]);
+    /// ```
+    #[inline]
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.storage
+    }
+
     /// Returns a reference to the internal bytes.
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::bitsink::*;
-    /// let mut sink = ByteSink::new();
+    /// let mut sink = MemSink::<u8>::new();
     /// sink.write_msbs(0x3456u16, 13);
     /// assert_eq!(sink.to_bitstring(), "00110100_01010***");
     /// ```
     pub fn as_byte_slice(&self) -> &[u8] {
-        &self.bytes
+        &self.storage
     }
 }
 
-impl BitSink for ByteSink {
+// Implemet it for only few special cases
+impl BitSink for MemSink<u8> {
     type Error = Infallible;
 
     #[inline]
@@ -435,7 +468,7 @@ impl BitSink for ByteSink {
         }
         let val = val << tail;
         let bytes: T::Bytes = val.to_be_bytes();
-        self.bytes.extend_from_slice(bytes.as_ref());
+        self.storage.extend_from_slice(bytes.as_ref());
         self.bitlength = nbitlength;
         Ok(())
     }
@@ -450,7 +483,7 @@ impl BitSink for ByteSink {
     #[inline]
     fn write_bytes_aligned(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
         let ret = self.align_to_byte()?;
-        self.bytes.extend_from_slice(bytes);
+        self.storage.extend_from_slice(bytes);
         self.bitlength += 8 * bytes.len();
         Ok(ret)
     }
@@ -466,7 +499,7 @@ impl BitSink for ByteSink {
 
         if r != 0 {
             let b = (val >> (T::PACKED_BITS - r)).as_();
-            *self.bytes.last_mut().unwrap() |= b;
+            *self.storage.last_mut().unwrap() |= b;
             val <<= r;
             if r >= n {
                 return Ok(());
@@ -480,13 +513,13 @@ impl BitSink for ByteSink {
             #[cfg(target_endian = "little")]
             {
                 for i in 0..bytes_to_write {
-                    self.bytes.push(bytes[std::mem::size_of::<T>() - i - 1]);
+                    self.storage.push(bytes[std::mem::size_of::<T>() - i - 1]);
                 }
             }
             #[cfg(target_endian = "big")]
             {
                 for i in 0..bytes_to_write {
-                    self.bytes.push(bytes[i]);
+                    self.storage.push(bytes[i]);
                 }
             }
             n &= 7;
@@ -494,7 +527,7 @@ impl BitSink for ByteSink {
         if n > 0 {
             val <<= bytes_to_write << 3;
             let tail_byte: u8 = (val >> (T::PACKED_BITS - 8)).as_();
-            self.bytes.push(tail_byte);
+            self.storage.push(tail_byte);
         }
         Ok(())
     }
@@ -518,9 +551,82 @@ impl BitSink for ByteSink {
         let n = n - pad;
 
         let bytes = (n + 7) >> 3;
-        self.bytes.resize(self.bytes.len() + bytes, 0u8);
+        self.storage.resize(self.storage.len() + bytes, 0u8);
         self.bitlength += n;
 
+        Ok(())
+    }
+}
+
+impl BitSink for MemSink<u64> {
+    type Error = Infallible;
+
+    #[inline]
+    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
+        self.write_msbs(val, T::PACKED_BITS)
+    }
+
+    #[inline]
+    fn align_to_byte(&mut self) -> Result<usize, Self::Error> {
+        let r = self.paddings_to_byte();
+        self.bitlength += r;
+        Ok(r)
+    }
+
+    #[inline]
+    fn write_bytes_aligned(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+        // this will not be called for u64. so the implementation is not
+        // efficient.
+        let r = self.align_to_byte()?;
+        for b in bytes {
+            self.write(*b)?;
+        }
+        Ok(r)
+    }
+
+    #[inline]
+    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+        // this routine is optimized especially for `Residual::write`.
+        // and is trying to maximize efficiency of the auto-vectorization by
+        // explicitly deferring "if"-statement and actual storage access.
+        let r = self.paddings();
+        self.bitlength += n;
+        let mut val: u64 = val.into();
+        val <<= 64 - T::PACKED_BITS;
+
+        // clear lsbs
+        val &= !((1u64 << (64 - n)) - 1);
+
+        let last_setter = val.wrapping_shr(64u32 - r as u32);
+        val = val.wrapping_shl(r as u32);
+        // u64 is the maximum size, so we only need to push remaining bits.
+        if r != 0 && n > 0 {
+            *self.storage.last_mut().unwrap() |= last_setter;
+        }
+        if r < n && n > 0 {
+            self.storage.push(val);
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+        self.write_msbs(val << (T::PACKED_BITS - n), n)
+    }
+
+    #[inline]
+    fn write_zeros(&mut self, n: usize) -> Result<(), Self::Error> {
+        // this routine is optimized especially for `Residual::write`.
+        // and is trying to maximize efficiency of the auto-vectorization by
+        // explicitly deferring "if"-statement and actual storage access.
+        debug_assert!(n < isize::MAX as usize);
+        let pad = self.paddings() as isize;
+        self.bitlength += n;
+        let n = std::cmp::max(n as isize - pad, 0) as usize;
+        let elems: usize = (n + u64::PACKED_BITS - 1) >> u64::PACKED_BITS_LOG2;
+        if elems > 0 {
+            self.storage.resize(self.storage.len() + elems, 0u64);
+        }
         Ok(())
     }
 }
@@ -530,6 +636,7 @@ mod seal_packed_bits {
     use num_traits::One;
     use num_traits::PrimInt;
     use num_traits::ToBytes;
+    use num_traits::WrappingShl;
     pub trait Sealed:
         ToBytes
         + From<u8>
@@ -538,6 +645,7 @@ mod seal_packed_bits {
         + std::ops::ShlAssign<usize>
         + AsPrimitive<u8>
         + One
+        + WrappingShl
     {
     }
 
@@ -663,6 +771,42 @@ mod tests {
         bv.write_lsbs(0xFFFF_FFFFu32, 9)?;
         bv.write_lsbs(0x0u16, 5)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000***");
+        Ok(())
+    }
+
+    #[test]
+    fn u64vec() -> Result<(), Infallible> {
+        let mut sink = MemSink::<u64>::new();
+        sink.write_msbs(0xFFFF_FFFFu32, 17)?;
+        assert_eq!(
+            sink.to_bitstring(),
+            "11111111111111111***********************************************"
+        );
+        assert_eq!(sink.len(), 17);
+
+        sink.write_bytes_aligned(&[0xCA, 0xFE])?;
+        assert_eq!(
+            sink.to_bitstring(),
+            "1111111111111111100000001100101011111110************************"
+        );
+        assert_eq!(sink.len(), 40);
+
+        sink.write_lsbs(1u16, 2)?;
+        assert_eq!(
+            sink.to_bitstring(),
+            "111111111111111110000000110010101111111001**********************"
+        );
+        assert_eq!(sink.len(), 42);
+
+        sink.write_lsbs(0xAAAA_AAAAu32, 31)?;
+        assert_eq!(
+            sink.to_bitstring(),
+            concat!(
+                "1111111111111111100000001100101011111110010101010101010101010101_",
+                "010101010*******************************************************"
+            )
+        );
+        assert_eq!(sink.len(), 73);
         Ok(())
     }
 }
