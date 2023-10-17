@@ -42,6 +42,17 @@ pub trait SimdElement: Copy + std::fmt::Debug {
     fn simd_element_sub(self, rhs: Self) -> Self;
 }
 
+impl SimdElement for i8 {
+    type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
 impl SimdElement for i16 {
     type Mask = Self;
 
@@ -65,6 +76,17 @@ impl SimdElement for i32 {
 }
 
 impl SimdElement for u32 {
+    type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
+impl SimdElement for u64 {
     type Mask = Self;
 
     fn simd_element_add(self, rhs: Self) -> Self {
@@ -99,10 +121,13 @@ impl SimdElement for f32 {
 
 pub trait SupportedLaneCount {}
 pub struct LaneCount<const LANES: usize>();
+impl SupportedLaneCount for LaneCount<1> {}
+impl SupportedLaneCount for LaneCount<2> {}
 impl SupportedLaneCount for LaneCount<4> {}
 impl SupportedLaneCount for LaneCount<8> {}
 impl SupportedLaneCount for LaneCount<16> {}
 impl SupportedLaneCount for LaneCount<32> {}
+impl SupportedLaneCount for LaneCount<64> {}
 
 pub trait SimdCast: SimdElement + NumCast {}
 impl<T: SimdElement + NumCast> SimdCast for T {}
@@ -147,6 +172,10 @@ pub trait SimdOrd {
 // ===
 #[allow(non_camel_case_types)]
 #[allow(dead_code)] // only for tests currently.
+pub type i8x1 = Simd<i16, 1>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)] // only for tests currently.
 pub type i16x4 = Simd<i16, 4>;
 
 #[allow(non_camel_case_types)]
@@ -157,6 +186,10 @@ pub type i32x16 = Simd<i32, 16>;
 
 #[allow(non_camel_case_types)]
 pub type u32x16 = Simd<u32, 16>;
+
+#[allow(non_camel_case_types)]
+#[allow(dead_code)] // only for tests currently.
+pub type u64x64 = Simd<u64, 64>;
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]

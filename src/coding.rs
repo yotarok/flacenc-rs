@@ -16,7 +16,7 @@
 
 use super::arrayutils::is_constant;
 use super::arrayutils::pack_into_simd_vec;
-use super::arrayutils::unpack_simds;
+use super::arrayutils::transmute_and_flatten_simd;
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
 use super::component::Constant;
@@ -167,8 +167,6 @@ struct FixedLpcEncoder {
     errors: Vec<simd::i32x16>,
     /// Length of errors in the number of samples (scalars).
     error_len_in_samples: usize,
-    /// Temporary buffer for unpacked error signal.
-    unpacked_errors: Vec<i32>,
 }
 
 impl FixedLpcEncoder {
@@ -180,9 +178,11 @@ impl FixedLpcEncoder {
         bits_per_sample: u8,
     ) -> FixedLpc {
         let order = warmup_samples.len();
-        unpack_simds(&self.errors, &mut self.unpacked_errors);
-        self.unpacked_errors.truncate(self.error_len_in_samples);
-        let residual = encode_residual(config, &self.unpacked_errors, order);
+        let residual = encode_residual(
+            config,
+            &transmute_and_flatten_simd(&self.errors)[0..self.error_len_in_samples],
+            order,
+        );
         FixedLpc::new(warmup_samples, residual, bits_per_sample as usize)
     }
 
@@ -586,13 +586,12 @@ mod tests {
         pack_into_simd_vec(&signal, &mut encoder.errors);
         encoder.error_len_in_samples = signal.len();
         encoder.increment_error_order();
-        let mut unpacked = vec![];
-        unpack_simds(&encoder.errors, &mut unpacked);
+        let unpacked = transmute_and_flatten_simd(&encoder.errors);
         for t in 1..signal.len() {
             assert_eq!(unpacked[t], signal[t] - signal[t - 1]);
         }
         encoder.increment_error_order();
-        unpack_simds(&encoder.errors, &mut unpacked);
+        let unpacked = transmute_and_flatten_simd(&encoder.errors);
         for t in 2..signal.len() {
             assert_eq!(unpacked[t], signal[t] - 2 * signal[t - 1] + signal[t - 2]);
         }
