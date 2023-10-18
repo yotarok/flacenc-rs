@@ -383,6 +383,7 @@ def_binop!(Mul, mul, x, y, { x * y });
 def_binop!(Div, div, x, y, { x / y });
 def_binop!(BitAnd, bitand, x, y, { x & y });
 def_binop!(Shr, shr, x, y, { x >> y });
+def_binop!(Shl, shl, x, y, { x << y });
 
 def_binop_assign!(AddAssign, Add, add_assign, x, y, { x + y });
 def_binop_assign!(SubAssign, Sub, sub_assign, x, y, { x - y });
