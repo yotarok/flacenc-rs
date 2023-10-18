@@ -141,14 +141,17 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
     let block_size = errors.len();
     let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     let nparts = 1 << prc_p.order;
-    let part_size = errors.len() / nparts;
+    let part_size = errors.len() >> prc_p.order;
+    debug_assert!(part_size >= warmup_length);
 
     let mut quotients = vec![0u32; block_size];
     let mut remainders = vec![0u32; block_size];
 
-    for (p, rice_p) in prc_p.ps.iter().enumerate().take(nparts) {
-        let start = std::cmp::max(p * part_size, warmup_length);
-        let end = (p + 1) * part_size;
+    let mut offset = 0;
+    for rice_p in &prc_p.ps[0..nparts] {
+        let start = std::cmp::max(offset, warmup_length);
+        offset += part_size;
+        let end = offset;
         // ^ this is okay because partitions are larger than warmup_length
         encode_residual_partition(start, end, *rice_p, errors, &mut quotients, &mut remainders);
     }

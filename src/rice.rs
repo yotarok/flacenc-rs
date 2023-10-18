@@ -125,7 +125,7 @@ fn finest_partition_order(size: usize, min_part_size: usize) -> usize {
 /// Encodes the sign bit into its LSB (for Rice coding).
 #[inline]
 pub const fn encode_signbit(v: i32) -> u32 {
-    v.unsigned_abs() * 2 - (v < 0) as u32
+    (v.unsigned_abs() << 1) - (v < 0) as u32
 }
 
 #[inline]
@@ -134,7 +134,7 @@ pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<
 where
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
-    v.abs().cast() * simd::Simd::splat(2u32) - (v.cast() >> simd::Simd::splat(31u32))
+    (v.abs().cast() << simd::Simd::splat(1u32)) - (v.cast() >> simd::Simd::splat(31u32))
 }
 
 /// Recovers a sign bit from its LSB.
