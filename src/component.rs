@@ -924,12 +924,17 @@ static FRAME_CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&CRC_16_FLAC);
 impl BitRepr for Frame {
     #[inline]
     fn count_bits(&self) -> usize {
-        let header = self.header.count_bits();
-        let body: usize = self.subframes.iter().map(BitRepr::count_bits).sum();
+        self.precomputed_bitstream.as_ref().map_or_else(
+            || {
+                let header = self.header.count_bits();
+                let body: usize = self.subframes.iter().map(BitRepr::count_bits).sum();
 
-        let aligned = (header + body + 7) / 8 * 8;
-        let footer = 16;
-        aligned + footer
+                let aligned = (header + body + 7) / 8 * 8;
+                let footer = 16;
+                aligned + footer
+            },
+            |bytes| bytes.len() << 3,
+        )
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {

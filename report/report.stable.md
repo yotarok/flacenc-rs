@@ -22,15 +22,15 @@ Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 226.24005186004783
-    - opt8: 226.40229065065654
-    - opt5: 437.13762185059875
+    - opt8lax: 252.20384837760537
+    - opt8: 261.75123878588147
+    - opt5: 474.98327988294767
 
   - Ours
-    - default: 916.9501774939099
-    - mt1: 265.13363763089194
-    - st: 255.5052743718486
-    - dmse: 327.60848736772977
-    - mae: 40.73513170359286
+    - default: 1094.335046364402
+    - mt1: 279.19700261630067
+    - st: 246.057710662378
+    - dmse: 375.1870166006766
+    - mae: 44.01332061523976
 
 
