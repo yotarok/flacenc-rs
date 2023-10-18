@@ -38,16 +38,38 @@ use super::source::Source;
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 
+/// `Arc::into_inner` with unwrapping.
+///
+/// This function is introduced for conditional compilation for lowering MSRV.
+/// The race condition described in the document of [`Arc::try_into`] will
+/// not happen in the current use cases; however, [`Arc::into_inner`] will be
+/// the future standard so we should delete the second definition when we are
+/// ready to bump MSRV.
+#[rustversion::since(1.70)]
+#[inline]
+fn destruct_arc<T: std::fmt::Debug>(ptr: Arc<T>) -> T {
+    Arc::into_inner(ptr).expect(panic_msg::ARC_DESTRUCT_FAILED)
+}
+
+#[rustversion::before(1.70)]
+#[inline]
+fn destruct_arc<T: std::fmt::Debug>(ptr: Arc<T>) -> T {
+    Arc::try_unwrap(ptr).expect(panic_msg::ARC_DESTRUCT_FAILED)
+}
+
 /// Sink object that stores encoding results.
 ///
 /// This is currently just a `BTreeMap<usize, T>` with some utility functions.
+#[derive(Debug)]
 struct ParSink<T> {
     data: Mutex<BTreeMap<usize, T>>,
 }
 
 impl<T> ParSink<T> {
     /// Creates `ParSink` object.
-    pub const fn new() -> Self {
+    ///
+    /// Note: `BTreeMap::new` isn't const before 1.66.
+    pub fn new() -> Self {
         Self {
             data: Mutex::new(BTreeMap::new()),
         }
@@ -223,7 +245,11 @@ impl ParContext {
         self.thread_handle
             .join()
             .expect(panic_msg::THREAD_JOIN_FAILED);
-        Arc::into_inner(self.inner).unwrap().into_inner().unwrap()
+        // since this method is called from the main thread, the race
+        // condition as written in the document will never happen. However,
+        // anyway the expression above will be the future standard, so this
+        // block will be deprecated when we are to bump MSRV.
+        destruct_arc(self.inner).into_inner().unwrap()
     }
 }
 
@@ -420,9 +446,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
         h.join().expect(panic_msg::THREAD_JOIN_FAILED);
     }
 
-    Arc::into_inner(parsink)
-        .unwrap()
-        .finalize(|f: Frame| stream.add_frame(f));
+    destruct_arc(parsink).finalize(|f: Frame| stream.add_frame(f));
 
     stream
         .stream_info_mut()
@@ -520,9 +544,7 @@ mod tests {
             h.join().expect(panic_msg::THREAD_JOIN_FAILED);
         }
         let mut result = vec![];
-        Arc::into_inner(sink)
-            .expect("Arc deconstruction failed")
-            .finalize(|v| result.push(v));
+        destruct_arc(sink).finalize(|v| result.push(v));
         assert_eq!(result, REFERENCE);
     }
 }

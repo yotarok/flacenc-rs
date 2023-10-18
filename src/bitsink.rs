@@ -28,7 +28,10 @@ pub trait PackedBits: seal_packed_bits::Sealed {
 
 impl<T: seal_packed_bits::Sealed> PackedBits for T {
     /// The number of bits packed in this type. Synonym of `T::BITS`.
+    #[rustversion::since(1.67)]
     const PACKED_BITS_LOG2: usize = (std::mem::size_of::<T>() * 8).ilog2() as usize;
+    #[rustversion::before(1.67)]
+    const PACKED_BITS_LOG2: usize = 3 + std::mem::size_of::<T>().trailing_zeros() as usize;
 }
 
 /// Trait for the signed integers that can be provided to bitsink.

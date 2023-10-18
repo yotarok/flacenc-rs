@@ -337,6 +337,7 @@ fn encode_frame_impl(
 }
 
 // Recombines stereo frame.
+#[allow(clippy::tuple_array_conversions)] // recommended conversion methods are not supported in MSRV
 #[inline]
 fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame {
     let (_header, l, r) = indep
@@ -347,10 +348,7 @@ fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame
         .expect(panic_msg::DATA_INCONSISTENT);
 
     let chans = header.channel_assignment().select_channels(l, r, m, s);
-    Frame::from_parts(
-        header,
-        <(SubFrame, SubFrame) as Into<[SubFrame; 2]>>::into(chans).into_iter(),
-    )
+    Frame::from_parts(header, [chans.0, chans.1].into_iter())
 }
 
 reusable!(MSFRAMEBUF: FrameBuf = FrameBuf::with_size(2, 4096));

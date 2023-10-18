@@ -55,6 +55,29 @@ jobs:
         args: --verbose --all-targets --no-default-features
         directory: flacenc-bin
 
+  build_msrv:
+    # current MSRV for the library is 1.65
+    # for the binary, it's 1.70 but we don't try to maintain it.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install MSRV toolchain
+      # uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@v1
+      with:
+        toolchain: 1.65
+        components: rustfmt, clippy
+    - name: Run check
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: check
+        args: --verbose --no-default-features --features "par,mimalloc"
+    - name: Run tests
+      uses: ClementTsang/cargo-action@v0.0.3
+      with:
+        command: test
+        args: --verbose --no-default-features --features "par,mimalloc"
+
   lints:
     runs-on: ubuntu-latest
     steps:
