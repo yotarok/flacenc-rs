@@ -14,6 +14,8 @@
 
 //! Configuration constants
 
+#![allow(dead_code)] // it's okay if some FLAC-spec constants are not used.
+
 // Constance sorted in an alphabetical-order.  Top-level constants first, and
 // then sub-modules. Constants that are used only in a specific sub-module or
 // its caller should be placed in the corresponding submodule.
@@ -107,6 +109,7 @@ pub mod rice {
 /// It's okay to use them in tests, but it's not okay to add another variable
 /// only for test functions.
 pub(crate) mod panic_msg {
+    pub const ARC_DESTRUCT_FAILED: &str = "INTERNAL ERROR: Arc destruction failed.";
     pub const DATA_INCONSISTENT: &str = "INTERNAL ERROR: Internal variable inconsistency detected.";
     pub const ERROR_NOT_EXPECTED: &str =
         "INTERNAL ERROR: Error occured in the function where it is not expected.";
