@@ -32,6 +32,14 @@ pub const MAX_CHANNELS: usize = 8;
 /// Maximum bits-per-sample supported.
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
+/// Sub-module containing constants related to build-time information.
+pub mod build_info {
+    pub const CRATE_VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
+        Some(v) => v,
+        None => "unknown",
+    };
+}
+
 /// Constants related to keys for the environment variables.
 pub(crate) mod envvar_key {
     /// Environment variable name for specifying the number of threads.

@@ -5,7 +5,9 @@
 [![Documentation](https://docs.rs/flacenc/badge.svg)](https://docs.rs/flacenc)
 
 This crate provides some basic modules for building application customized FLAC
-(Free Lossless Audio Codec) encoder in rust programs.
+(Free Lossless Audio Codec) encoder in rust programs. If you are interested in
+a stand-alone FLAC encoder (rather than a library for building it), check out
+the CLI for this module located in [`flacenc-bin`](flacenc-bin/README.md).
 
 See [the auto-generated report](report/report.nightly.md) for the characteristics of the
 encoder compared to

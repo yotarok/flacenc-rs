@@ -7,16 +7,16 @@ See [flacenc-rs](https://github.com/yotarok/flacenc-rs) for project overview.
 To install (with using nightly rust):
 
 ```bash
-rustup default nightly && cargo install flacenc-bin
+cargo +nightly install --path=. flacenc-bin
 ```
 
 Or, if you want to use stable channel:
 
 ```bash
-cargo install flacenc-bin --features fakesimd
+cargo install --path=. flacenc-bin
 ```
 
-To encode a wav file:
+Then, you can run encoding as follows:
 
 ```bash
 flacenc --output output.flac input.wav
