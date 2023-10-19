@@ -186,6 +186,8 @@ where
 
 /// Unpack slice of `Simd` into `Vec` of scalars.
 ///
+/// NOTE: This is currently not used. Since this function is expected to be
+/// useful in future enhancements, it is kept here.
 /// NOTE: This performs unnecessary copy. It might be better to consider
 /// another zero-copy solution.
 #[allow(dead_code)]

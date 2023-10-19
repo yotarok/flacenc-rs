@@ -1,6 +1,6 @@
 [package]
 name = "flacenc"
-version = "0.2.0"
+version = "0.3.0"
 description = "FLAC encoder written in Rust."
 documentation = "https://docs.rs/flacenc/latest/flacenc"
 readme = "README.md"

@@ -13,6 +13,38 @@
 // limitations under the License.
 
 //! Encoder configuration structs.
+//!
+//! This module defines a deserializable config variables and those default
+//! values. Typically, the top-level variable [`Encoder`] is represented in
+//! a toml file like below:
+//!
+//! ```toml
+//! block_sizes = [4096]
+//! multithread = true
+//!
+//! [stereo_coding]
+//! use_leftside = true
+//! use_rightside = true
+//! use_midside = true
+//!
+//! [subframe_coding]
+//! use_constant = true
+//! use_fixed = true
+//! use_lpc = true
+//!
+//! [subframe_coding.qlpc]
+//! lpc_order = 10
+//! quant_precision = 12
+//! use_direct_mse = false
+//! mae_optimization_steps = 0
+//!
+//! [subframe_coding.qlpc.window]
+//! type = "Tukey"
+//! alpha = 0.1
+//!
+//! [subframe_coding.prc]
+//! max_parameter = 14
+//! ```
 
 use std::num::NonZeroUsize;
 
@@ -35,11 +67,16 @@ use super::error::VerifyError;
 #[serde(default)]
 #[non_exhaustive]
 pub struct Encoder {
-    /// The possible block sizes encoder can use.
+    /// The possible block sizes encoder can use. (default: `[4096]`)
+    ///
+    /// Currently no encoder function support multiple block sizes.
     pub block_sizes: Vec<usize>,
-    /// Whether encoder runs on multi-thread mode.
+    /// Whether encoder runs on multi-thread mode. (default: `true`)
     pub multithread: bool,
-    /// The number of threads used in multithread mode.
+    /// The number of threads used in multithread mode. (default: `None`)
+    ///
+    /// If None, the number of workers is set to be identical with the number
+    /// of the logical CPU cores in the running environment.
     pub workers: Option<NonZeroUsize>,
     /// Configuration for stereo-coding module.
     pub stereo_coding: StereoCoding,
@@ -103,11 +140,11 @@ impl Verify for Encoder {
 #[serde(default)]
 #[non_exhaustive]
 pub struct StereoCoding {
-    /// If set to false, left-side coding will not be used.
+    /// If set to false, left-side coding will not be used. (default: `true`)
     pub use_leftside: bool,
-    /// If set to false, right-side coding will not be used.
+    /// If set to false, right-side coding will not be used. (default: `true`)
     pub use_rightside: bool,
-    /// If set to false, mid-side coding will not be used.
+    /// If set to false, mid-side coding will not be used. (default: `true`)
     pub use_midside: bool,
 }
 
@@ -133,11 +170,11 @@ impl Verify for StereoCoding {
 #[non_exhaustive]
 pub struct SubFrameCoding {
     // Disabling verbatim coding is intentionally prohibited.
-    /// If set to false, constant mode will not be used.
+    /// If set to false, constant mode will not be used. (default: `true`)
     pub use_constant: bool,
-    /// If set to false, fixed-LPC mode will not be used.
+    /// If set to false, fixed-LPC mode will not be used. (default: `true`)
     pub use_fixed: bool,
-    /// If set to false, LPC mode will not be used.
+    /// If set to false, LPC mode will not be used. (default: `true`)
     pub use_lpc: bool,
     /// Configuration for quantized LPC encoder.
     pub qlpc: Qlpc,
@@ -199,13 +236,19 @@ impl Verify for Prc {
 #[serde(default)]
 #[non_exhaustive]
 pub struct Qlpc {
-    /// LPC order.
+    /// LPC order. (default: [`QLPC_DEFAULT_ORDER`])
     pub lpc_order: usize,
-    /// Precision for quantized LPC coefficients.
+    /// Precision for quantized LPC coefficients. (default: [`QLPC_DEFAULT_PRECISION`])
     pub quant_precision: usize,
-    /// If set, use a direct MSE method for LPC estimation.
+    /// If set, use a direct MSE method for LPC estimation. (default: `false`)
+    ///
+    /// This is for an encoder with `experimental` feature. In
+    /// non-`experimental` encoders, this setting is simply ignored.
     pub use_direct_mse: bool,
     /// If set, iteratively optimizes LPC parameters with the given steps.
+    ///
+    /// This is for an encoder with `experimental` feature. In
+    /// non-`experimental` encoders, this setting is simply ignored.
     pub mae_optimization_steps: usize,
     /// Window function to be used for LPC estimation.
     pub window: Window,
@@ -263,7 +306,16 @@ impl Verify for Qlpc {
 
 /// Analysis window descriptor.
 ///
-/// This implements Ord as it can be used as a keys for window cache.
+/// This enum can be deserialized from toml table with a special tag "type"
+/// specifying the type of window, for example like below:
+///
+/// ```toml
+/// type = "Tukey"
+/// alpha = 0.1
+/// ```
+///
+/// The current default value for [`Window`] is "Tukey" with alpha =
+/// [`DEFAULT_TUKEY_ALPHA`].
 #[derive(Clone, Debug, Deserialize, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
