@@ -53,6 +53,27 @@
     clippy::wildcard_enum_match_arm
 )]
 
+#[macro_export]
+macro_rules! import_simd {
+    (as $modalias:ident) => {
+        #[cfg(feature = "simd-nightly")]
+        use std::simd as $modalias;
+        #[cfg(not(feature = "simd-nightly"))]
+        use $crate::fakesimd as $modalias;
+
+        #[allow(unused_imports)]
+        use simd::SimdInt;
+        #[allow(unused_imports)]
+        use simd::SimdOrd;
+        #[allow(unused_imports)]
+        use simd::SimdPartialEq;
+        #[allow(unused_imports)]
+        use simd::SimdPartialOrd;
+        #[allow(unused_imports)]
+        use simd::SimdUint;
+    };
+}
+
 pub mod arrayutils;
 pub mod bitsink;
 pub(crate) mod coding;

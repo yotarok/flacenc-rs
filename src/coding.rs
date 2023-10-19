@@ -44,10 +44,7 @@ use super::source::Source;
 use crate::reusable;
 use crate::reuse;
 
-#[cfg(not(feature = "simd-nightly"))]
-use super::fakesimd as simd;
-#[cfg(feature = "simd-nightly")]
-use std::simd;
+import_simd!(as simd);
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
 #[inline]

@@ -16,10 +16,7 @@
 
 use seq_macro::seq;
 
-#[cfg(not(feature = "simd-nightly"))]
-use super::fakesimd as simd;
-#[cfg(feature = "simd-nightly")]
-use std::simd;
+import_simd!(as simd);
 
 // deinterleaver is often used in the I/O thread which can be a performance
 // bottleneck. So, hoping that LLVM optimizer can automatically SIMD-ize,
