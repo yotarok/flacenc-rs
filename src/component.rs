@@ -787,6 +787,7 @@ impl Frame {
     ///
     /// Panics when the number of subframes added exceeded the `MAX_CHANNELS`.
     pub(crate) fn add_subframe(&mut self, subframe: SubFrame) {
+        self.precomputed_bitstream = None;
         self.subframes.push(subframe);
         assert!(self.subframes.len() <= MAX_CHANNELS);
     }
@@ -1939,6 +1940,11 @@ mod tests {
         let mut bv: BitVec<usize> = BitVec::new();
         frame.write(&mut bv)?;
         assert_eq!(bv, bv_ref);
+
+        // this makes `Frame` broken as the header says it has two channels.
+        frame.add_subframe(frame.subframe(0).unwrap().clone());
+        // anyway cache should be discarded.
+        assert!(!frame.is_bitstream_precomputed());
         Ok(())
     }
 
