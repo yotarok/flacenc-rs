@@ -23,7 +23,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
-flacenc = { version = "0.2.0", path = "..", default-features = false, features = ["experimental", "mimalloc"] }
+flacenc = { version = "0.2.0", path = "..", default-features = false, features = ["experimental", "mimalloc", "par"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 toml = "0.5"
