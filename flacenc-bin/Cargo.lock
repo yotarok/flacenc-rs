@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "crc",
  "crossbeam-channel",
@@ -329,7 +329,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc-bin"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap",
  "flacenc",

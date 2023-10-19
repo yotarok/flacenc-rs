@@ -159,7 +159,7 @@ pub struct VerifyError {
 }
 
 impl VerifyError {
-    /// Makes range error from `actual: impl Display` that is out of range.
+    /// Makes verification error for an invalid variable `component`.
     ///
     /// # Examples
     ///
@@ -297,10 +297,10 @@ impl SourceError {
     ///
     /// ```
     /// # use flacenc::error::*;
-    /// let err = SourceError::by_reason(SourceErrorReason::Open);
+    /// let err = SourceError::from_unknown();
     /// assert_eq!(
     ///     format!("{}", err),
-    ///     "error occured while reading <unknown>. reason: cannot open file."
+    ///     "error occured while reading <unknown>. reason: unknown I/O error."
     /// );
     /// ```
     pub const fn from_unknown() -> Self {

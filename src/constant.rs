@@ -49,8 +49,9 @@ pub(crate) mod envvar_key {
     pub const RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
 }
 
+/// Constants related to fixed-parameter LPC encoding.
 pub mod fixed {
-    /// Maximum order of fixed LPC supported. (excl.)
+    /// Maximum order of fixed LPC supported.
     pub const MAX_LPC_ORDER: usize = 4;
 }
 

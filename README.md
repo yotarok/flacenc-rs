@@ -5,35 +5,34 @@
 [![Documentation](https://docs.rs/flacenc/badge.svg)](https://docs.rs/flacenc)
 
 This crate provides some basic modules for building application customized FLAC
-(Free Lossless Audio Codec) encoder in rust programs. If you are interested in
-a stand-alone FLAC encoder (rather than a library for building it), check out
-the CLI for this module located in [`flacenc-bin`](flacenc-bin/README.md).
+(Free Lossless Audio Codec) encoder in rust programs. If you are interested in a
+stand-alone FLAC encoder (rather than a library for building it), check out the
+CLI for this module located in [`flacenc-bin`].
 
-See [the auto-generated report](report/report.nightly.md) for the characteristics of the
-encoder compared to
-[FLAC reference implementation](https://xiph.org/flac/download.html).
+See the [auto-generated report] for the characteristics of the encoder compared
+to [FLAC reference implementation](https://xiph.org/flac/download.html).
 
 ## Usage
 
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = "0.2.0"
+flacenc = "0.3.0"
 ```
 
 This crate is intended to be, and primarily developed with
 [`portable_simd`](https://github.com/rust-lang/project-portable-simd), and the
-default features above uses "fake" SIMD implementation for making it's possible
-to build within a stable toolchain. If you are okay with using a nightly
-toolchain, use this crate with the SIMD features as follows:
+default configuration above uses "fake" implementation of `portable_simd` for
+making it possible to build within a stable toolchain. If you are okay with
+using a nightly toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = { version = "0.2.0", features = ["simd-nightly"] }
+flacenc = { version = "0.3.0", features = ["simd-nightly"] }
 ```
 
 ## Examples
 
-See also the source code of `flacenc-bin` sub-crate as a simple implementation
+See also the source code of `flacenc-bin` sub-crate as an example implementation
 of FLAC encoder.
 
 The simplest way to implement FLAC encoder given the recorded samples in
@@ -68,9 +67,9 @@ flac_stream.frame(0).unwrap().write(&mut sink);
 `samples` here is an interleaved sequence, e.g. in the case with stereo inputs,
 it is a sequence like `[left_0, right_0, left_1, right_1, ...]` where
 `{left|right}_N` denotes the `N`-th sample from the left or right channel. All
-samples are assumed to be in the range of `- 2.pow(bits_per_samples - 1) ..
-2.pow(bits_per_samples - 1)`, i.e. if `bits_per_samples == 16`, `samples[t]`
-must be `-32768 <= samples[t] <= 32767`.
+samples are assumed to be in the range of
+`- 2.pow(bits_per_samples - 1) .. 2.pow(bits_per_samples - 1)`, i.e. if
+`bits_per_samples == 16`, `samples[t]` must be `-32768 <= samples[t] <= 32767`.
 
 ### Customizing Encoder Behaviors
 
@@ -80,43 +79,42 @@ NOTE: Currently, `flacenc` is in its initial development stage
 The current API provides several ways to control the encoding process. The
 possible customization can be categorized into three groups:
 
-1.  Encode behavior customization by configuring [`config::Encoder`],
-2.  Input enhancement by implementing [`source::Source`] trait,
-3.  Add custom post-processing via structs in [`component`] submodule.
-
-[`config::Encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
-[`source::Source`]: https://docs.rs/flacenc/latest/flacenc/source/trait.Source.html
-[`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
+1. Encode behavior customization by configuring [`config::Encoder`],
+1. Input enhancement by implementing [`source::Source`] trait,
+1. Add custom post-processing via structs in [`component`] submodule.
 
 ## Feature Flags
 
 `flacenc` has a few Cargo features that changes the internal behaviors and APIs.
 
--   `experimental`: Enables experimental coding algorithms that are typically
-    slower. Due to its experimental nature, there's no documentation on how to
-    activate each algorithm. You may need to explore `flacenc::config` module or
-    source codes.
--   `fakesimd`: Uses a naive array implementation for mimicking `portable_simd`
-    feature that can only be used in a nightly toolchain. This feature is not
-    enabled by default, but required to be activated for using this crate with a
-    stable toolchain.
--   `mimalloc`: Enables [`mimalloc`](https://crates.io/crates/mimalloc) global
-    allocator. This can lead a small performance improvement in `par`-mode.
--   `par`: (This feature is enabled by default) Enables multi-thread encoding in
-    `encode_with_fixed_block_size` function if `config` argument is properly
-    configured (when `par` is enabled the default configuration enables
-    multi-thread mode.). If you want to disable multi-thread mode and make the
-    dependency tree smaller, you may do that by `default-featuers = false`.
-    `par` adds dependency to
-    [`crossbeam-channel`](https://crates.io/crates/crossbeam-channel) crate.
+- `experimental`: Enables experimental coding algorithms that are typically
+  slower. Due to its experimental nature, there's no documentation on how to
+  activate each algorithm. You may need to explore `flacenc::config` module or
+  source codes for better understanding.
+- `simd-nightly`: Activates `portable-simd` feature of a rust nightly toolchain
+  and use real SIMD processing instead of the fake one currently used by
+  default.
+- `mimalloc`: Enables [`mimalloc`](https://crates.io/crates/mimalloc) global
+  allocator. This can lead a performance improvement in `par`-mode.
+- `par`: (This feature is enabled by default) Enables multi-thread encoding in
+  `encode_with_fixed_block_size` function if `config` argument is properly
+  configured (when `par` is enabled the default configuration enables
+  multi-thread mode.). If you want to disable multi-thread mode and make the
+  dependency tree smaller, you may do that by `default-featuers = false`. `par`
+  adds dependency to
+  [`crossbeam-channel`](https://crates.io/crates/crossbeam-channel) crate.
+
+In an example encoder `flacenc-bin`, all the features except for `simd-nightly`
+are enabled by default. Further, `simd-nightly` is used in
+[the benchmarking script](run_reporter.sh).
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
+See [`CONTRIBUTING.md`] for details.
 
 ## License
 
-Apache 2.0; see [`LICENSE`](LICENSE.md) for details.
+Apache 2.0; see [`LICENSE.md`] for details.
 
 ## Disclaimer
 
@@ -129,3 +127,11 @@ distortion, i.e. the encoder is sometimes not "lossless". You can check whether
 you encountered an encoder bug by running the reference decoder. The FLAC format
 contains MD5 digest of the input signal, and the reference decoder checks if the
 digest of the decoded signal matches with the stored one.
+
+[auto-generated report]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
+[`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
+[`config::encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
+[`contributing.md`]: https://github.com/yotarok/flacenc-rs/blob/main/CONTRIBUTING.md
+[`flacenc-bin`]: https://github.com/yotarok/flacenc-rs/blob/main/flacenc-bin/README.md
+[`license.md`]: https://github.com/yotarok/flacenc-rs/blob/main/LICENSE.md
+[`source::source`]: https://docs.rs/flacenc/latest/flacenc/source/trait.Source.html

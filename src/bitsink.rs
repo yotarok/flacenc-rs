@@ -16,7 +16,7 @@
 
 use std::convert::Infallible;
 
-/// Trait for the bit-addressible integers.
+/// Trait for the bit-addressible unsigned integers.
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
@@ -80,8 +80,8 @@ pub trait BitSink: Sized {
     ///
     /// ```
     /// # fn main() -> Result<(), std::convert::Infallible> {
-    /// use flacenc::bitsink::{ByteSink, BitSink};
-    /// let mut sink = ByteSink::new();
+    /// # use flacenc::bitsink::{MemSink, BitSink};
+    /// let mut sink = MemSink::<u8>::new();
     ///
     /// sink.write_lsbs(0xFFu8, 3);
     /// assert_eq!(sink.len(), 3);
@@ -89,6 +89,22 @@ pub trait BitSink: Sized {
     /// sink.write_bytes_aligned(&[0xB7, 0x7D])?;
     ///
     /// assert_eq!(sink.to_bitstring(), "11100000_10110111_01111101");
+    /// # Ok(())}
+    /// ```
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// # use flacenc::bitsink::{MemSink, BitSink};
+    /// let mut sink = MemSink::<u64>::new();
+    ///
+    /// sink.write_lsbs(0xFFu8, 3);
+    ///
+    /// sink.write_bytes_aligned(&[0xAA, 0xF0])?;
+    ///
+    /// assert_eq!(
+    ///     sink.to_bitstring(),
+    ///     "111000001010101011110000****************************************"
+    /// );
     /// # Ok(())}
     /// ```
     #[inline]
@@ -216,6 +232,25 @@ pub trait BitSink: Sized {
     ///
     /// sink.write_zeros(6);
     /// assert_eq!(sink.to_bitstring(), "11100000_0*******");
+    /// # Ok(())}
+    /// ```
+    ///
+    /// ```
+    /// # fn main() -> Result<(), std::convert::Infallible> {
+    /// use flacenc::bitsink::{MemSink, BitSink};
+    /// let mut sink = MemSink::<u64>::new();
+    /// sink.write_lsbs(1u16, 1);
+    /// sink.write_zeros(65);
+    /// sink.write_lsbs(1u16, 1);
+    ///
+    /// // a bitstring of `MemSink<u64>` has chunks with the lengths=64.
+    /// assert_eq!(
+    ///     sink.to_bitstring(),
+    ///     concat!(
+    ///         "1000000000000000000000000000000000000000000000000000000000000000_",
+    ///         "001*************************************************************",
+    ///     )
+    /// );
     /// # Ok(())}
     /// ```
     #[inline]

@@ -53,7 +53,7 @@
     clippy::wildcard_enum_match_arm
 )]
 
-#[macro_export]
+/// Expands import statements for `fakesimd` or `std::simd`.
 macro_rules! import_simd {
     (as $modalias:ident) => {
         #[cfg(feature = "simd-nightly")]

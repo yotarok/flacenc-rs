@@ -20,9 +20,9 @@ use super::arrayutils::deinterleave;
 use super::arrayutils::le_bytes_to_i32s;
 use super::error::SourceError;
 
-/// Traits for the buffers-like objects filled by [`Source`].
+/// Traits for buffer-like objects that can be filled by [`Source`].
 ///
-/// An implementation is [`Source::read_samples`] is expected to call one
+/// An implementation of [`Source::read_samples`] is expected to call one
 /// of the `fill_*` method declared in this trait.
 pub trait Fill {
     /// Fills the target variable with the given interleaved samples.
@@ -37,7 +37,7 @@ pub trait Fill {
     /// [`FrameBuf`] implements `Fill`.
     ///
     /// ```
-    /// use flacenc::source::{Fill, FrameBuf};
+    /// # use flacenc::source::{Fill, FrameBuf};
     /// let mut fb = FrameBuf::with_size(8, 1024);
     /// fb.fill_interleaved(&[0i32; 8 * 1024]);
     /// ```
@@ -55,7 +55,7 @@ pub trait Fill {
     /// [`FrameBuf`] implements `Fill`.
     ///
     /// ```
-    /// use flacenc::source::{Fill, FrameBuf};
+    /// # use flacenc::source::{Fill, FrameBuf};
     /// let mut fb = FrameBuf::with_size(2, 3);
     /// fb.fill_le_bytes(&[0x12, 0x34, 0x54, 0x76, 0x56, 0x78, 0x10, 0x32], 2);
     /// // this FrameBuf now has 2 channels with elements:
@@ -105,7 +105,7 @@ impl FrameBuf {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::FrameBuf;
+    /// # use flacenc::source::FrameBuf;
     /// let fb = FrameBuf::with_size(2, 1024);
     /// assert_eq!(fb.size(), 1024);
     /// ```
@@ -123,7 +123,7 @@ impl FrameBuf {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::FrameBuf;
+    /// # use flacenc::source::FrameBuf;
     /// let fb = FrameBuf::with_size(2, 1024);
     /// assert_eq!(fb.size(), 1024);
     /// ```
@@ -136,7 +136,7 @@ impl FrameBuf {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::FrameBuf;
+    /// # use flacenc::source::FrameBuf;
     /// let mut fb = FrameBuf::with_size(2, 1024);
     /// assert_eq!(fb.size(), 1024);
     /// fb.resize(2048);
@@ -152,7 +152,7 @@ impl FrameBuf {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::FrameBuf;
+    /// # use flacenc::source::FrameBuf;
     /// let fb = FrameBuf::with_size(8, 1024);
     /// assert_eq!(fb.channels(), 8);
     /// ```
@@ -219,8 +219,7 @@ impl Context {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::Context;
-    ///
+    /// # use flacenc::source::Context;
     /// let ctx = Context::new(16, 2, 4);
     /// assert!(ctx.current_frame_number().is_none());;
     /// assert_eq!(ctx.total_samples(), 0);
@@ -261,8 +260,7 @@ impl Context {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::{Context, Fill};
-    ///
+    /// # use flacenc::source::{Context, Fill};
     /// let mut ctx = Context::new(16, 2, 16);
     /// assert!(ctx.current_frame_number().is_none());
     ///
@@ -280,7 +278,7 @@ impl Context {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::Context;
+    /// # use flacenc::source::Context;
     /// let ctx = Context::new(16, 2, 128);
     /// let zero_md5 = [
     ///     0xD4, 0x1D, 0x8C, 0xD9, 0x8F, 0x00, 0xB2, 0x04,
@@ -300,8 +298,7 @@ impl Context {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::{Context, Fill};
-    ///
+    /// # use flacenc::source::{Context, Fill};
     /// let mut ctx = Context::new(16, 2, 30);
     ///
     /// ctx.fill_interleaved(&[0, -1, -2, 3]);
@@ -457,8 +454,7 @@ impl MemSource {
     /// # Examples
     ///
     /// ```
-    /// use flacenc::source::MemSource;
-    ///
+    /// # use flacenc::source::MemSource;
     /// let src = MemSource::from_samples(&[0, 0, 1, -1, 2, -2, 3, -3], 2, 16, 8000);
     /// assert_eq!(src.as_slice(), &[0, 0, 1, -1, 2, -2, 3, -3]);
     /// ```
