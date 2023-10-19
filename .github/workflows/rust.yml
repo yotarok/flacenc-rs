@@ -12,7 +12,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+
+  build_nightly:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -26,12 +27,12 @@ jobs:
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-features
+        args: --verbose --features "experimental,par,simd-nightly,mimalloc"
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-features
+        args: --verbose --features "simd-nightly"
         directory: flacenc-bin
 
   build_stable:
@@ -47,12 +48,12 @@ jobs:
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --no-default-features --features "par,mimalloc"
+        args: --verbose --features "experimental,par,mimalloc"
     - name: Run tests (CLI)
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --all-targets --no-default-features
+        args: --verbose --features ""
         directory: flacenc-bin
 
   build_msrv:
@@ -67,16 +68,11 @@ jobs:
       with:
         toolchain: 1.65
         components: rustfmt, clippy
-    - name: Run check
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: check
-        args: --verbose --no-default-features --features "par,mimalloc"
     - name: Run tests
       uses: ClementTsang/cargo-action@v0.0.3
       with:
         command: test
-        args: --verbose --no-default-features --features "par,mimalloc"
+        args: --verbose --features "experimental,par,mimalloc"
 
   lints:
     runs-on: ubuntu-latest

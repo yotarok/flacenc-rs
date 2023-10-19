@@ -16,20 +16,18 @@ encoder compared to
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = { version = "0.2.0", default-features = false, features = ["par", "mimalloc"] }
+flacenc = "0.2.0"
 ```
 
 This crate is intended to be, and primarily developed with
 [`portable_simd`](https://github.com/rust-lang/project-portable-simd), and the
-`default-features = false` above is for backing-off to the fake SIMD
-implementation that can be compiled with a stable toolchain.  If you are using
-a nightly toolchain, use this crate with the default features as follows:
+default features above uses "fake" SIMD implementation for making it's possible
+to build within a stable toolchain. If you are okay with using a nightly
+toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = "0.2.0"
+flacenc = { version = "0.2.0", features = ["simd-nightly"] }
 ```
-
-This implicitly activates "simd-nightly" feature.
 
 ## Examples
 

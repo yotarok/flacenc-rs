@@ -15,23 +15,20 @@
 
 set -e
 
-rustup default nightly
-cargo fmt --check
-cargo rustc --release -- -D warnings
-cargo build --release
-cargo test --features "experimental,par,simd-nightly"
-cargo clippy --tests -- -D warnings
-cargo doc
+FEATURES_NIGHTLY="experimental,par,simd-nightly"
+FEATURES_BIN_NIGHTLY="simd-nightly"
+FEATURES_STABLE="experimental,par"
+
+rustup run nightly cargo fmt --check
+rustup run nightly cargo clippy --tests --features "${FEATURES_NIGHTLY}" -- -D warnings
+RUSTFLAGS="-D warnings" rustup run nightly cargo test --features "${FEATURES_NIGHTLY}"
+rustup run nightly cargo doc
 
 pushd flacenc-bin
-cargo fmt --check
-cargo test
-cargo clippy --tests -- -D warnings
+rustup run nightly cargo fmt --check
+rustup run nightly cargo clippy --tests --features "${FEATURES_BIN_NIGHTLY}" -- -D warnings
+RUSTFLAGS="-D warnings" rustup run nightly cargo test --features "${FEATURES_BIN_NIGHTLY}"
 popd
 
-rustup default stable
-cargo rustc --release --no-default-features --features "par,experimental" -- -D warnings
-cargo build --release --no-default-features --features "par,experimental"
-cargo clippy --tests --no-default-features --features "par,experimental"
-cargo test --no-default-features --features "experimental,par"
-rustup default nightly
+rustup run stable cargo clippy --tests --features "${FEATURES_STABLE}" -- -D warnings
+RUSTFLAGS="-D warnings" rustup run stable cargo test --features "${FEATURES_STABLE}"
