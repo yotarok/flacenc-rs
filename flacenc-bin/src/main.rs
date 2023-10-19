@@ -49,10 +49,7 @@
 
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::BufReader;
-use std::io::Read;
 use std::io::Write;
-use std::path::Path;
 
 use clap::Parser;
 #[cfg(feature = "pprof")]
@@ -62,11 +59,14 @@ use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
 use flacenc::error::EncodeError;
-use flacenc::error::SourceError;
-use flacenc::error::SourceErrorReason;
 use flacenc::error::Verify;
-use flacenc::source::Fill;
 use flacenc::source::Source;
+
+mod display;
+mod source;
+
+use display::Progress;
+use source::HoundSource;
 
 /// FLAC encoder.
 #[derive(Parser, Debug)]
@@ -98,102 +98,13 @@ enum ExitCode {
 
 /// Serializes `Stream` to a file.
 #[allow(clippy::expect_used)]
-fn write_stream<F: Write>(stream: &Stream, file: &mut F) {
+fn write_stream<F: Write>(stream: &Stream, file: &mut F) -> usize {
     let bits = stream.count_bits();
-    eprintln!("{bits} bits to be written");
     let mut bv = flacenc::bitsink::ByteSink::with_capacity(bits);
     stream.write(&mut bv).expect("Bitstream formatting failed.");
     file.write_all(bv.as_byte_slice())
         .expect("Failed to write a bitstream to the file.");
-}
-
-/// An example of `flacenc::source::Source` based on `hound::WavReader`.
-///
-/// To mitigate I/O overhead due to sample-by-sample retrieval in hound API,
-/// this source only uses hound to parse WAV header and seeks offset for the
-/// first sample. After parsing the header, the inside `BufReader` is obtained
-/// via `WavReader::into_inner` and it is used to retrieve blocks of samples.
-struct HoundSource {
-    spec: hound::WavSpec,
-    duration: usize,
-    reader: BufReader<File>,
-    bytes_per_sample: usize,
-    bytebuf: Vec<u8>,
-    current_offset: usize,
-}
-
-impl HoundSource {
-    /// Constructs `HoundSource` from `path`.
-    ///
-    /// # Errors
-    ///
-    /// The function fails when file is not found or has invalid format. This
-    /// function currently do not support WAVs with IEEE float samples, and it
-    /// returns `SourceError` with `SourceErrorReason::InvalidFormat` if the
-    /// samples are floats.
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut reader = Box::new(hound::WavReader::open(path).map_err(Box::new)?);
-        let spec = reader.spec();
-        let duration = reader.duration() as usize;
-        reader.seek(0).unwrap();
-        if spec.sample_format == hound::SampleFormat::Int {
-            Ok(Self {
-                spec,
-                duration,
-                reader: reader.into_inner(),
-                bytes_per_sample: (spec.bits_per_sample as usize + 7) / 8,
-                bytebuf: Vec::new(),
-                current_offset: 0,
-            })
-        } else {
-            Err(Box::new(SourceError::by_reason(
-                SourceErrorReason::InvalidFormat,
-            )))
-        }
-    }
-}
-
-impl Source for HoundSource {
-    #[inline]
-    fn channels(&self) -> usize {
-        self.spec.channels as usize
-    }
-
-    #[inline]
-    fn bits_per_sample(&self) -> usize {
-        self.spec.bits_per_sample as usize
-    }
-
-    #[inline]
-    fn sample_rate(&self) -> usize {
-        self.spec.sample_rate as usize
-    }
-
-    #[inline]
-    fn read_samples<F: Fill>(
-        &mut self,
-        block_size: usize,
-        dest: &mut F,
-    ) -> Result<usize, SourceError> {
-        self.bytebuf.clear();
-        let to_read = std::cmp::min(self.duration - self.current_offset, block_size);
-
-        let to_read_bytes = to_read * self.bytes_per_sample * self.channels();
-        self.bytebuf.resize(to_read_bytes, 0u8);
-        let read_bytes = self
-            .reader
-            .read(&mut self.bytebuf)
-            .map_err(SourceError::from_io_error)?;
-
-        self.current_offset += to_read;
-        dest.fill_le_bytes(&self.bytebuf, self.bytes_per_sample)?;
-
-        Ok(read_bytes / self.channels() / self.bytes_per_sample)
-    }
-
-    fn len_hint(&self) -> Option<usize> {
-        Some(self.duration)
-    }
+    bits
 }
 
 fn run_encoder<S: Source>(
@@ -204,16 +115,20 @@ fn run_encoder<S: Source>(
     flacenc::encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
+#[allow(clippy::let_underscore_must_use)]
 fn main_body(args: Args) -> Result<(), i32> {
+    let io_info = display::IoArgs::new(&args.config, &args.source, &args.output);
+    let _ = display::show_banner();
     let encoder_config = args.config.map_or_else(config::Encoder::default, |path| {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")
     });
-
     if let Err(e) = encoder_config.verify() {
         eprintln!("Error: {}", e.within("encoder_config"));
         return Err(ExitCode::InvalidConfig as i32);
     }
+
+    let _ = display::show_progress(&io_info, &Progress::Started);
 
     let source = HoundSource::from_path(&args.source).expect("Failed to load input source.");
 
@@ -226,7 +141,8 @@ fn main_body(args: Args) -> Result<(), i32> {
     }
 
     let mut file = File::create(args.output).expect("Failed to create a file.");
-    write_stream(&stream, &mut file);
+    let bits_written = write_stream(&stream, &mut file);
+    let _ = display::show_progress(&io_info, &Progress::Done { bits_written });
     Ok(())
 }
 
