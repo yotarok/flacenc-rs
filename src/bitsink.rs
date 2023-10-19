@@ -20,18 +20,18 @@ use std::convert::Infallible;
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
-pub trait PackedBits: seal_packed_bits::Sealed {
-    const PACKED_BITS: usize = 1usize << Self::PACKED_BITS_LOG2;
-    const PACKED_BYTES: usize = Self::PACKED_BITS / 8usize;
-    const PACKED_BITS_LOG2: usize;
+pub trait Bits: seal_packed_bits::Sealed {
+    const BITS: usize = 1usize << Self::BITS_LOG2;
+    const BYTES: usize = Self::BITS / 8usize;
+    const BITS_LOG2: usize;
 }
 
-impl<T: seal_packed_bits::Sealed> PackedBits for T {
+impl<T: seal_packed_bits::Sealed> Bits for T {
     /// The number of bits packed in this type. Synonym of `T::BITS`.
     #[rustversion::since(1.67)]
-    const PACKED_BITS_LOG2: usize = (std::mem::size_of::<T>() * 8).ilog2() as usize;
+    const BITS_LOG2: usize = (std::mem::size_of::<T>() * 8).ilog2() as usize;
     #[rustversion::before(1.67)]
-    const PACKED_BITS_LOG2: usize = 3 + std::mem::size_of::<T>().trailing_zeros() as usize;
+    const BITS_LOG2: usize = 3 + std::mem::size_of::<T>().trailing_zeros() as usize;
 }
 
 /// Trait for the signed integers that can be provided to bitsink.
@@ -129,7 +129,7 @@ pub trait BitSink: Sized {
     /// assert_eq!(sink.to_bitstring(), "111*****");
     /// # Ok(())}
     /// ```
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
+    fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
     /// Writes `n` MSBs to the sink.
     ///
@@ -149,9 +149,9 @@ pub trait BitSink: Sized {
     /// assert_eq!(sink.to_bitstring(), "111*****");
     /// # Ok(())}
     /// ```
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
+    fn write_msbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error>;
 
-    /// Writes all bits in `val: PackedBits`.
+    /// Writes all bits in `val: Bits`.
     ///
     /// # Errors
     ///
@@ -171,7 +171,7 @@ pub trait BitSink: Sized {
     /// assert_eq!(sink.to_bitstring(), "11101010_10101010_101*****");
     /// # Ok(())}
     /// ```
-    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error>;
+    fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error>;
 
     /// Writes `val` in two's coplement format.
     ///
@@ -255,13 +255,13 @@ pub struct MemSink<S> {
 /// [`write_all`]: std::io::Write::write_all
 pub type ByteSink = MemSink<u8>;
 
-impl<S: PackedBits> Default for MemSink<S> {
+impl<S: Bits> Default for MemSink<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S: PackedBits> MemSink<S> {
+impl<S: Bits> MemSink<S> {
     /// Creates new `MemSink` instance with the default capacity.
     ///
     /// # Examples
@@ -292,7 +292,7 @@ impl<S: PackedBits> MemSink<S> {
     /// ```
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
-            storage: Vec::with_capacity((capacity_in_bits >> S::PACKED_BITS_LOG2) + 1),
+            storage: Vec::with_capacity((capacity_in_bits >> S::BITS_LOG2) + 1),
             bitlength: 0usize,
         }
     }
@@ -361,13 +361,13 @@ impl<S: PackedBits> MemSink<S> {
     /// ```
     pub fn reserve(&mut self, additional_in_bits: usize) {
         self.storage
-            .reserve((additional_in_bits >> S::PACKED_BITS_LOG2) + 1);
+            .reserve((additional_in_bits >> S::BITS_LOG2) + 1);
     }
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
     #[inline]
     const fn paddings(&self) -> usize {
-        ((!self.bitlength).wrapping_add(1)) & (S::PACKED_BITS - 1)
+        ((!self.bitlength).wrapping_add(1)) & (S::BITS - 1)
     }
 
     /// Returns the remaining number of bits in the last byte in `self.bytes`.
@@ -463,7 +463,7 @@ impl BitSink for MemSink<u8> {
     type Error = Infallible;
 
     #[inline]
-    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
+    fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error> {
         let nbitlength = self.bitlength + 8 * std::mem::size_of::<T>();
         let tail = self.paddings();
         if tail > 0 {
@@ -492,16 +492,16 @@ impl BitSink for MemSink<u8> {
     }
 
     #[inline]
-    fn write_msbs<T: PackedBits>(&mut self, mut val: T, mut n: usize) -> Result<(), Self::Error> {
+    fn write_msbs<T: Bits>(&mut self, mut val: T, mut n: usize) -> Result<(), Self::Error> {
         if n == 0 {
             return Ok(());
         }
         let r = self.paddings();
         self.bitlength += n;
-        val = val & !((T::one() << (T::PACKED_BITS - n)) - T::one());
+        val = val & !((T::one() << (T::BITS - n)) - T::one());
 
         if r != 0 {
-            let b = (val >> (T::PACKED_BITS - r)).as_();
+            let b = (val >> (T::BITS - r)).as_();
             *self.storage.last_mut().unwrap() |= b;
             val <<= r;
             if r >= n {
@@ -529,18 +529,18 @@ impl BitSink for MemSink<u8> {
         }
         if n > 0 {
             val <<= bytes_to_write << 3;
-            let tail_byte: u8 = (val >> (T::PACKED_BITS - 8)).as_();
+            let tail_byte: u8 = (val >> (T::BITS - 8)).as_();
             self.storage.push(tail_byte);
         }
         Ok(())
     }
 
     #[inline]
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+    fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
         if n == 0 {
             return Ok(());
         }
-        self.write_msbs(val << (T::PACKED_BITS - n), n)
+        self.write_msbs(val << (T::BITS - n), n)
     }
 
     #[inline]
@@ -565,8 +565,8 @@ impl BitSink for MemSink<u64> {
     type Error = Infallible;
 
     #[inline]
-    fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
-        self.write_msbs(val, T::PACKED_BITS)
+    fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error> {
+        self.write_msbs(val, T::BITS)
     }
 
     #[inline]
@@ -588,14 +588,14 @@ impl BitSink for MemSink<u64> {
     }
 
     #[inline]
-    fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+    fn write_msbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
         // this routine is optimized especially for `Residual::write`.
         // and is trying to maximize efficiency of the auto-vectorization by
         // explicitly deferring "if"-statement and actual storage access.
         let r = self.paddings();
         self.bitlength += n;
         let mut val: u64 = val.into();
-        val <<= 64 - T::PACKED_BITS;
+        val <<= 64 - T::BITS;
 
         // clear lsbs
         val &= !((1u64 << (64 - n)) - 1);
@@ -613,8 +613,8 @@ impl BitSink for MemSink<u64> {
     }
 
     #[inline]
-    fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
-        self.write_msbs(val << (T::PACKED_BITS - n), n)
+    fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+        self.write_msbs(val << (T::BITS - n), n)
     }
 
     #[inline]
@@ -626,7 +626,7 @@ impl BitSink for MemSink<u64> {
         let pad = self.paddings() as isize;
         self.bitlength += n;
         let n = std::cmp::max(n as isize - pad, 0) as usize;
-        let elems: usize = (n + u64::PACKED_BITS - 1) >> u64::PACKED_BITS_LOG2;
+        let elems: usize = (n + <u64 as Bits>::BITS - 1) >> u64::BITS_LOG2;
         if elems > 0 {
             self.storage.resize(self.storage.len() + elems, 0u64);
         }
@@ -696,19 +696,19 @@ mod tests {
             Ok(npad)
         }
 
-        fn write_lsbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+        fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
             let val: u64 = val.into();
             self.extend_from_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
             Ok(())
         }
 
-        fn write_msbs<T: PackedBits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
+        fn write_msbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
             let val: u64 = val.into();
             self.extend_from_bitslice(&val.view_bits::<Msb0>()[0..n]);
             Ok(())
         }
 
-        fn write<T: PackedBits>(&mut self, val: T) -> Result<(), Self::Error> {
+        fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error> {
             self.write_lsbs(val, std::mem::size_of::<T>() << 3)?;
             Ok(())
         }
