@@ -23,16 +23,7 @@ use super::constant::rice::MIN_PARTITION_SIZE as MIN_RICE_PARTITION_SIZE;
 use crate::reusable;
 use crate::reuse;
 
-#[cfg(not(feature = "simd-nightly"))]
-use super::fakesimd as simd;
-#[cfg(feature = "simd-nightly")]
-use std::simd;
-
-use simd::SimdInt;
-use simd::SimdOrd;
-use simd::SimdPartialEq;
-use simd::SimdPartialOrd;
-use simd::SimdUint;
+import_simd!(as simd);
 
 /// Table that contains the numbers of bits needed for a partition.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
