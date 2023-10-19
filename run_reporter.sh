@@ -28,13 +28,13 @@ pytype testtool | true
 flake8 testtool
 
 pushd flacenc-bin
-cargo build --release --no-default-features
+rustup run stable cargo build --release
 popd
 python ./testtool/reporter.py
 mv report/report.md report/report.stable.md
 
 pushd flacenc-bin
-cargo build --release
+rustup run nightly cargo build --release --features "simd-nightly"
 popd
 python ./testtool/reporter.py
 mv report/report.md report/report.nightly.md
