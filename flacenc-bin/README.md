@@ -7,13 +7,13 @@ See [flacenc-rs](https://github.com/yotarok/flacenc-rs) for project overview.
 To install (with using nightly rust):
 
 ```bash
-cargo +nightly install --path=. flacenc-bin
+cargo +nightly install flacenc-bin
 ```
 
 Or, if you want to use stable channel:
 
 ```bash
-cargo install --path=. flacenc-bin
+cargo install flacenc-bin
 ```
 
 Then, you can run encoding as follows:
