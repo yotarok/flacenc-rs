@@ -598,3 +598,70 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+    use crate::source::Fill;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn residual_encoder_zero(b: &mut Bencher) {
+        let errors = [0i32; 4096];
+        let cfg = &config::Prc::default();
+        b.iter(|| encode_residual(black_box(cfg), black_box(&errors), black_box(3)));
+    }
+
+    #[bench]
+    fn residual_partition_encoder_zero(b: &mut Bencher) {
+        let errors = [0i32; 4096];
+        let mut quotients = [0u32; 4096];
+        let mut remainders = [0u32; 4096];
+        b.iter(|| {
+            encode_residual_partition(
+                black_box(1024),
+                black_box(2048),
+                black_box(10u8),
+                black_box(&errors),
+                black_box(&mut quotients),
+                black_box(&mut remainders),
+            );
+            (quotients, remainders)
+        });
+    }
+
+    #[bench]
+    fn fixed_lpc_encoding_zero(b: &mut Bencher) {
+        let signal = [0i32; 4096];
+        let cfg = &config::SubFrameCoding::default();
+        b.iter(|| {
+            fixed_lpc(
+                black_box(cfg),
+                black_box(&signal),
+                black_box(16u8),
+                black_box(0usize),
+            )
+        });
+    }
+
+    #[bench]
+    fn fixed_size_frame_encoder_zero(b: &mut Bencher) {
+        let cfg = &config::Encoder::default();
+        let stream_info = StreamInfo::new(44100, 2, 16);
+        let mut fb = FrameBuf::with_size(2, 4096);
+        // input is always zero, so it should use Constant and fast.
+        fb.fill_interleaved(&[0i32; 4096 * 2]).unwrap();
+        b.iter(|| {
+            encode_fixed_size_frame(
+                black_box(cfg),
+                black_box(&fb),
+                black_box(123usize),
+                &stream_info,
+            )
+        });
+    }
+}
