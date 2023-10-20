@@ -30,9 +30,6 @@ use super::error::RangeError;
 use super::lpc;
 use super::rice;
 
-use crate::reusable;
-use crate::reuse;
-
 // re-export quantized parameters
 pub use lpc::QuantizedParameters;
 

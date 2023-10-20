@@ -188,6 +188,7 @@ where
 ///
 /// NOTE: This performs unnecessary copy. It might be better to consider
 /// another zero-copy solution.
+#[allow(dead_code)]
 pub fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
 where
     T: simd::SimdElement + Default,
