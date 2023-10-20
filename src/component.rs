@@ -1599,7 +1599,7 @@ impl Residual {
     }
 
     /// Returns the rice parameter for the `p`-th partition
-    pub fn rice_param(&self, p: usize) -> usize {
+    pub fn rice_parameter(&self, p: usize) -> usize {
         self.rice_params[p] as usize
     }
 
