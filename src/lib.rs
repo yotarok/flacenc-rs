@@ -14,6 +14,7 @@
 
 #![doc = include_str!("../README.md")]
 #![cfg_attr(feature = "simd-nightly", feature(portable_simd))]
+#![cfg_attr(feature = "simd-nightly", feature(test))]
 // Note that clippy attributes should be in sync with those declared in "main.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
@@ -146,7 +147,7 @@ pub use coding::encode_fixed_size_frame;
 pub use coding::encode_with_fixed_block_size;
 
 #[cfg(test)]
-mod test {
+mod tests {
     // end-to-end, but transparent test.
     use super::*;
     use rstest::rstest;

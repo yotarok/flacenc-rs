@@ -11,6 +11,7 @@
 /.vscode
 # artifacts from xctrace
 /Launch_*
-# python artifacts made by run_reporter.sh
+# artifacts made by run_reporter.sh
 /venv
+profile.pb
 

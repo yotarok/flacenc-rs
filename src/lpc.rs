@@ -1141,3 +1141,33 @@ mod tests {
         assert!(mae_mse >= mae_mae);
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn tukey_window_zero(b: &mut Bencher) {
+        let window_cfg = Window::Tukey { alpha: 0.1 };
+        let size = 4096usize;
+        let window = get_window(&window_cfg, size);
+        let mut lpc_estimator = LpcEstimator::new();
+        let signal = [0i32; 4096];
+
+        b.iter(|| lpc_estimator.fill_windowed_signal(black_box(&signal), black_box(&window)));
+    }
+
+    #[bench]
+    fn auto_corr_order14_zero(b: &mut Bencher) {
+        let signal = [0.0f32; 4096];
+        let mut dest = [0.0f32; 14];
+        b.iter(|| {
+            auto_correlation(black_box(14usize), black_box(&signal), black_box(&mut dest));
+        });
+    }
+}
