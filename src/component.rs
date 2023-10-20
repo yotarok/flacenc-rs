@@ -878,7 +878,7 @@ impl Frame {
     /// let mut sink_ref = ByteSink::new();
     /// frame_cloned.write(&mut sink_ref);
     ///
-    /// assert_eq!(sink.as_byte_slice(), sink_ref.as_byte_slice());
+    /// assert_eq!(sink.as_slice(), sink_ref.as_slice());
     /// ```
     pub fn precompute_bitstream(&mut self) {
         if self.precomputed_bitstream.is_some() {
@@ -886,7 +886,7 @@ impl Frame {
         }
         let mut dest = ByteSink::with_capacity(self.count_bits());
         if self.write(&mut dest).is_ok() {
-            self.precomputed_bitstream = Some(dest.into_bytes());
+            self.precomputed_bitstream = Some(dest.into_inner());
         }
     }
 
@@ -1107,8 +1107,8 @@ impl FrameHeader {
     ///
     /// // 16-th bit denotes blocking strategy and it should be 0 (fixed blocking mode)
     /// // after setting the frame number.
-    /// assert_eq!(sink.as_byte_slice()[1] & 0x01u8, 0u8);
-    /// assert_eq!(sink.as_byte_slice()[4], 12u8);
+    /// assert_eq!(sink.as_slice()[1] & 0x01u8, 0u8);
+    /// assert_eq!(sink.as_slice()[4], 12u8);
     /// ```
     pub fn set_frame_number(&mut self, frame_number: u32) {
         self.variable_block_size = false;
@@ -1223,9 +1223,9 @@ impl BitRepr for FrameHeader {
             }
             header_buffer.write_lsbs(foot, footsize).unwrap();
 
-            dest.write_bytes_aligned(header_buffer.as_byte_slice())
+            dest.write_bytes_aligned(header_buffer.as_slice())
                 .map_err(OutputError::<S>::from_sink)?;
-            dest.write(HEADER_CRC.checksum(header_buffer.as_byte_slice()))
+            dest.write(HEADER_CRC.checksum(header_buffer.as_slice()))
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         })
