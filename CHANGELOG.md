@@ -1,6 +1,6 @@
 # ChangeLog
 
-## 0.3.0 - TBD
+## 0.3.0 - 2023-10-20
 
 ### Breaking Changes
 
