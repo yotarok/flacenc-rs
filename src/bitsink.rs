@@ -20,19 +20,9 @@ use std::convert::Infallible;
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
-pub trait Bits: seal_packed_bits::Sealed {
-    const BITS: usize = 1usize << Self::BITS_LOG2;
-    const BYTES: usize = Self::BITS / 8usize;
-    const BITS_LOG2: usize;
-}
+pub trait Bits: seal_bits::Sealed {}
 
-impl<T: seal_packed_bits::Sealed> Bits for T {
-    /// The number of bits packed in this type. Synonym of `T::BITS`.
-    #[rustversion::since(1.67)]
-    const BITS_LOG2: usize = (std::mem::size_of::<T>() * 8).ilog2() as usize;
-    #[rustversion::before(1.67)]
-    const BITS_LOG2: usize = 3 + std::mem::size_of::<T>().trailing_zeros() as usize;
-}
+impl<T: seal_bits::Sealed> Bits for T {}
 
 /// Trait for the signed integers that can be provided to bitsink.
 ///
@@ -643,7 +633,8 @@ impl BitSink for MemSink<u64> {
         let pad = self.paddings() as isize;
         self.bitlength += n;
         let n = std::cmp::max(n as isize - pad, 0) as usize;
-        let elems: usize = (n + <u64 as Bits>::BITS - 1) >> u64::BITS_LOG2;
+        let elems: usize =
+            (n + <u64 as seal_bits::Sealed>::BITS - 1) >> <u64 as seal_bits::Sealed>::BITS_LOG2;
         if elems > 0 {
             self.storage.resize(self.storage.len() + elems, 0u64);
         }
@@ -651,7 +642,7 @@ impl BitSink for MemSink<u64> {
     }
 }
 
-mod seal_packed_bits {
+mod seal_bits {
     use num_traits::AsPrimitive;
     use num_traits::One;
     use num_traits::PrimInt;
@@ -667,6 +658,15 @@ mod seal_packed_bits {
         + One
         + WrappingShl
     {
+        /// The number of bits in the type.
+        const BITS: usize = 1usize << Self::BITS_LOG2;
+        /// The number of bytes in the type.
+        const BYTES: usize = Self::BITS / 8usize;
+        /// `ilog2` of `Self::BITS`.
+        #[rustversion::since(1.67)]
+        const BITS_LOG2: usize = (std::mem::size_of::<Self>() * 8).ilog2() as usize;
+        #[rustversion::before(1.67)]
+        const BITS_LOG2: usize = 3 + std::mem::size_of::<Self>().trailing_zeros() as usize;
     }
 
     impl Sealed for u8 {}
