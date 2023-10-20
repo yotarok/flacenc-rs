@@ -270,8 +270,7 @@ impl<S: Bits> MemSink<S> {
     /// # use flacenc::bitsink::*;
     /// let mut sink = MemSink::<u8>::new();
     /// let empty: [u8; 0] = [];
-    /// // note thatc `as_byte_slice` is only implemented for <u8>.
-    /// assert_eq!(&empty, sink.as_byte_slice());
+    /// assert_eq!(&empty, sink.as_slice());
     /// ```
     pub fn new() -> Self {
         Self {
@@ -288,7 +287,7 @@ impl<S: Bits> MemSink<S> {
     /// # use flacenc::bitsink::*;
     /// let mut sink = MemSink::<u8>::with_capacity(128);
     /// sink.write_lsbs(0x00FFu16, 10);
-    /// assert!(sink.into_bytes().capacity() > 128 / 8);
+    /// assert!(sink.into_inner().capacity() > 128 / 8);
     /// ```
     pub fn with_capacity(capacity_in_bits: usize) -> Self {
         Self {
@@ -357,7 +356,7 @@ impl<S: Bits> MemSink<S> {
     /// sink.write_bytes_aligned(&[0u8; 128]);
     /// assert_eq!(sink.len(), 1024);
     /// sink.reserve(2048);
-    /// assert!(sink.into_bytes().capacity() > (1024 + 2048) / 8);
+    /// assert!(sink.into_inner().capacity() > (1024 + 2048) / 8);
     /// ```
     pub fn reserve(&mut self, additional_in_bits: usize) {
         self.storage
@@ -411,6 +410,57 @@ impl<S: Bits> MemSink<S> {
         ret
     }
 
+    /// Consumes `ByteSink` and returns the internal buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = MemSink::<u8>::new();
+    /// sink.write_bytes_aligned(&[0xABu8; 4]);
+    /// let v: Vec<u8> = sink.into_inner();
+    /// assert_eq!(&v, &[0xAB; 4]);
+    /// ```
+    #[inline]
+    pub fn into_inner(self) -> Vec<S> {
+        self.storage
+    }
+
+    /// Returns a reference to the internal bytes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = MemSink::<u8>::new();
+    /// sink.write_msbs(0x3456u16, 13);
+    /// assert_eq!(sink.as_slice(), &[0x34, 0x50]);
+    /// ```
+    #[inline]
+    pub fn as_slice(&self) -> &[S] {
+        &self.storage
+    }
+
+    /// Writes the contents to a mutable byte slice.
+    ///
+    /// For `MemSink<u8>`, this function basically makes a copy of the inner
+    /// storage.  For other instances, this function reorders and flattens the
+    /// byte structure of the inner storage and copies bytes to the given
+    /// mutable slice.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// let mut sink = MemSink::<u64>::new();
+    /// sink.write_msbs(0xCAFE_FEED_BEEF_FACEu64, 47);
+    /// let mut bytes = [0u8; 6];
+    /// sink.write_to_byte_slice(&mut bytes);
+    ///
+    /// // The last bit of the last byte (that is not written) is padded with 0.
+    /// assert_eq!(bytes,
+    ///            [0xCA, 0xFE, 0xFE, 0xED, 0xBE, 0xEE]);
+    /// ```
     pub fn write_to_byte_slice(&self, dest: &mut [u8]) {
         let destlen = dest.len();
         let mut head = 0;
@@ -426,39 +476,6 @@ impl<S: Bits> MemSink<S> {
     }
 }
 
-impl MemSink<u8> {
-    /// Consumes `ByteSink` and returns the internal buffer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::bitsink::*;
-    /// let mut sink = MemSink::<u8>::new();
-    /// sink.write_bytes_aligned(&[0xABu8; 4]);
-    /// let v: Vec<u8> = sink.into_bytes();
-    /// assert_eq!(&v, &[0xAB; 4]);
-    /// ```
-    #[inline]
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.storage
-    }
-
-    /// Returns a reference to the internal bytes.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::bitsink::*;
-    /// let mut sink = MemSink::<u8>::new();
-    /// sink.write_msbs(0x3456u16, 13);
-    /// assert_eq!(sink.to_bitstring(), "00110100_01010***");
-    /// ```
-    pub fn as_byte_slice(&self) -> &[u8] {
-        &self.storage
-    }
-}
-
-// Implemet it for only few special cases
 impl BitSink for MemSink<u8> {
     type Error = Infallible;
 

@@ -102,7 +102,7 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) -> usize {
     let bits = stream.count_bits();
     let mut bv = flacenc::bitsink::ByteSink::with_capacity(bits);
     stream.write(&mut bv).expect("Bitstream formatting failed.");
-    file.write_all(bv.as_byte_slice())
+    file.write_all(bv.as_slice())
         .expect("Failed to write a bitstream to the file.");
     bits
 }

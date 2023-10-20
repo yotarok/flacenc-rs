@@ -158,8 +158,7 @@ where
 
     let mut bv: ByteSink = ByteSink::with_capacity(stream.count_bits());
     stream.write(&mut bv).expect("Bitstream formatting failed.");
-    file.write_all(bv.as_byte_slice())
-        .expect("File write failed.");
+    file.write_all(bv.as_slice()).expect("File write failed.");
 
     let flac_path = file.into_temp_path();
 

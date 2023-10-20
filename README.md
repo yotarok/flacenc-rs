@@ -58,7 +58,7 @@ let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.write(&mut sink);
 
 // Then, e.g. you can write it to a file.
-std::fs::write("/dev/null", sink.as_byte_slice());
+std::fs::write("/dev/null", sink.as_slice());
 
 // or you can write only a specific frame.
 let mut sink = flacenc::bitsink::ByteSink::new();
