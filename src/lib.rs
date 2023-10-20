@@ -74,7 +74,45 @@ macro_rules! import_simd {
     };
 }
 
-pub mod arrayutils;
+/// Sets up the thread-local re-usable storage for avoiding reallocation.
+///
+/// This provides a short-cut for the common pattern using [`thread_local!`]
+/// and [`RefCell`].  Currently, this is just for removing small repetition in
+/// code.
+///
+/// NOTE: This is tentatively brought to the global space for avoiding
+/// unintended exposure in the document. Probably, this should be moved to an
+/// appropriate sub-modules after we learn how to control visibility of macros
+/// defined in a sub-module.
+///
+/// [`RefCell`]: std::cell::RefCell
+macro_rules! reusable {
+    ($key:ident: $t:ty) => {
+        thread_local! {
+            static $key: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
+        }
+    };
+    ($key:ident: $t:ty = $init:expr) => {
+        thread_local! {
+            static $key: std::cell::RefCell<$t> = std::cell::RefCell::new($init);
+        }
+    };
+}
+
+/// Macro used when using a storage declared using [`reusable!`].
+///
+/// NOTE: This is tentatively brought to the global space for avoiding
+/// unintended exposure in the document. Probably, this should be moved to an
+/// appropriate sub-modules after we learn how to control visibility of macros
+/// defined in a sub-module.
+macro_rules! reuse {
+    ($key:ident, $fn:expr) => {{
+        #[allow(clippy::redundant_closure_call)]
+        $key.with(|cell| $fn(&mut cell.borrow_mut()))
+    }};
+}
+
+pub(crate) mod arrayutils;
 pub mod bitsink;
 pub(crate) mod coding;
 pub mod component;
@@ -86,7 +124,6 @@ pub(crate) mod fakesimd;
 pub(crate) mod lpc;
 #[cfg(feature = "par")]
 pub(crate) mod par;
-pub(crate) mod reuse;
 pub(crate) mod rice;
 pub mod source;
 
@@ -178,5 +215,26 @@ multithread = false
             },
             &source,
         );
+    }
+
+    reusable!(REUSABLE_BUF: Vec<i32>);
+
+    #[test]
+    fn call_twice() {
+        fn fn1() {
+            reuse!(REUSABLE_BUF, |buf: &mut Vec<i32>| {
+                assert_eq!(buf.len(), 0);
+                buf.resize(5, 0i32);
+            });
+        }
+
+        fn fn2() {
+            reuse!(REUSABLE_BUF, |buf: &mut Vec<i32>| {
+                assert_eq!(buf.len(), 5);
+            });
+        }
+
+        fn1();
+        fn2();
     }
 }

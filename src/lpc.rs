@@ -24,9 +24,6 @@ use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
-use crate::import_simd;
-use crate::reusable;
-use crate::reuse;
 
 import_simd!(as simd);
 

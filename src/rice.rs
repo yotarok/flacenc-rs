@@ -20,8 +20,6 @@ use super::constant::rice::MAX_PARTITIONS as MAX_RICE_PARTITIONS;
 use super::constant::rice::MAX_PARTITION_ORDER as MAX_RICE_PARTITION_ORDER;
 use super::constant::rice::MAX_RICE_PARAMETER;
 use super::constant::rice::MIN_PARTITION_SIZE as MIN_RICE_PARTITION_SIZE;
-use crate::reusable;
-use crate::reuse;
 
 import_simd!(as simd);
 

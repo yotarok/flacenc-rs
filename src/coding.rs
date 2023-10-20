@@ -41,8 +41,6 @@ use super::rice;
 use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Source;
-use crate::reusable;
-use crate::reuse;
 
 import_simd!(as simd);
 
