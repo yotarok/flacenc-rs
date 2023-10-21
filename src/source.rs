@@ -386,6 +386,28 @@ pub trait Source {
     }
 }
 
+impl<'a, T: Source> Source for &'a mut T {
+    fn channels(&self) -> usize {
+        T::channels(self)
+    }
+    fn bits_per_sample(&self) -> usize {
+        T::bits_per_sample(self)
+    }
+    fn sample_rate(&self) -> usize {
+        T::sample_rate(self)
+    }
+    fn read_samples<F: Fill>(
+        &mut self,
+        block_size: usize,
+        dest: &mut F,
+    ) -> Result<usize, SourceError> {
+        T::read_samples(self, block_size, dest)
+    }
+    fn len_hint(&self) -> Option<usize> {
+        T::len_hint(self)
+    }
+}
+
 /// Trait representing seekable variant of [`Source`].
 ///
 /// This trait is not currently used in the encoder, but some encoding algorithm
@@ -410,6 +432,25 @@ pub trait Seekable: Source {
         block_size: usize,
         context: &mut F,
     ) -> Result<usize, SourceError>;
+}
+
+impl<'a, T: Seekable> Seekable for &'a mut T {
+    fn is_empty(&self) -> bool {
+        T::is_empty(self)
+    }
+
+    fn len(&self) -> usize {
+        T::len(self)
+    }
+
+    fn read_samples_from<F: Fill>(
+        &mut self,
+        offset: usize,
+        block_size: usize,
+        context: &mut F,
+    ) -> Result<usize, SourceError> {
+        T::read_samples_from(self, offset, block_size, context)
+    }
 }
 
 /// Source with preloaded samples.

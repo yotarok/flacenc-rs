@@ -35,6 +35,7 @@ const UNKNOWN_INPUT_NAME: &str = "[unknown]";
 const UNKNOWN_OUTPUT_NAME: &str = "[unknown]";
 
 // might be better if we handle Args and Config directly.
+#[allow(clippy::struct_field_names)] // tentatively allowed
 pub struct IoArgs {
     config_path: Option<PathBuf>,
     input_path: PathBuf,
