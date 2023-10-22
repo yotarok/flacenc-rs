@@ -38,6 +38,7 @@ pub struct HoundSource {
     bytes_per_sample: usize,
     bytebuf: Vec<u8>,
     current_offset: usize,
+    file_size: Option<usize>,
 }
 
 impl HoundSource {
@@ -50,6 +51,7 @@ impl HoundSource {
     /// returns `SourceError` with `SourceErrorReason::InvalidFormat` if the
     /// samples are floats.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let file_size = path.as_ref().metadata().ok().map(|x| x.len() as usize);
         let mut reader = Box::new(hound::WavReader::open(path).map_err(Box::new)?);
         let spec = reader.spec();
         let duration = reader.duration() as usize;
@@ -62,12 +64,21 @@ impl HoundSource {
                 bytes_per_sample: (spec.bits_per_sample as usize + 7) / 8,
                 bytebuf: Vec::new(),
                 current_offset: 0,
+                file_size,
             })
         } else {
             Err(Box::new(SourceError::by_reason(
                 SourceErrorReason::InvalidFormat,
             )))
         }
+    }
+
+    pub const fn file_size(&self) -> Option<usize> {
+        self.file_size
+    }
+
+    pub fn duration_as_secs(&self) -> f32 {
+        self.duration as f32 / self.spec.sample_rate as f32
     }
 }
 

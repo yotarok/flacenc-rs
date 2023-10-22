@@ -50,6 +50,7 @@
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::Write;
+use std::time::Instant;
 
 use clap::Parser;
 #[cfg(feature = "pprof")]
@@ -131,6 +132,9 @@ fn main_body(args: Args) -> Result<(), i32> {
     let _ = display::show_progress(&io_info, &Progress::Started);
 
     let source = HoundSource::from_path(&args.source).expect("Failed to load input source.");
+    let source_bytes = source.file_size();
+    let source_duration_secs = Some(source.duration_as_secs());
+    let encoder_start = Instant::now();
 
     let stream = run_encoder(&encoder_config, source).expect("Encoder error.");
 
@@ -142,7 +146,17 @@ fn main_body(args: Args) -> Result<(), i32> {
 
     let mut file = File::create(args.output).expect("Failed to create a file.");
     let bits_written = write_stream(&stream, &mut file);
-    let _ = display::show_progress(&io_info, &Progress::Done { bits_written });
+
+    let encode_time = encoder_start.elapsed();
+    let _ = display::show_progress(
+        &io_info,
+        &Progress::Done {
+            encode_time,
+            bits_written,
+            source_bytes,
+            source_duration_secs,
+        },
+    );
     Ok(())
 }
 

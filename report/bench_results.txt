@@ -1,11 +1,11 @@
 
 running 6 tests
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      25,424 ns/iter (+/- 1,453)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      18,588 ns/iter (+/- 203)
-test coding::bench::residual_encoder_zero           ... bench:       3,810 ns/iter (+/- 134)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,352 ns/iter (+/- 20)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,195 ns/iter (+/- 58)
-test lpc::bench::tukey_window_zero                  ... bench:       3,117 ns/iter (+/- 449)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      25,680 ns/iter (+/- 816)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      18,608 ns/iter (+/- 520)
+test coding::bench::residual_encoder_zero           ... bench:       3,730 ns/iter (+/- 166)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,524 ns/iter (+/- 12)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,185 ns/iter (+/- 34)
+test lpc::bench::tukey_window_zero                  ... bench:       3,114 ns/iter (+/- 299)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 6 measured; 80 filtered out; finished in 3.22s
+test result: ok. 0 passed; 0 failed; 0 ignored; 6 measured; 80 filtered out; finished in 1.66s
 
