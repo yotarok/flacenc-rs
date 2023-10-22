@@ -927,7 +927,7 @@ impl BitRepr for Frame {
                 let header = self.header.count_bits();
                 let body: usize = self.subframes.iter().map(BitRepr::count_bits).sum();
 
-                let aligned = (header + body + 7) / 8 * 8;
+                let aligned = ((header + body + 7) >> 3) << 3;
                 let footer = 16;
                 aligned + footer
             },
@@ -1793,8 +1793,18 @@ mod tests {
         let framebuf = vec![-1i32; nsamples * nchannels];
         let frame = make_frame(&stream_info, &framebuf, 0);
         let mut bv: BitVec<usize> = BitVec::new();
-        frame.write(&mut bv)?;
 
+        frame.header().write(&mut bv)?;
+        assert_eq!(frame.header().count_bits(), bv.len());
+
+        for ch in 0..3 {
+            bv.clear();
+            frame.subframe(ch).unwrap().write(&mut bv)?;
+            assert_eq!(frame.subframe(ch).unwrap().count_bits(), bv.len());
+        }
+
+        bv.clear();
+        frame.write(&mut bv)?;
         assert_eq!(frame.count_bits(), bv.len());
         Ok(())
     }
