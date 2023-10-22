@@ -18,6 +18,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use termcolor::Color;
 use termcolor::ColorChoice;
@@ -86,14 +87,19 @@ pub enum Progress {
     Started,
     // Encoding { current: usize, bits: usize, source_bytes: Option<usize>, offset_time:
     // Instantaneous }
-    Done { bits_written: usize },
+    Done {
+        encode_time: Duration,
+        bits_written: usize,
+        source_duration_secs: Option<f32>,
+        source_bytes: Option<usize>,
+    },
 }
 
 fn terminal_output() -> Arc<termcolor::StandardStream> {
     Arc::new(StandardStream::stderr(ColorChoice::Auto))
 }
 
-/// Show the initial banner.
+/// Outputs the initial banner.
 pub fn show_banner() -> Result<(), std::io::Error> {
     let termout = terminal_output();
     let mut termout = termout.lock();
@@ -108,11 +114,61 @@ pub fn show_banner() -> Result<(), std::io::Error> {
     )
 }
 
-pub fn show_progress(io: &IoArgs, progress: &Progress) -> Result<(), std::io::Error> {
+/// Outputs after-encode summary to the terminal.
+#[allow(clippy::uninlined_format_args)] // for readability
+fn show_progress_done(
+    io: &IoArgs,
+    bits_written: usize,
+    encode_time: Duration,
+    source_bytes: Option<usize>,
+    source_duration_secs: Option<f32>,
+) -> Result<(), std::io::Error> {
     let termout = terminal_output();
     let mut termout = termout.lock();
+    termout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true))?;
+    write!(termout, "{:>10} ", "Encoded")?;
+    termout.reset()?;
+
+    let bytes_written = (bits_written + 7) >> 3;
+    let encode_secs = encode_time.as_secs_f32();
+    let output_throughput = bytes_written as f32 / 1024.0 / 1024.0 / encode_secs;
+    writeln!(
+        termout,
+        "{} [{} bytes / {:.3} s, {:.1} MiB/s]",
+        io.output_name(),
+        bytes_written,
+        encode_secs,
+        output_throughput
+    )?;
+    if let Some(source_bytes) = source_bytes {
+        let compression_rate = bytes_written as f32 / source_bytes as f32;
+        write!(termout, "{:>10} ", "")?;
+        writeln!(
+            termout,
+            "compression ratio = {} / {} = {:.1}%",
+            bytes_written,
+            source_bytes,
+            compression_rate * 100.0
+        )?;
+    }
+    if let Some(source_duration_secs) = source_duration_secs {
+        let irtf = source_duration_secs / encode_secs;
+        write!(termout, "{:>10} ", "")?;
+        writeln!(
+            termout,
+            "inverse RTF = {:.3}s / {:.3}s = {:.1}x",
+            source_duration_secs, encode_secs, irtf,
+        )?;
+    }
+    writeln!(termout)
+}
+
+/// Outputs progress to the terminal.
+pub fn show_progress(io: &IoArgs, progress: &Progress) -> Result<(), std::io::Error> {
     match *progress {
         Progress::Started => {
+            let termout = terminal_output();
+            let mut termout = termout.lock();
             termout.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)).set_bold(true))?;
             write!(termout, "{:>10} ", "Encoding")?;
             termout.reset()?;
@@ -124,17 +180,17 @@ pub fn show_progress(io: &IoArgs, progress: &Progress) -> Result<(), std::io::Er
                 io.config_name()
             )
         }
-        Progress::Done { bits_written, .. } => {
-            termout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true))?;
-            write!(termout, "{:>10} ", "Encoded")?;
-            termout.reset()?;
-            writeln!(
-                termout,
-                "{} [{} bytes]",
-                io.output_name(),
-                ((bits_written + 7) >> 3)
-            )?;
-            writeln!(termout)
-        }
+        Progress::Done {
+            bits_written,
+            encode_time,
+            source_bytes,
+            source_duration_secs,
+        } => show_progress_done(
+            io,
+            bits_written,
+            encode_time,
+            source_bytes,
+            source_duration_secs,
+        ),
     }
 }
