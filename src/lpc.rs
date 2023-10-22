@@ -17,8 +17,9 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use seq_macro::seq;
-
+use super::arrayutils::pack_into_simd_vec;
+use super::arrayutils::transmute_and_flatten_simd;
+use super::arrayutils::transmute_and_flatten_simd_mut;
 use super::config::Window;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
@@ -77,14 +78,21 @@ impl WindowKey {
     }
 }
 
-type WindowMap = BTreeMap<WindowKey, Rc<[f32]>>;
+const QLPC_WIN_SIMD_N: usize = 16;
+type WindowMap = BTreeMap<WindowKey, Rc<[simd::Simd<f32, QLPC_WIN_SIMD_N>]>>;
 reusable!(WINDOW_CACHE: WindowMap);
 
-fn get_window(window: &Window, size: usize) -> Rc<[f32]> {
+fn get_window(window: &Window, size: usize) -> Rc<[simd::Simd<f32, QLPC_WIN_SIMD_N>]> {
     let key = WindowKey::new(size, window);
     reuse!(WINDOW_CACHE, |caches: &mut WindowMap| {
         if caches.get(&key).is_none() {
-            caches.insert(key.clone(), Rc::from(window_weights(window, size)));
+            let v = window_weights(window, size);
+            let simd_v_len = (v.len() + QLPC_WIN_SIMD_N - 1) / QLPC_WIN_SIMD_N;
+
+            let mut simd_v = Vec::new();
+            simd_v.resize(simd_v_len, simd::Simd::default());
+            transmute_and_flatten_simd_mut(&mut simd_v)[0..size].copy_from_slice(&v);
+            caches.insert(key.clone(), Rc::from(simd_v));
         }
         Rc::clone(caches.get(&key).expect(panic_msg::ERROR_NOT_EXPECTED))
     })
@@ -501,7 +509,9 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
 /// Working buffer for (unquantized) LPC estimation.
 struct LpcEstimator {
     /// Buffer for storing windowed signal.
-    windowed_signal: Vec<f32>,
+    windowed_signal: Vec<simd::Simd<f32, QLPC_WIN_SIMD_N>>,
+    /// Actual unpadded signal length.
+    block_size: usize,
     /// Buffer for storing auto-correlation coefficients.
     corr_coefs: Vec<f32>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
@@ -510,46 +520,43 @@ struct LpcEstimator {
     /// Weights for IRLS.
     #[cfg(feature = "experimental")]
     weights: Vec<f32>,
+    /// Working buffer for casting ints to floats.
+    ///
+    /// NOTE: This is redundant and should be eliminated after we finish a
+    /// pipeline to propagate SIMD-aligned signal to LPC module.
+    cast_buf: Vec<simd::Simd<i32, QLPC_WIN_SIMD_N>>,
 }
 
 impl LpcEstimator {
     pub fn new() -> Self {
         Self {
             windowed_signal: vec![],
+            block_size: 0,
             corr_coefs: vec![],
             #[cfg(feature = "experimental")]
             delay_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
             #[cfg(feature = "experimental")]
             weights: vec![],
+            cast_buf: vec![],
         }
     }
 
     #[allow(clippy::identity_op)] // false-alarm when OFFSET == 0
-    fn fill_windowed_signal(&mut self, signal: &[i32], window: &[f32]) {
-        // We are still not sure how we should SIMD-ize this part.
-        // Probably, we will need an alternative of `Vec` that can ensure
-        // same alignment between `window` and `signal`.
-        // At the moment, we resort to loop-unrolling and compiler optimization.
+    fn fill_windowed_signal(
+        &mut self,
+        signal: &[i32],
+        window: &[simd::Simd<f32, QLPC_WIN_SIMD_N>],
+    ) {
+        debug_assert!(window.len() * QLPC_WIN_SIMD_N >= signal.len());
+        let len_v = (signal.len() + QLPC_WIN_SIMD_N - 1) / QLPC_WIN_SIMD_N;
+        self.windowed_signal.resize(len_v, simd::Simd::default());
+        self.cast_buf.resize(len_v, simd::Simd::default());
 
-        debug_assert!(window.len() >= signal.len());
-
-        self.windowed_signal
-            .resize((signal.len() + 15) / 16 * 16, 0.0);
-
-        let mut t = 0;
-        let t_end = signal.len();
-
-        while t < t_end {
-            seq!(OFFSET in 0..16 {
-                self.windowed_signal[t + OFFSET] = if t + OFFSET < t_end {
-                    signal[t + OFFSET] as f32 * window[t + OFFSET]
-                } else {
-                    0.0
-                };
-            });
-            t += 16;
+        pack_into_simd_vec(signal, &mut self.cast_buf);
+        self.block_size = signal.len();
+        for (t, (sig, win)) in self.cast_buf.iter().zip(window).enumerate() {
+            self.windowed_signal[t] = sig.cast() * *win;
         }
-        self.windowed_signal.truncate(signal.len());
     }
 
     #[allow(clippy::range_plus_one)]
@@ -572,7 +579,7 @@ impl LpcEstimator {
 
         weighted_auto_correlation(
             lpc_order + 1,
-            &self.windowed_signal,
+            &transmute_and_flatten_simd(&self.windowed_signal)[0..self.block_size],
             &mut self.corr_coefs,
             weight_fn,
         );
@@ -655,13 +662,13 @@ impl LpcEstimator {
         self.delay_sum.resize_mut(lpc_order, lpc_order, 0.0f32);
         weighted_auto_correlation(
             lpc_order + 1,
-            &self.windowed_signal,
+            &transmute_and_flatten_simd(&self.windowed_signal)[0..self.block_size],
             &mut self.corr_coefs,
             &weight_fn,
         );
         weighted_delay_sum(
             lpc_order,
-            &self.windowed_signal[..signal.len() - 1],
+            &transmute_and_flatten_simd(&self.windowed_signal)[0..self.block_size - 1],
             &mut self.delay_sum,
             |t| weight_fn(t + 1),
         );
@@ -979,6 +986,7 @@ mod tests {
         ];
         let win = Window::Tukey { alpha: 0.3 };
         let win_vec = get_window(&win, reference.len());
+        let win_vec = transmute_and_flatten_simd(&win_vec);
         for (t, &expected_w) in reference.iter().enumerate() {
             assert_close!(win_vec[t], expected_w);
         }
