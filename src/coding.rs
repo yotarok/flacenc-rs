@@ -131,10 +131,14 @@ fn encode_residual_partition(
     }
 }
 
-/// Constructs `Residual` component given the error signal.
-fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
+/// Computes `Residual` from the given error signal and PRC parameters.
+fn encode_residual_with_prc_parameter(
+    _config: &config::Prc,
+    errors: &[i32],
+    warmup_length: usize,
+    prc_p: rice::PrcParameter,
+) -> Residual {
     let block_size = errors.len();
-    let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     let nparts = 1 << prc_p.order;
     let part_size = errors.len() >> prc_p.order;
     debug_assert!(part_size >= warmup_length);
@@ -160,6 +164,11 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
     )
 }
 
+/// Constructs `Residual` component given the error signal.
+fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
+    let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
+    encode_residual_with_prc_parameter(config, errors, warmup_length, prc_p)
+}
 /// Helper struct holding working memory for fixed LPC.
 #[derive(Default)]
 struct FixedLpcError {
@@ -209,18 +218,28 @@ fn fixed_lpc(
         let mut minimizer = None;
         let mut min_bits = baseline_bits;
         for order in 0..=4 {
-            let cur_error: &[i32] =
-                &transmute_and_flatten_simd(&errbuf.errors[order])[0..errbuf.block_size];
-            let residual = encode_residual(&config.prc, cur_error, order);
-            let subframe: SubFrame =
-                FixedLpc::new(&signal[0..order], residual, bits_per_sample as usize).into();
-            let bits = subframe.count_bits();
+            let errs = transmute_and_flatten_simd(&errbuf.errors[order]);
+            let prc_p = rice::find_partitioned_rice_parameter(
+                &errs[0..errbuf.block_size],
+                order,
+                config.prc.max_parameter,
+            );
+            let bits = bits_per_sample as usize * order + prc_p.code_bits;
             if bits < min_bits {
-                minimizer = Some(subframe);
                 min_bits = bits;
+                minimizer = Some((order, prc_p));
             }
         }
-        minimizer
+        minimizer.map(|(order, prc_p)| {
+            let errs = transmute_and_flatten_simd(&errbuf.errors[order]);
+            let residual = encode_residual_with_prc_parameter(
+                &config.prc,
+                &errs[0..errbuf.block_size],
+                order,
+                prc_p,
+            );
+            FixedLpc::new(&signal[..order], residual, bits_per_sample as usize).into()
+        })
     })
 }
 
