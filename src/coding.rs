@@ -244,6 +244,8 @@ fn perform_qlpc(
     }
 }
 
+reusable!(QLPC_ERROR_BUFFER: Vec<i32>);
+
 /// Estimates the optimal LPC coefficients and returns `SubFrame`s with these.
 ///
 /// # Panics
@@ -254,14 +256,15 @@ fn estimated_qlpc(
     signal: &[i32],
     bits_per_sample: u8,
 ) -> SubFrame {
-    let mut errors = vec![0i32; signal.len()];
     let lpc_order = config.qlpc.lpc_order;
     let lpc_coefs = perform_qlpc(config, signal);
     let qlpc =
         lpc::QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
-    qlpc.compute_error(signal, &mut errors);
-
-    let residual = encode_residual(&config.prc, &errors, qlpc.order());
+    let residual = reuse!(QLPC_ERROR_BUFFER, |errors: &mut Vec<i32>| {
+        errors.resize(signal.len(), 0i32);
+        qlpc.compute_error(signal, errors);
+        encode_residual(&config.prc, errors, qlpc.order())
+    });
     Lpc::new(
         &signal[0..qlpc.order()],
         qlpc,
@@ -397,13 +400,11 @@ fn try_stereo_coding(
                 .then_some((ChannelAssignment::MidSide, bits_m + bits_s)),
         ];
 
-        let envelope_bits = indep.header().count_bits() + 16;
-        let mut min_bits = indep.count_bits();
+        let mut min_bits = bits_l + bits_r;
         let mut min_ch_info = ChannelAssignment::Independent(2);
-        for (ch_info, body_bits) in combinations.iter().flatten() {
-            let bits = envelope_bits + body_bits;
-            if bits < min_bits {
-                min_bits = bits;
+        for (ch_info, bits) in combinations.iter().flatten() {
+            if *bits < min_bits {
+                min_bits = *bits;
                 min_ch_info = ch_info.clone();
             }
         }
@@ -609,6 +610,8 @@ mod bench {
     use test::bench::Bencher;
     use test::black_box;
 
+    use crate::test_helper;
+
     #[bench]
     fn residual_encoder_zero(b: &mut Bencher) {
         let errors = [0i32; 4096];
@@ -661,6 +664,22 @@ mod bench {
                 black_box(&fb),
                 black_box(123usize),
                 &stream_info,
+            )
+        });
+    }
+
+    #[bench]
+    fn normal_qlpc_noise(b: &mut Bencher) {
+        let cfg = &config::SubFrameCoding::default();
+        let signal =
+            &test_helper::sinusoid_plus_noise(4096, /* not used */ 100, 0.0, 20000i32);
+        let bits_per_sample = 16u8;
+
+        b.iter(|| {
+            estimated_qlpc(
+                black_box(cfg),
+                black_box(signal),
+                black_box(bits_per_sample),
             )
         });
     }
