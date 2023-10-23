@@ -382,6 +382,7 @@ def_binop!(Sub, sub, x, y, { x.simd_element_sub(y) });
 def_binop!(Mul, mul, x, y, { x * y });
 def_binop!(Div, div, x, y, { x / y });
 def_binop!(BitAnd, bitand, x, y, { x & y });
+def_binop!(BitOr, bitor, x, y, { x | y });
 def_binop!(Shr, shr, x, y, { x >> y });
 def_binop!(Shl, shl, x, y, { x << y });
 
