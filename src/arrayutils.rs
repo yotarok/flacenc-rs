@@ -343,3 +343,22 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn simd_packing(b: &mut Bencher) {
+        let mut src = Vec::new();
+        src.extend(0i32..4096i32);
+        let mut dest: Vec<simd::Simd<i32, 16>> = Vec::new();
+
+        b.iter(|| pack_into_simd_vec(black_box(&src), black_box(&mut dest)));
+    }
+}
