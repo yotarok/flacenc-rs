@@ -167,21 +167,13 @@ where
     T: simd::SimdElement + Default,
     simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
+    let zero_v = simd::Simd::<T, LANES>::default();
     dest.clear();
-    let zero = T::default();
-    let mut t = 0;
-    let t_end = src.len();
-    while t < t_end {
-        let v = simd::Simd::from_array(std::array::from_fn(|offset| {
-            if t + offset < t_end {
-                src[t + offset]
-            } else {
-                zero
-            }
-        }));
-        dest.push(v);
-        t += LANES;
-    }
+    let len = src.len();
+    let len_v = (len + LANES - 1) / LANES;
+    dest.resize(len_v, zero_v);
+
+    transmute_and_flatten_simd_mut(dest)[0..len].copy_from_slice(src);
 }
 
 /// Unpack slice of `Simd` into `Vec` of scalars.
@@ -227,6 +219,19 @@ where
 {
     let newlen = simds.len() * N;
     unsafe { std::slice::from_raw_parts(simds.as_ptr().cast(), newlen) }
+}
+
+/// Transmutes a slice of `[Simd]`s into a slice of scalars.
+///
+/// This hides an unsafe block. See documents for `transmute_and_flatten_simd`
+/// for safety discussions.
+pub fn transmute_and_flatten_simd_mut<T, const N: usize>(simds: &mut [simd::Simd<T, N>]) -> &mut [T]
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let newlen = simds.len() * N;
+    unsafe { std::slice::from_raw_parts_mut(simds.as_mut_ptr().cast(), newlen) }
 }
 
 #[cfg(test)]
