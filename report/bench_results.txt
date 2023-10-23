@@ -1,15 +1,15 @@
 
 running 10 tests
-test arrayutils::bench::simd_packing                ... bench:         236 ns/iter (+/- 9)
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      13,698 ns/iter (+/- 706)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,976 ns/iter (+/- 757)
-test coding::bench::normal_qlpc_noise               ... bench:      24,897 ns/iter (+/- 419)
-test coding::bench::residual_encoder_zero           ... bench:       3,663 ns/iter (+/- 120)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,361 ns/iter (+/- 70)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,536 ns/iter (+/- 14)
-test lpc::bench::tukey_window_zero                  ... bench:         685 ns/iter (+/- 10)
-test rice::bench::find_prc_parameter                ... bench:       2,293 ns/iter (+/- 149)
-test rice::bench::rice_find_minimizer               ... bench:           4 ns/iter (+/- 0)
+test arrayutils::bench::simd_packing                ... bench:         235 ns/iter (+/- 6)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      12,305 ns/iter (+/- 535)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      15,080 ns/iter (+/- 1,438)
+test coding::bench::normal_qlpc_noise               ... bench:      25,095 ns/iter (+/- 438)
+test coding::bench::residual_encoder_zero           ... bench:       3,364 ns/iter (+/- 125)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,353 ns/iter (+/- 42)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,402 ns/iter (+/- 127)
+test lpc::bench::tukey_window_zero                  ... bench:         689 ns/iter (+/- 11)
+test rice::bench::find_prc_parameter                ... bench:       2,199 ns/iter (+/- 136)
+test rice::bench::rice_find_minimizer               ... bench:           2 ns/iter (+/- 1)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 10 measured; 80 filtered out; finished in 6.43s
+test result: ok. 0 passed; 0 failed; 0 ignored; 10 measured; 80 filtered out; finished in 11.99s
 

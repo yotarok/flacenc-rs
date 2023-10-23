@@ -79,13 +79,13 @@ impl PrcBitTable {
     #[inline]
     pub fn minimizer(&self, max_p: usize) -> (usize, usize) {
         debug_assert!(max_p <= MAX_RICE_PARAMETER);
+        // exploit the fact that `p_to_bits` only occupies 28-bits of u32.
         let mask = INDEX.simd_le(simd::u32x16::splat(max_p as u32));
-        let p_to_bits = mask.select(self.p_to_bits, MAXES);
-        let ret_bits = p_to_bits.reduce_min();
-        let ret_p = p_to_bits
-            .simd_eq(simd::u32x16::splat(ret_bits))
-            .select(INDEX, ZEROS)
-            .reduce_max();
+        let four = simd::u32x16::splat(4);
+        let packed_bits_and_idxs = mask.select(self.p_to_bits, MAXES) << four | INDEX;
+        let minim = packed_bits_and_idxs.reduce_min();
+        let ret_bits = minim >> 4;
+        let ret_p = minim & 0x0F;
 
         (ret_p as usize, ret_bits as usize)
     }
@@ -344,10 +344,10 @@ mod tests {
         assert_eq!(bt.minimizer(4), (0, 1));
 
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..8].copy_from_slice(&[1, 7, 1, 1, 3, 0, 0, 0]);
-        // Current implementation prefers the largest p when there're multiple
+        bt.p_to_bits[0..8].copy_from_slice(&[7, 1, 1, 1, 3, 0, 0, 0]);
+        // Current implementation prefers the smallest p when there're multiple
         // minimizers.
-        assert_eq!(bt.minimizer(4), (3, 1));
+        assert_eq!(bt.minimizer(4), (1, 1));
     }
 
     #[test]
