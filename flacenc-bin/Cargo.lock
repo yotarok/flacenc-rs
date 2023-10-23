@@ -324,7 +324,6 @@ dependencies = [
  "rustversion",
  "seq-macro",
  "serde",
- "toml",
 ]
 
 [[package]]
