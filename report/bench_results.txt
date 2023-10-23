@@ -1,13 +1,15 @@
 
-running 8 tests
-test arrayutils::bench::simd_packing                ... bench:         289 ns/iter (+/- 5)
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      13,513 ns/iter (+/- 809)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      18,596 ns/iter (+/- 358)
-test coding::bench::normal_qlpc_noise               ... bench:      24,529 ns/iter (+/- 11,818)
-test coding::bench::residual_encoder_zero           ... bench:       3,786 ns/iter (+/- 136)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,493 ns/iter (+/- 121)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,185 ns/iter (+/- 36)
-test lpc::bench::tukey_window_zero                  ... bench:         751 ns/iter (+/- 16)
+running 10 tests
+test arrayutils::bench::simd_packing                ... bench:         236 ns/iter (+/- 9)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      13,698 ns/iter (+/- 706)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,976 ns/iter (+/- 757)
+test coding::bench::normal_qlpc_noise               ... bench:      24,897 ns/iter (+/- 419)
+test coding::bench::residual_encoder_zero           ... bench:       3,663 ns/iter (+/- 120)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,361 ns/iter (+/- 70)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,536 ns/iter (+/- 14)
+test lpc::bench::tukey_window_zero                  ... bench:         685 ns/iter (+/- 10)
+test rice::bench::find_prc_parameter                ... bench:       2,293 ns/iter (+/- 149)
+test rice::bench::rice_find_minimizer               ... bench:           4 ns/iter (+/- 0)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 8 measured; 80 filtered out; finished in 2.35s
+test result: ok. 0 passed; 0 failed; 0 ignored; 10 measured; 80 filtered out; finished in 6.43s
 

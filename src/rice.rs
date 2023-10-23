@@ -357,3 +357,31 @@ mod tests {
         assert_eq!(table.bits(0), MAX_P_TO_BITS as usize);
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn rice_find_minimizer(b: &mut Bencher) {
+        let mut bt = PrcBitTable::zero();
+        bt.p_to_bits[0..16].copy_from_slice(&[6, 7, 4, 5, 9, 9, 2, 3, 8, 2, 4, 3, 0, 0, 0, 0]);
+        // This should be almost zero-cost
+        b.iter(|| black_box(&bt).minimizer(black_box(12)));
+    }
+
+    #[bench]
+    fn find_prc_parameter(b: &mut Bencher) {
+        let mut signal = vec![];
+        signal.extend(0..4096);
+
+        b.iter(|| {
+            find_partitioned_rice_parameter(black_box(&signal), black_box(14), black_box(14))
+        });
+    }
+}
