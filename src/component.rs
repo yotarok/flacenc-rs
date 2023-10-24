@@ -1961,3 +1961,24 @@ mod tests {
         assert_eq!(size, 2);
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn residual_write_to_u64s(b: &mut Bencher) {
+        let residual = Residual::new(8, 4096, 13, &[8u8; 256], &[2u32; 4096], &[0u32; 4096]);
+        let mut sink = MemSink::<u64>::with_capacity(4096 * 2 * 8);
+
+        b.iter(|| {
+            sink.clear();
+            residual.write(black_box(&mut sink))
+        });
+    }
+}
