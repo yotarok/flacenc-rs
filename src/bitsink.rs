@@ -540,7 +540,7 @@ impl BitSink for MemSink<u8> {
         }
         let r = self.paddings();
         self.bitlength += n;
-        val = val & !((T::one() << (T::BITS - n)) - T::one());
+        val &= !((T::one() << (T::BITS - n)) - T::one());
 
         if r != 0 {
             let b = (val >> (T::BITS - r)).as_();
@@ -603,6 +603,38 @@ impl BitSink for MemSink<u8> {
     }
 }
 
+impl MemSink<u64> {
+    #[inline]
+    fn write_msbs_impl<T: Bits>(&mut self, val: T, n: usize) {
+        // This routine expect that the only `n`-MSB bits of `val` can be set,
+        // and other LSBs are cleared.
+        debug_assert!((val >> (T::BITS - n)) << (T::BITS - n) == val);
+
+        // this routine is optimized especially for `Residual::write`.
+        // and is trying to maximize efficiency of the auto-vectorization by
+        // explicitly deferring "if"-statement and actual storage access.
+        let r = self.paddings();
+        self.bitlength += n;
+        let mut val: u64 = val.into();
+        val <<= 64 - T::BITS;
+
+        // wrapping shr applies mask to the RHS, so it doesn't perform shift
+        // when r == 0.
+        let last_setter = val.wrapping_shr(64u32 - r as u32);
+        val = val.wrapping_shl(r as u32);
+        // u64 is the maximum size, so we only need to push remaining bits.
+        if r != 0 {
+            if let Some(p) = self.storage.last_mut() {
+                *p |= last_setter;
+            }
+        }
+        if r < n {
+            // implies n != 0
+            self.storage.push(val);
+        }
+    }
+}
+
 impl BitSink for MemSink<u64> {
     type Error = Infallible;
 
@@ -631,32 +663,17 @@ impl BitSink for MemSink<u64> {
 
     #[inline]
     fn write_msbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
-        // this routine is optimized especially for `Residual::write`.
-        // and is trying to maximize efficiency of the auto-vectorization by
-        // explicitly deferring "if"-statement and actual storage access.
-        let r = self.paddings();
-        self.bitlength += n;
-        let mut val: u64 = val.into();
-        val <<= 64 - T::BITS;
-
         // clear lsbs
-        val &= !((1u64 << (64 - n)) - 1);
-
-        let last_setter = val.wrapping_shr(64u32 - r as u32);
-        val = val.wrapping_shl(r as u32);
-        // u64 is the maximum size, so we only need to push remaining bits.
-        if r != 0 && n > 0 {
-            *self.storage.last_mut().unwrap() |= last_setter;
-        }
-        if r < n && n > 0 {
-            self.storage.push(val);
-        }
+        let mut val = val;
+        val &= !((T::one() << (T::BITS - n)) - T::one());
+        self.write_msbs_impl(val, n);
         Ok(())
     }
 
     #[inline]
     fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
-        self.write_msbs(val << (T::BITS - n), n)
+        self.write_msbs_impl(val << (T::BITS - n), n);
+        Ok(())
     }
 
     #[inline]
@@ -664,10 +681,9 @@ impl BitSink for MemSink<u64> {
         // this routine is optimized especially for `Residual::write`.
         // and is trying to maximize efficiency of the auto-vectorization by
         // explicitly deferring "if"-statement and actual storage access.
-        debug_assert!(n < isize::MAX as usize);
-        let pad = self.paddings() as isize;
+        let pad = self.paddings();
         self.bitlength += n;
-        let n = std::cmp::max(n as isize - pad, 0) as usize;
+        let n = n.saturating_sub(pad);
         let elems: usize =
             (n + <u64 as seal_bits::Sealed>::BITS - 1) >> <u64 as seal_bits::Sealed>::BITS_LOG2;
         if elems > 0 {
@@ -684,13 +700,14 @@ mod seal_bits {
     use num_traits::ToBytes;
     use num_traits::WrappingShl;
     pub trait Sealed:
-        ToBytes
+        std::ops::BitAndAssign
+        + std::ops::ShlAssign<usize>
         + From<u8>
         + Into<u64>
-        + PrimInt
-        + std::ops::ShlAssign<usize>
         + AsPrimitive<u8>
         + One
+        + PrimInt
+        + ToBytes
         + WrappingShl
     {
         /// The number of bits in the type.
@@ -812,6 +829,56 @@ mod tests {
     }
 
     #[test]
+    fn u64vec_write_msb() -> Result<(), Infallible> {
+        let mut u64v = MemSink::<u64>::new();
+        u64v.write_msbs(0xFFu8, 3)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111*************************************************************"
+        );
+
+        u64v.write_msbs(0u16, 15)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111000000000000000**********************************************"
+        );
+
+        u64v.write_msbs(0u64.wrapping_sub(1u64), 45)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111000000000000000111111111111111111111111111111111111111111111*"
+        );
+        u64v.write_msbs(0xAAAA_AAAA_AAAA_AAAAu64, 60)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            concat!(
+                "1110000000000000001111111111111111111111111111111111111111111111_",
+                "01010101010101010101010101010101010101010101010101010101010*****"
+            )
+        );
+
+        u64v.align_to_byte()?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            concat!(
+                "1110000000000000001111111111111111111111111111111111111111111111_",
+                "0101010101010101010101010101010101010101010101010101010101000000"
+            )
+        );
+
+        u64v.write_msbs(0xAAAA_AAAA_AAAA_AAAAu64, 60)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            concat!(
+                "1110000000000000001111111111111111111111111111111111111111111111_",
+                "0101010101010101010101010101010101010101010101010101010101000000_",
+                "101010101010101010101010101010101010101010101010101010101010****",
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
     fn bytevec_write_lsb() -> Result<(), Infallible> {
         let mut bv = ByteSink::new();
         bv.write_lsbs(0xFFu8, 3)?;
@@ -826,6 +893,40 @@ mod tests {
         bv.write_lsbs(0xFFFF_FFFFu32, 9)?;
         bv.write_lsbs(0x0u16, 5)?;
         assert_eq!(bv.to_bitstring(), "11100000_00000001_11111111_00000***");
+        Ok(())
+    }
+
+    #[test]
+    fn u64vec_write_lsb() -> Result<(), Infallible> {
+        let mut u64v = MemSink::<u64>::new();
+        u64v.write_msbs(0xFFu8, 3)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111*************************************************************"
+        );
+
+        u64v.write_msbs(0u16, 15)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111000000000000000**********************************************"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn u64vec_write_zeros() -> Result<(), Infallible> {
+        let mut u64v = MemSink::<u64>::new();
+        u64v.write_lsbs(0xFFu8, 3)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111*************************************************************"
+        );
+
+        u64v.write_zeros(15)?;
+        assert_eq!(
+            u64v.to_bitstring(),
+            "111000000000000000**********************************************"
+        );
         Ok(())
     }
 
