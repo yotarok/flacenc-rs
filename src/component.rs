@@ -1662,7 +1662,7 @@ impl BitRepr for Residual {
             let rice_p_plus_1: usize = (rice_p + 1) as usize;
             let mut t0 = start;
             'partition: while t0 < end {
-                seq!(OFFSET in 0..16 {
+                seq!(OFFSET in 0..4 {
                     #[allow(clippy::identity_op)]
                     let t = t0 + OFFSET;
                     if t >= end {
@@ -1674,7 +1674,7 @@ impl BitRepr for Residual {
                     dest.write_msbs(r_plus_startbit, rice_p_plus_1)
                         .map_err(OutputError::<S>::from_sink)?;
                 });
-                t0 += 16;
+                t0 += 4;
             }
             p += 1;
         }
