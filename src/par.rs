@@ -508,7 +508,14 @@ mod tests {
                     .expect("Feeding failed");
             });
         }
-        thread::sleep(std::time::Duration::from_secs_f32(0.1));
+
+        for _t in 0..30 {
+            // wait 30 * 0.1 = 3 sec at maximum.
+            if pfb.encode_queue.1.len() == 3 {
+                break;
+            }
+            thread::sleep(std::time::Duration::from_secs_f32(0.1));
+        }
         assert_eq!(pfb.encode_queue.1.len(), 3);
         for _t in 0..6 {
             let received = pfb
@@ -520,7 +527,13 @@ mod tests {
             let bufid = received.unwrap();
             pfb.enqueue_refill(bufid);
         }
-        thread::sleep(std::time::Duration::from_secs_f32(0.1));
+        for _t in 0..30 {
+            // wait 30 * 0.1 = 3 sec at maximum.
+            if pfb.encode_queue.1.len() == workers {
+                break;
+            }
+            thread::sleep(std::time::Duration::from_secs_f32(0.1));
+        }
         assert_eq!(pfb.encode_queue.1.len(), workers); // stop signal.
         for _t in 0..workers {
             let received = pfb
