@@ -114,7 +114,7 @@ See [`CONTRIBUTING.md`] for details.
 
 ## License
 
-Apache 2.0; see [`LICENSE.md`] for details.
+Apache 2.0; see [`LICENSE`] for details.
 
 ## Disclaimer
 
@@ -133,5 +133,5 @@ digest of the decoded signal matches with the stored one.
 [`config::encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
 [`contributing.md`]: https://github.com/yotarok/flacenc-rs/blob/main/CONTRIBUTING.md
 [`flacenc-bin`]: https://github.com/yotarok/flacenc-rs/blob/main/flacenc-bin/README.md
-[`license.md`]: https://github.com/yotarok/flacenc-rs/blob/main/LICENSE.md
+[`license`]: https://github.com/yotarok/flacenc-rs/blob/main/LICENSE
 [`source::source`]: https://docs.rs/flacenc/latest/flacenc/source/trait.Source.html
