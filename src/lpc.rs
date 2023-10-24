@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use super::arrayutils::find_abs_max;
 use super::arrayutils::pack_into_simd_vec;
 use super::arrayutils::transmute_and_flatten_simd;
 use super::arrayutils::transmute_and_flatten_simd_mut;
@@ -125,6 +126,13 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
     f32::from(coef) * scalefac
 }
 
+/// Returns the minimum number of bits-per-sample for storing signal.
+#[inline]
+fn effective_bits_per_sample(signal: &[i32]) -> usize {
+    let absmax = find_abs_max::<16>(signal);
+    32 - absmax.leading_zeros() as usize
+}
+
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
 pub struct QuantizedParameters {
@@ -228,12 +236,7 @@ impl QuantizedParameters {
     #[allow(clippy::collapsible_else_if)]
     pub(crate) fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
         assert!(errors.len() >= signal.len());
-        let effective_bits = 32
-            - signal
-                .iter()
-                .map(|v| v.unsigned_abs().leading_zeros())
-                .min()
-                .unwrap_or(0);
+        let effective_bits = effective_bits_per_sample(signal);
         if effective_bits < 16 {
             if self.order() <= 8 {
                 self.compute_error_impl::<i32, 8>(signal, errors);
@@ -1177,5 +1180,22 @@ mod bench {
         b.iter(|| {
             auto_correlation(black_box(14usize), black_box(&signal), black_box(&mut dest));
         });
+    }
+
+    #[bench]
+    fn quantized_parameter_error_dc(b: &mut Bencher) {
+        let signal = [10000i32; 4096];
+        let mut errors = [0i32; 4096];
+        let qp = QuantizedParameters::with_coefs(
+            &[1.0, 1.0, -1.0, -1.0, 0.0, 1.0, 1.0, -1.0, -1.0, 0.0],
+            12,
+        );
+        b.iter(|| qp.compute_error(black_box(&signal), black_box(&mut errors)));
+    }
+
+    #[bench]
+    fn compute_effective_bits_per_sample(b: &mut Bencher) {
+        let signal: [i32; 4096] = [-10000i32; 4096];
+        b.iter(|| effective_bits_per_sample(black_box(&signal)));
     }
 }

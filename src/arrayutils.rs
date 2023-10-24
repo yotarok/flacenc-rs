@@ -197,6 +197,78 @@ where
     }
 }
 
+#[cfg(feature = "simd-nightly")]
+fn slice_as_simd<T, const N: usize>(data: &[T]) -> (&[T], &[simd::Simd<T, N>], &[T])
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    data.as_simd()
+}
+
+#[cfg(not(feature = "simd-nightly"))]
+fn slice_as_simd<T, const N: usize>(data: &[T]) -> (&[T], &[simd::Simd<T, N>], &[T])
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    (data, &[], &[])
+}
+
+/// Maps and reduces the array with SIMD acceleration.
+fn simd_map_and_reduce<U, const N: usize, T, F, G, Q, R, S>(
+    data: &[T],
+    scalar_fn: F,
+    vector_fn: G,
+    scalar_reduce_fn: Q,
+    vector_reduce_fn: R,
+    vector_to_scalar_fn: S,
+    init: U,
+) -> U
+where
+    T: simd::SimdElement,
+    U: simd::SimdElement,
+    F: Fn(T) -> U,
+    G: Fn(simd::Simd<T, N>) -> simd::Simd<U, N>,
+    Q: Fn(U, U) -> U,
+    R: Fn(simd::Simd<U, N>, simd::Simd<U, N>) -> simd::Simd<U, N>,
+    S: Fn(simd::Simd<U, N>) -> U,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let mut acc_v = simd::Simd::splat(init);
+    let mut acc = init;
+    let (head, body, foot) = slice_as_simd(data);
+    for x in head {
+        let y = scalar_fn(*x);
+        acc = scalar_reduce_fn(y, acc);
+    }
+    for v in body {
+        let w = vector_fn(*v);
+        acc_v = vector_reduce_fn(w, acc_v);
+    }
+    for x in foot {
+        let y = scalar_fn(*x);
+        acc = scalar_reduce_fn(y, acc);
+    }
+    scalar_reduce_fn(acc, vector_to_scalar_fn(acc_v))
+}
+
+/// Finds the element with maximum absolute value from the data.
+pub fn find_abs_max<const N: usize>(data: &[i32]) -> u32
+where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    simd_map_and_reduce(
+        data,
+        i32::unsigned_abs,
+        |v| v.abs().cast(),
+        std::cmp::max,
+        simd::SimdOrd::simd_max,
+        simd::SimdUint::reduce_max,
+        0,
+    )
+}
+
 /// Transmutes a slice of `[Simd]`s into a slice of scalars.
 ///
 /// This hides an unsafe block. The operation is basically safe as rust ensures
@@ -346,6 +418,28 @@ mod tests {
             let offset = i as u64 / 64;
             assert_eq!(*v, offset + i as u64 % 64);
         }
+    }
+
+    #[test]
+    fn find_abs_max_works() {
+        let vs = [
+            0,
+            0,
+            0,
+            i32::MIN,
+            i32::MAX,
+            1,
+            2,
+            3,
+            4,
+            5,
+            i32::MIN,
+            i32::MAX,
+            0,
+            0,
+            0,
+        ];
+        assert_eq!(find_abs_max::<4>(&vs), i32::MIN.unsigned_abs());
     }
 }
 

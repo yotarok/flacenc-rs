@@ -1,16 +1,18 @@
 
-running 11 tests
-test arrayutils::bench::simd_packing                ... bench:         251 ns/iter (+/- 11)
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      12,221 ns/iter (+/- 201)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,891 ns/iter (+/- 319)
-test coding::bench::normal_qlpc_noise               ... bench:      24,604 ns/iter (+/- 123)
-test coding::bench::residual_encoder_zero           ... bench:       3,361 ns/iter (+/- 579)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,359 ns/iter (+/- 43)
-test component::bench::residual_write_to_u64s       ... bench:       9,730 ns/iter (+/- 226)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,544 ns/iter (+/- 64)
-test lpc::bench::tukey_window_zero                  ... bench:         692 ns/iter (+/- 5)
-test rice::bench::find_prc_parameter                ... bench:       2,095 ns/iter (+/- 58)
+running 13 tests
+test arrayutils::bench::simd_packing                ... bench:         230 ns/iter (+/- 10)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      12,213 ns/iter (+/- 693)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      15,000 ns/iter (+/- 249)
+test coding::bench::normal_qlpc_noise               ... bench:      24,569 ns/iter (+/- 403)
+test coding::bench::residual_encoder_zero           ... bench:       3,541 ns/iter (+/- 318)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,430 ns/iter (+/- 45)
+test component::bench::residual_write_to_u64s       ... bench:       9,276 ns/iter (+/- 311)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,189 ns/iter (+/- 36)
+test lpc::bench::compute_effective_bits_per_sample  ... bench:         134 ns/iter (+/- 1)
+test lpc::bench::quantized_parameter_error_dc       ... bench:      11,362 ns/iter (+/- 129)
+test lpc::bench::tukey_window_zero                  ... bench:         707 ns/iter (+/- 90)
+test rice::bench::find_prc_parameter                ... bench:       2,072 ns/iter (+/- 53)
 test rice::bench::rice_find_minimizer               ... bench:           2 ns/iter (+/- 0)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 11 measured; 83 filtered out; finished in 7.87s
+test result: ok. 0 passed; 0 failed; 0 ignored; 13 measured; 84 filtered out; finished in 4.91s
 

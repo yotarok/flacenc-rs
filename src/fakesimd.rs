@@ -165,6 +165,9 @@ pub trait SimdPartialOrd {
 pub trait SimdOrd {
     #[allow(clippy::return_self_not_must_use)]
     fn simd_min(self, other: Self) -> Self;
+
+    #[allow(clippy::return_self_not_must_use)]
+    fn simd_max(self, other: Self) -> Self;
 }
 
 // ===
@@ -334,6 +337,11 @@ where
     #[inline]
     fn simd_min(self, other: Self) -> Self {
         Self(array::from_fn(|i| self.0[i].min(other.0[i])))
+    }
+
+    #[inline]
+    fn simd_max(self, other: Self) -> Self {
+        Self(array::from_fn(|i| self.0[i].max(other.0[i])))
     }
 }
 
