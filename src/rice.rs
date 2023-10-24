@@ -49,11 +49,23 @@ impl PrcBitTable {
     }
 
     pub fn from_errors(errors: &[u32], offset: usize) -> Self {
+        // ensure that there's no overflow.
+        debug_assert!(offset < (1 << 31));
         let offset =
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
         let mut p_to_bits = ZEROS;
 
         // MAX_P_TO_BITS is designed not to overflow after 16 times of addition.
+        //
+        // TODO: there's still a risk of overflow when there's a consecutive 16
+        // elements in `error` where all are larger than `1 << 28`. Since it's
+        // very low probability and clamping inputs may degrade the performance,
+        // this issue is ignored currently.
+        //
+        // In most of SIMD-capable CPUs, saturating ops can be done with a
+        // single instruction. However, strangely the use of `saturating_add`
+        // and removing `simd_min` from the loop actually slowed down the
+        // computation by almost twice.
         for chunk in errors.chunks(16) {
             if chunk.len() == 16 {
                 seq!(OFFSET in 0..16 {
@@ -383,5 +395,13 @@ mod bench {
         b.iter(|| {
             find_partitioned_rice_parameter(black_box(&signal), black_box(14), black_box(14))
         });
+    }
+
+    #[bench]
+    fn bit_table_creation(b: &mut Bencher) {
+        let mut errors = vec![];
+        errors.extend(0u32..4096u32);
+
+        b.iter(|| PrcBitTable::from_errors(&errors, 123usize));
     }
 }
