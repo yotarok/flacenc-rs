@@ -1,15 +1,16 @@
 
-running 10 tests
-test arrayutils::bench::simd_packing                ... bench:         235 ns/iter (+/- 6)
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      12,305 ns/iter (+/- 535)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      15,080 ns/iter (+/- 1,438)
-test coding::bench::normal_qlpc_noise               ... bench:      25,095 ns/iter (+/- 438)
-test coding::bench::residual_encoder_zero           ... bench:       3,364 ns/iter (+/- 125)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,353 ns/iter (+/- 42)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,402 ns/iter (+/- 127)
-test lpc::bench::tukey_window_zero                  ... bench:         689 ns/iter (+/- 11)
-test rice::bench::find_prc_parameter                ... bench:       2,199 ns/iter (+/- 136)
-test rice::bench::rice_find_minimizer               ... bench:           2 ns/iter (+/- 1)
+running 11 tests
+test arrayutils::bench::simd_packing                ... bench:         291 ns/iter (+/- 5)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      12,048 ns/iter (+/- 564)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,839 ns/iter (+/- 434)
+test coding::bench::normal_qlpc_noise               ... bench:      24,033 ns/iter (+/- 629)
+test coding::bench::residual_encoder_zero           ... bench:       3,351 ns/iter (+/- 311)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,500 ns/iter (+/- 8)
+test component::bench::residual_write_to_u64s       ... bench:      11,384 ns/iter (+/- 804)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,545 ns/iter (+/- 21)
+test lpc::bench::tukey_window_zero                  ... bench:         727 ns/iter (+/- 8)
+test rice::bench::find_prc_parameter                ... bench:       2,070 ns/iter (+/- 41)
+test rice::bench::rice_find_minimizer               ... bench:           2 ns/iter (+/- 0)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 10 measured; 80 filtered out; finished in 11.99s
+test result: ok. 0 passed; 0 failed; 0 ignored; 11 measured; 80 filtered out; finished in 5.11s
 
