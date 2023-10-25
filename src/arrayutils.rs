@@ -18,6 +18,98 @@ use seq_macro::seq;
 
 import_simd!(as simd);
 
+#[derive(Debug, Default)]
+pub struct SimdVec<T, const N: usize>
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    inner: Vec<simd::Simd<T, N>>,
+    len: usize,
+}
+
+type IterSimd<'a, T, const N: usize> = std::slice::Iter<'a, simd::Simd<T, N>>;
+
+impl<T, const N: usize> SimdVec<T, N>
+where
+    T: simd::SimdElement + Default,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    pub fn new() -> Self {
+        Self {
+            inner: Vec::new(),
+            len: 0usize,
+        }
+    }
+
+    #[inline]
+    pub fn from_slice(data: &[T]) -> Self {
+        let mut ret = Self::new();
+        ret.reset_from_slice(data);
+        ret
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn simd_len(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[inline]
+    pub fn reset_from_slice(&mut self, data: &[T]) {
+        pack_into_simd_vec(data, &mut self.inner);
+        self.len = data.len();
+    }
+
+    #[inline]
+    pub fn iter_simd(&self) -> IterSimd<T, N> {
+        self.inner.iter()
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn resize(&mut self, new_len: usize, value: simd::Simd<T, N>) {
+        let len_v = (new_len + N - 1) / N;
+        self.inner.resize(len_v, value);
+        self.len = new_len;
+    }
+
+    #[inline]
+    pub fn reset_from_iter_simd<I>(&mut self, new_len: usize, iter: I)
+    where
+        I: Iterator<Item = simd::Simd<T, N>>,
+    {
+        self.inner.clear();
+        let capacity_v = (new_len + N - 1) / N;
+        self.inner.reserve(capacity_v);
+        self.inner.extend(iter.take(capacity_v));
+        self.len = new_len;
+    }
+
+    #[inline]
+    pub fn as_ref(&self) -> &[T] {
+        &transmute_and_flatten_simd(&self.inner)[0..self.len]
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn as_ref_simd(&self) -> &[simd::Simd<T, N>] {
+        &self.inner
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub fn as_mut_simd(&mut self) -> &mut [simd::Simd<T, N>] {
+        &mut self.inner
+    }
+}
+
 // deinterleaver is often used in the I/O thread which can be a performance
 // bottleneck. So, hoping that LLVM optimizer can automatically SIMD-ize,
 // `seq_macro` is extensively used to define chennel-specific implementations
@@ -162,6 +254,7 @@ pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
 }
 
 /// Pack unaligned scalars into `Vec` of `Simd`s.
+#[inline]
 pub fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
 where
     T: simd::SimdElement + Default,
