@@ -15,8 +15,7 @@
 //! Controller connecting coding algorithms.
 
 use super::arrayutils::is_constant;
-use super::arrayutils::pack_into_simd_vec;
-use super::arrayutils::transmute_and_flatten_simd;
+use super::arrayutils::SimdVec;
 use super::component::BitRepr;
 use super::component::ChannelAssignment;
 use super::component::Constant;
@@ -169,42 +168,36 @@ fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -
     let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     encode_residual_with_prc_parameter(config, errors, warmup_length, prc_p)
 }
-/// Helper struct holding working memory for fixed LPC.
-#[derive(Default)]
-struct FixedLpcError {
-    pub errors: [Vec<simd::i32x16>; MAX_FIXED_LPC_ORDER + 1],
-    /// Length of errors in the number of samples (scalars).
-    pub block_size: usize,
-}
 
-impl FixedLpcError {
-    fn fill(&mut self, signal: &[i32]) {
-        pack_into_simd_vec(signal, &mut self.errors[0]);
-        let simd_len = self.errors[0].len();
+type FixedLpcErrors = [SimdVec<i32, 16>; MAX_FIXED_LPC_ORDER + 1];
+reusable!(FIXED_LPC_ERRORS: FixedLpcErrors);
 
-        for order in 0..MAX_FIXED_LPC_ORDER {
-            let next_order = order + 1;
-            self.errors[next_order].resize(simd_len, simd::i32x16::default());
-            let mut carry = 0i32;
-            for i in 0..simd_len {
-                let x = self.errors[order][i];
-                let mut shifted = x.rotate_lanes_right::<1>();
-                (shifted[0], carry) = (carry, shifted[0]);
-                self.errors[next_order][i] = x - shifted;
-            }
+/// Resets `FixedLpcErrors` from the given signal.
+fn reset_fixed_lpc_errors(errors: &mut FixedLpcErrors, signal: &[i32]) {
+    errors[0].reset_from_slice(signal);
+
+    for order in 0..MAX_FIXED_LPC_ORDER {
+        let next_order = order + 1;
+
+        let mut carry = 0i32;
+        errors[next_order].resize(signal.len(), simd::Simd::default());
+        for t in 0..errors[order].simd_len() {
+            let x = errors[order].as_ref_simd()[t];
+            let mut shifted = x.rotate_lanes_right::<1>();
+            (shifted[0], carry) = (carry, shifted[0]);
+            errors[next_order].as_mut_simd()[t] = x - shifted;
         }
-        self.block_size = signal.len();
     }
 }
 
-reusable!(FIXED_LPC_ERROR: FixedLpcError);
-/// Tries 0..4-th order fixed LPC and returns the smallest `SubFrame`.
+/// Tries `0..=4`-th order fixed LPC and returns the smallest `SubFrame`.
 ///
 /// # Panics
 ///
 /// The current implementation may cause overflow error if `bits_per_sample` is
 /// larger than 29. Therefore, it panics when `bits_per_sample` is larger than
 /// this.
+#[allow(clippy::needless_range_loop)] // plan to truncate the loop.
 fn fixed_lpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
@@ -213,14 +206,13 @@ fn fixed_lpc(
 ) -> Option<SubFrame> {
     assert!(bits_per_sample < 30);
 
-    reuse!(FIXED_LPC_ERROR, |errbuf: &mut FixedLpcError| {
-        errbuf.fill(signal);
+    reuse!(FIXED_LPC_ERRORS, |errors: &mut FixedLpcErrors| {
+        reset_fixed_lpc_errors(errors, signal);
         let mut minimizer = None;
         let mut min_bits = baseline_bits;
-        for order in 0..=4 {
-            let errs = transmute_and_flatten_simd(&errbuf.errors[order]);
+        for order in 0..=MAX_FIXED_LPC_ORDER {
             let prc_p = rice::find_partitioned_rice_parameter(
-                &errs[0..errbuf.block_size],
+                errors[order].as_ref(),
                 order,
                 config.prc.max_parameter,
             );
@@ -231,10 +223,9 @@ fn fixed_lpc(
             }
         }
         minimizer.map(|(order, prc_p)| {
-            let errs = transmute_and_flatten_simd(&errbuf.errors[order]);
             let residual = encode_residual_with_prc_parameter(
                 &config.prc,
-                &errs[0..errbuf.block_size],
+                errors[order].as_ref(),
                 order,
                 prc_p,
             );
@@ -577,14 +568,14 @@ mod tests {
 
     #[test]
     fn fixed_lpc_encoder() {
-        let mut errbuf = FixedLpcError::default();
+        let mut errors = FixedLpcErrors::default();
         let signal = test_helper::sinusoid_plus_noise(64, 32, 10000.0, 128);
-        errbuf.fill(&signal);
-        let unpacked = transmute_and_flatten_simd(&errbuf.errors[1]);
+        reset_fixed_lpc_errors(&mut errors, &signal);
+        let unpacked = errors[1].as_ref();
         for t in 1..signal.len() {
             assert_eq!(unpacked[t], signal[t] - signal[t - 1]);
         }
-        let unpacked = transmute_and_flatten_simd(&errbuf.errors[2]);
+        let unpacked = errors[2].as_ref();
         for t in 2..signal.len() {
             assert_eq!(unpacked[t], signal[t] - 2 * signal[t - 1] + signal[t - 2]);
         }

@@ -185,6 +185,7 @@ pub type i16x4 = Simd<i16, 4>;
 pub type i16x32 = Simd<i16, 32>;
 
 #[allow(non_camel_case_types)]
+#[allow(dead_code)] // not used currently.
 pub type i32x16 = Simd<i32, 16>;
 
 #[allow(non_camel_case_types)]
