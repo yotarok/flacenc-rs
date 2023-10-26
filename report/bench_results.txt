@@ -1,18 +1,19 @@
 
-running 13 tests
-test arrayutils::bench::simd_packing                ... bench:         234 ns/iter (+/- 5)
-test coding::bench::fixed_lpc_encoding_zero         ... bench:      11,942 ns/iter (+/- 298)
-test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,893 ns/iter (+/- 425)
-test coding::bench::normal_qlpc_noise               ... bench:      14,927 ns/iter (+/- 163)
-test coding::bench::residual_encoder_zero           ... bench:       3,484 ns/iter (+/- 34)
-test coding::bench::residual_partition_encoder_zero ... bench:       1,431 ns/iter (+/- 41)
-test component::bench::residual_write_to_u64s       ... bench:       9,634 ns/iter (+/- 206)
-test lpc::bench::auto_corr_order14_zero             ... bench:       7,541 ns/iter (+/- 26)
-test lpc::bench::quantized_parameter_error_dc       ... bench:       2,297 ns/iter (+/- 40)
-test lpc::bench::tukey_window_zero                  ... bench:         677 ns/iter (+/- 5)
-test rice::bench::bit_table_creation                ... bench:       1,162 ns/iter (+/- 13)
-test rice::bench::find_prc_parameter                ... bench:       2,099 ns/iter (+/- 46)
+running 14 tests
+test arrayutils::bench::simd_packing                ... bench:         161 ns/iter (+/- 24)
+test coding::bench::fixed_lpc_encoding_zero         ... bench:      11,784 ns/iter (+/- 317)
+test coding::bench::fixed_size_frame_encoder_zero   ... bench:      14,563 ns/iter (+/- 281)
+test coding::bench::normal_qlpc_noise               ... bench:      15,192 ns/iter (+/- 436)
+test coding::bench::residual_encoder_zero           ... bench:       3,714 ns/iter (+/- 45)
+test coding::bench::residual_partition_encoder_zero ... bench:       1,471 ns/iter (+/- 30)
+test component::bench::residual_write_to_u64s       ... bench:       9,725 ns/iter (+/- 253)
+test lpc::bench::auto_corr_order14_zero             ... bench:       7,185 ns/iter (+/- 32)
+test lpc::bench::quantized_parameter_error_dc       ... bench:       2,294 ns/iter (+/- 1,914)
+test lpc::bench::tukey_window_zero                  ... bench:         697 ns/iter (+/- 7)
+test rice::bench::bit_table_creation                ... bench:       1,161 ns/iter (+/- 10)
+test rice::bench::find_prc_parameter                ... bench:       2,073 ns/iter (+/- 33)
 test rice::bench::rice_find_minimizer               ... bench:           2 ns/iter (+/- 0)
+test source::bench::feeding_bytes_to_context        ... bench:      26,235 ns/iter (+/- 326)
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 13 measured; 84 filtered out; finished in 5.18s
+test result: ok. 0 passed; 0 failed; 0 ignored; 14 measured; 84 filtered out; finished in 5.97s
 
