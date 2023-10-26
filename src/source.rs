@@ -663,3 +663,23 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+    use crate::source::Fill;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn feeding_bytes_to_context(b: &mut Bencher) {
+        let (bytes_per_sample, channels, block_size) = (2, 2, 4096);
+        let mut ctx = Context::new(bytes_per_sample, channels, block_size);
+        let signal_bytes = vec![0u8; bytes_per_sample * channels * block_size];
+        b.iter(|| ctx.fill_le_bytes(black_box(&signal_bytes), bytes_per_sample))
+    }
+}
+
