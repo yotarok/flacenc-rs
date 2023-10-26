@@ -16,6 +16,8 @@
 
 use std::fmt;
 
+use md5::Digest;
+
 use super::arrayutils::deinterleave;
 use super::arrayutils::le_bytes_to_i32s;
 use super::error::SourceError;
@@ -201,7 +203,7 @@ impl Fill for FrameBuf {
 /// such context variables.
 #[derive(Clone)]
 pub struct Context {
-    md5: md5::Context,
+    md5: md5::Md5,
     bytes_per_sample: usize,
     channels: usize,
     sample_count: usize,
@@ -231,7 +233,7 @@ impl Context {
             "bits_per_sample={bits_per_sample} cannot be larger than 32."
         );
         Self {
-            md5: md5::Context::new(),
+            md5: md5::Md5::new(),
             bytes_per_sample,
             channels,
             sample_count: 0,
@@ -290,7 +292,7 @@ impl Context {
     /// ```
     #[inline]
     pub fn md5_digest(&self) -> [u8; 16] {
-        self.md5.clone().compute().into()
+        self.md5.clone().finalize().into()
     }
 
     /// Returns the number of samples loaded.
@@ -310,7 +312,7 @@ impl Context {
     }
 }
 
-const ZEROS: [u8; 4] = [0u8; 4];
+const ZEROS: [u8; 2048] = [0u8; 2048];
 
 impl Fill for Context {
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
@@ -318,10 +320,15 @@ impl Fill for Context {
             return Ok(());
         }
         for v in interleaved {
-            self.md5.consume(&v.to_le_bytes()[0..self.bytes_per_sample]);
+            self.md5.update(&v.to_le_bytes()[0..self.bytes_per_sample]);
         }
-        for _t in interleaved.len()..(self.current_block_size * self.channels) {
-            self.md5.consume(&ZEROS[0..self.bytes_per_sample]);
+        let remain_samples = self.current_block_size * self.channels - interleaved.len();
+        let mut remain = remain_samples * self.bytes_per_sample;
+        while remain > 0 {
+            let bytes = std::cmp::min(ZEROS.len(), remain);
+            let slice = &ZEROS[0..bytes];
+            self.md5.update(slice);
+            remain -= bytes;
         }
         self.sample_count += interleaved.len() / self.channels;
         self.frame_count += 1;
@@ -332,10 +339,14 @@ impl Fill for Context {
         if bytes.is_empty() {
             return Ok(());
         }
-        self.md5.consume(bytes);
+        self.md5.update(bytes);
         let block_byte_count = self.current_block_size * self.channels * bytes_per_sample;
-        if bytes.len() < block_byte_count {
-            self.md5.consume(vec![0u8; block_byte_count - bytes.len()]);
+        let mut remain = block_byte_count - bytes.len();
+        while remain > 0 {
+            let bytes = std::cmp::min(ZEROS.len(), remain);
+            let slice = &ZEROS[0..bytes];
+            self.md5.update(slice);
+            remain -= bytes;
         }
         self.sample_count += bytes.len() / self.channels / bytes_per_sample;
         self.frame_count += 1;
@@ -345,7 +356,7 @@ impl Fill for Context {
 
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let digest = format!("{:x}", self.md5.clone().compute());
+        let digest = format!("{:?}", self.md5.clone().finalize());
         f.debug_struct("Context")
             .field("bytes_per_sample", &self.bytes_per_sample)
             .field("channels", &self.channels)
@@ -679,7 +690,6 @@ mod bench {
         let (bytes_per_sample, channels, block_size) = (2, 2, 4096);
         let mut ctx = Context::new(bytes_per_sample, channels, block_size);
         let signal_bytes = vec![0u8; bytes_per_sample * channels * block_size];
-        b.iter(|| ctx.fill_le_bytes(black_box(&signal_bytes), bytes_per_sample))
+        b.iter(|| ctx.fill_le_bytes(black_box(&signal_bytes), bytes_per_sample));
     }
 }
-
