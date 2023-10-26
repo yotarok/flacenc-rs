@@ -212,6 +212,11 @@ where
     }
 
     #[inline]
+    pub fn from_slice(slice: &[T]) -> Self {
+        Self::from_array(std::array::from_fn(|d| slice[d]))
+    }
+
+    #[inline]
     pub fn as_array(&self) -> &[T; N] {
         &self.0
     }

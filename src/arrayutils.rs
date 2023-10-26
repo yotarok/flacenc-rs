@@ -18,6 +18,7 @@ use seq_macro::seq;
 
 import_simd!(as simd);
 
+/// A wrapper for Vec of `simd::Simd` that can be viewed as a scalar slice.
 #[derive(Debug, Default)]
 pub struct SimdVec<T, const N: usize>
 where
@@ -308,6 +309,28 @@ where
     (data, &[], &[])
 }
 
+#[cfg(feature = "simd-nightly")]
+fn slice_as_simd_mut<T, const N: usize>(
+    data: &mut [T],
+) -> (&mut [T], &mut [simd::Simd<T, N>], &mut [T])
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    data.as_simd_mut()
+}
+
+#[cfg(not(feature = "simd-nightly"))]
+fn slice_as_simd_mut<T, const N: usize>(
+    data: &mut [T],
+) -> (&mut [T], &mut [simd::Simd<T, N>], &mut [T])
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    (data, &mut [], &mut [])
+}
+
 /// Maps and reduces the array with SIMD acceleration.
 fn simd_map_and_reduce<U, const N: usize, T, F, G, Q, R, S>(
     data: &[T],
@@ -347,7 +370,7 @@ where
 }
 
 /// Finds the element with maximum absolute value from the data.
-pub fn find_abs_max<const N: usize>(data: &[i32]) -> u32
+pub fn find_max_abs<const N: usize>(data: &[i32]) -> u32
 where
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
@@ -360,6 +383,39 @@ where
         simd::SimdUint::reduce_max,
         0,
     )
+}
+
+#[inline]
+pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
+    src: &[U],
+    dest: &mut [T],
+    mut scalar_fn: F,
+    mut vector_fn: G,
+) where
+    T: simd::SimdElement,
+    U: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+    F: FnMut(&mut T, U),
+    G: FnMut(&mut simd::Simd<T, N>, simd::Simd<U, N>),
+{
+    let (head, body, foot) = slice_as_simd_mut(dest);
+
+    let mut t = 0;
+    for p in head {
+        scalar_fn(p, src[t]);
+        t += 1;
+    }
+
+    for pv in body {
+        let src_v = simd::Simd::from_slice(&src[t..t + N]);
+        vector_fn(pv, src_v);
+        t += N;
+    }
+
+    for p in foot {
+        scalar_fn(p, src[t]);
+        t += 1;
+    }
 }
 
 /// Transmutes a slice of `[Simd]`s into a slice of scalars.
@@ -514,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn find_abs_max_works() {
+    fn find_max_abs_works() {
         let vs = [
             0,
             0,
@@ -532,7 +588,7 @@ mod tests {
             0,
             0,
         ];
-        assert_eq!(find_abs_max::<4>(&vs), i32::MIN.unsigned_abs());
+        assert_eq!(find_max_abs::<4>(&vs), i32::MIN.unsigned_abs());
     }
 }
 

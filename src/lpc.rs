@@ -17,7 +17,8 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use super::arrayutils::find_abs_max;
+use super::arrayutils::find_max_abs;
+use super::arrayutils::unaligned_map_and_update;
 use super::arrayutils::SimdVec;
 use super::config::Window;
 use super::constant::panic_msg;
@@ -119,13 +120,6 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
     f32::from(coef) * scalefac
 }
 
-/// Returns the minimum number of bits-per-sample for storing signal.
-#[inline]
-fn effective_bits_per_sample(signal: &[i32]) -> usize {
-    let absmax = find_abs_max::<16>(signal);
-    32 - absmax.leading_zeros() as usize
-}
-
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
 pub struct QuantizedParameters {
@@ -189,36 +183,55 @@ impl QuantizedParameters {
 
     /// Implementation of `compute_error` for each SIMD config.
     #[inline]
-    fn compute_error_impl<T, const N: usize>(&self, signal: &[i32], errors: &mut [i32])
+    fn compute_error_impl<T, const N: usize>(&self, signal: &[T], errors: &mut [T])
     where
-        T: simd::SimdElement + simd::SimdCast + Into<i64> + From<i32> + From<i16>,
+        T: simd::SimdElement
+            + num_traits::int::PrimInt
+            + From<i8>
+            + From<i16>
+            + std::ops::AddAssign<T>,
+        simd::Simd<T, N>: std::ops::Shr<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+            + std::ops::Sub<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+            + std::ops::Mul<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+            + std::ops::AddAssign<simd::Simd<T, N>>,
         simd::LaneCount<N>: simd::SupportedLaneCount,
-        simd::Simd<T, N>: simd::SimdInt<Scalar = T> + std::ops::Mul<Output = simd::Simd<T, N>>,
     {
-        let coefs: simd::Simd<T, N> =
-            simd::Simd::from_array(std::array::from_fn(|i| self.coefs.as_array()[i].into()));
+        let block_size = signal.len();
+        debug_assert!(errors.len() >= block_size);
+        errors.fill(T::zero());
 
-        for p in errors.iter_mut().take(self.order()) {
-            *p = 0;
+        for order in 0..self.order {
+            let w = self.coefs[order].into();
+            let wv = simd::Simd::<T, N>::splat(w);
+            unaligned_map_and_update(
+                &signal[0..block_size - order - 1],
+                &mut errors[order + 1..],
+                #[inline]
+                |px, x| {
+                    *px += w * x;
+                },
+                #[inline]
+                |pv, v| {
+                    *pv += wv * v;
+                },
+            );
         }
-        let mut window: simd::Simd<T, N> = simd::Simd::from_array(std::array::from_fn(|tau| {
-            if tau >= self.order {
-                0.into()
-            } else {
-                signal[self.order - 1 - tau].into()
-            }
-        }));
 
-        for t in self.order()..signal.len() {
-            let mut pred = 0i64;
-            pred += (coefs * window).reduce_sum().into();
-
-            let shifted: i32 = (pred >> self.shift) as i32;
-            errors[t] = signal[t] - shifted;
-
-            window = window.rotate_lanes_right::<1>();
-            window[0] = signal[t].into();
-        }
+        let shift = self.shift as usize;
+        let shift_v = simd::Simd::<T, N>::splat(self.shift.into());
+        unaligned_map_and_update::<T, N, _, _, _>(
+            signal,
+            errors,
+            #[inline]
+            |px, x| {
+                *px = x - (*px >> shift);
+            },
+            #[inline]
+            |pv, v| {
+                *pv = v - (*pv >> shift_v);
+            },
+        );
+        errors[0..self.order].fill(T::zero());
     }
 
     /// Compute error signal from `QuantizedParameters`.
@@ -229,22 +242,23 @@ impl QuantizedParameters {
     #[allow(clippy::collapsible_else_if)]
     pub(crate) fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
         assert!(errors.len() >= signal.len());
-        let effective_bits = effective_bits_per_sample(signal);
-        if effective_bits < 16 {
-            if self.order() <= 8 {
-                self.compute_error_impl::<i32, 8>(signal, errors);
-            } else if self.order() <= 16 {
-                self.compute_error_impl::<i32, 16>(signal, errors);
-            } else {
-                self.compute_error_impl::<i32, 32>(signal, errors);
-            }
+        let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
+        let sumabs_coefs: i64 = self.coefs.abs().reduce_sum().into();
+        let maxabs = maxabs_signal * sumabs_coefs as u64;
+        if maxabs < i32::MAX as u64 {
+            // larger lanes here can alleviate inefficiency of unaligned reads.
+            self.compute_error_impl::<i32, 64>(signal, errors);
         } else {
-            if self.order() <= 8 {
-                self.compute_error_impl::<i64, 8>(signal, errors);
-            } else if self.order() <= 16 {
-                self.compute_error_impl::<i64, 16>(signal, errors);
-            } else {
-                self.compute_error_impl::<i64, 32>(signal, errors);
+            // This is very inefficient, but should rarely happen in BPS=16bit case.
+            let signal64: Vec<i64> = signal.iter().map(|v| (*v).into()).collect();
+            let mut errors64 = vec![0i64; signal64.len()];
+            self.compute_error_impl::<i64, 64>(&signal64, &mut errors64);
+            for (v, p) in errors64
+                .into_iter()
+                .map(|v| v as i32)
+                .zip(errors.iter_mut())
+            {
+                *p = v;
             }
         }
     }
@@ -879,6 +893,7 @@ mod tests {
         // zeroes.
         assert!(qlpc.coefs().len() <= lpc_order);
         eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
+        eprintln!("QLPC params: {:?}", &qlpc);
         qlpc.compute_error(&signal, &mut errors);
 
         let mut signal_energy = 0.0f64;
@@ -919,6 +934,7 @@ mod tests {
         assert_close!(coefs[0], 1.0f32);
 
         let qlpc = QuantizedParameters::with_coefs(&coefs[0..LPC_ORDER], 15);
+        eprintln!("{:?}", qlpc);
         let mut errors = vec![0i32; signal.len()];
         qlpc.compute_error(&signal, &mut errors);
         for t in 0..errors.len() {
@@ -1185,11 +1201,5 @@ mod bench {
             12,
         );
         b.iter(|| qp.compute_error(black_box(&signal), black_box(&mut errors)));
-    }
-
-    #[bench]
-    fn compute_effective_bits_per_sample(b: &mut Bencher) {
-        let signal: [i32; 4096] = [-10000i32; 4096];
-        b.iter(|| effective_bits_per_sample(black_box(&signal)));
     }
 }
