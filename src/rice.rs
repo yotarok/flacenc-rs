@@ -16,6 +16,7 @@
 
 use seq_macro::seq;
 
+use super::arrayutils::unaligned_map_and_update;
 use super::constant::rice::MAX_PARTITIONS as MAX_RICE_PARTITIONS;
 use super::constant::rice::MAX_PARTITION_ORDER as MAX_RICE_PARTITION_ORDER;
 use super::constant::rice::MAX_RICE_PARAMETER;
@@ -130,7 +131,6 @@ pub const fn encode_signbit(v: i32) -> u32 {
 }
 
 #[inline]
-#[allow(dead_code)] // this will not be used in "fakesimd"-mode.
 pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<u32, N>
 where
     simd::LaneCount<N>: simd::SupportedLaneCount,
@@ -215,10 +215,19 @@ impl PrcParameterFinder {
         self.tables.clear();
         self.min_ps.resize(nparts, 0);
         self.errors.clear();
-        // currently no performance improvement is observed by simply changing
-        // it to `encode_signbit_simd` via `as_simd`.
-        self.errors
-            .extend(signal.iter().map(|v| encode_signbit(*v)));
+        self.errors.resize(signal.len(), 0u32);
+        unaligned_map_and_update::<u32, 64, _, _, _>(
+            signal,
+            &mut self.errors,
+            #[inline]
+            |p, x| {
+                *p = encode_signbit(x);
+            },
+            #[inline]
+            |pv, v| {
+                *pv = encode_signbit_simd(v);
+            },
+        );
 
         let part_size = signal.len() / nparts;
         for p in 0..nparts {
