@@ -1,5 +1,41 @@
 # ChangeLog
 
+## 0.3.1 - 2023-10-30
+
+### Added
+
+- Micro benchmarks for further optimization (#105)
+- Mutable reference to `Source` is now also a `Source` (#106)
+- \[bin\] fancier terminal output
+  - iRTF and compression rate (#107)
+  - Features used for building the library (#122)
+- Some infrastructure for refactoring and optimization
+  - `simd_map_and_reduce` (#114)
+  - `slice_as_simd_mut`, `unaligned_map_and_update` (#117)
+  - `SimdVec` for SIMD aligned vectors (#116)
+- `log` feature (#121)
+- Documentation (#123, #124)
+
+### Fixed
+
+- Document issues (#104)
+- Test flakiness (#115)
+
+### Changed
+
+- Dependency change
+  - `toml` is removed from library dependency (#112)
+  - `md5` is replaced by `md-5` (#118)
+  - `nalgebra` version is bumped to "0.32" (#120)
+  - \[build-dependencies\] `built` is added (#122)
+- Performance optimization
+  - Misc. performance optimization (#108)
+  - Components for fixed LPC is only constructed after optimizing the order
+    (#109)
+  - Performance optimization of LPC (#110, #114, #117)
+  - Performance optimizatoin of PRC (#111, #119)
+  - Performance optimization of bitstream formatter (#113)
+
 ## 0.3.0 - 2023-10-20
 
 ### Breaking Changes
