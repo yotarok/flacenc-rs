@@ -44,9 +44,6 @@ pub mod build_info {
 pub(crate) mod envvar_key {
     /// Environment variable name for specifying the number of threads.
     pub const DEFAULT_PARALLELISM: &str = "FLACENC_WORKERS";
-
-    /// Environment variable for the path for par-mode running stats.
-    pub const RUNSTATS_OUTPUT: &str = "FLACENC_PARSTATS_DUMP";
 }
 
 /// Constants related to fixed-parameter LPC encoding.

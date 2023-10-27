@@ -15,8 +15,9 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 debug = 1
 
 [features]
-default = ["par"]
+default = ["par", "log"]
 experimental = ["dep:nalgebra"]
+log = ["dep:log"]
 par = ["dep:crossbeam-channel"]
 mimalloc = ["dep:mimalloc"]
 simd-nightly = []
@@ -26,6 +27,7 @@ crc = "2.1"
 crossbeam-channel = { version = "0.5.8", optional = true }
 heapless = "0.7.10"
 md-5 = "0.10.6"
+log = { version = "0.4", optional = true }
 mimalloc = { version = "0.1.39", default-features = false, optional = true }
 nalgebra = { version = "0.32", optional = true }
 num-traits = "0.2"
