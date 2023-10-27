@@ -4,10 +4,20 @@
 [![Crate](https://img.shields.io/crates/v/flacenc.svg)](https://crates.io/crates/flacenc)
 [![Documentation](https://docs.rs/flacenc/badge.svg)](https://docs.rs/flacenc)
 
-This crate provides some basic modules for building application customized FLAC
-(Free Lossless Audio Codec) encoder in rust programs. If you are interested in a
-stand-alone FLAC encoder (rather than a library for building it), check out the
-CLI for this module, [`flacenc-bin`].
+This crate provides some basic modules for building application-customized FLAC
+(Free Lossless Audio Codec) encoder in your rust programs. The API provided by
+this crate currently supports the following use cases:
+
+1. Performing FLAC encoding of custom input sources.
+1. Inspecting the encoded objects so you can inspect inside of the FLAC
+   bitstream, and serialize partially for your application usage.
+
+It should also be noted that it is easy to hack and enhance the crate to adapt
+to your use cases as this encoder is written in portable and (relatively) clean
+codes.
+
+If you are interested in a stand-alone FLAC encoder rather than a library for
+embedding it, check out the CLI for this module, [`flacenc-bin`].
 
 See the [auto-generated report] for the characteristics of the encoder compared
 to [FLAC reference implementation](https://xiph.org/flac/download.html).
@@ -17,17 +27,17 @@ to [FLAC reference implementation](https://xiph.org/flac/download.html).
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = "0.3.0"
+flacenc = "0.3.1"
 ```
 
 This crate is intended to be, and primarily developed with
-[`portable_simd`](https://github.com/rust-lang/portable-simd), and the
-default configuration above uses "fake" implementation of `portable_simd` for
-making it possible to build within a stable toolchain. If you are okay with
-using a nightly toolchain, use this crate with the SIMD features as follows:
+[`portable_simd`](https://github.com/rust-lang/portable-simd), and the default
+configuration above uses "fake" implementation of `portable_simd` for making it
+possible to build within a stable toolchain. If you are okay with using a
+nightly toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = { version = "0.3.0", features = ["simd-nightly"] }
+flacenc = { version = "0.3.1", features = ["simd-nightly"] }
 ```
 
 ## Examples
@@ -64,17 +74,19 @@ let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.frame(0).unwrap().write(&mut sink);
 ```
 
-`samples` here is an interleaved sequence, e.g. in the case with stereo inputs,
-it is a sequence like `[left_0, right_0, left_1, right_1, ...]` where
-`{left|right}_N` denotes the `N`-th sample from the left or right channel. All
-samples are assumed to be in the range of
+`samples` here is an interleaved sequence, e.g. in the case of stereo inputs,
+it is a sequence like `[left[0], right[0], left[1], right[1], ...]` where
+`left[t]` and `right[t]` denote the `t`-th sample from the left and right
+channels, respectively. All samples are assumed to be in the range of
 `- 2.pow(bits_per_samples - 1) .. 2.pow(bits_per_samples - 1)`, i.e. if
 `bits_per_samples == 16`, `samples[t]` must be `-32768 <= samples[t] <= 32767`.
 
 ### Customizing Encoder Behaviors
 
 NOTE: Currently, `flacenc` is in its initial development stage
-([major version zero](https://semver.org/#spec-item-4)).
+([major version zero](https://semver.org/#spec-item-4)). Therefore, the API may
+change frequently. While in major-version-zero phase, we increment the minor
+version ("Y" of the version "x.Y.z") when there's a breaking API change.
 
 The current API provides several ways to control the encoding process. The
 possible customization can be categorized into three groups:
@@ -91,6 +103,10 @@ possible customization can be categorized into three groups:
   slower. Due to its experimental nature, there's no documentation on how to
   activate each algorithm. You may need to explore `flacenc::config` module or
   source codes for better understanding.
+- `log`: (This feature is enabled by default) Enables logging so an application
+  program can handle the log by linking a log-handler crate (such as
+  [`env_logger`] crate.) Logging is not done in a performance critical part of
+  the code, so the computational cost due to this feature should be negligible.
 - `simd-nightly`: Activates `portable-simd` feature of a rust nightly toolchain
   and use real SIMD processing instead of the fake one currently used by
   default.
@@ -132,6 +148,7 @@ digest of the decoded signal matches with the stored one.
 [`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
 [`config::encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
 [`contributing.md`]: https://github.com/yotarok/flacenc-rs/blob/main/CONTRIBUTING.md
+[`env_logger`]: https://crates.io/crates/env_logger
 [`flacenc-bin`]: https://github.com/yotarok/flacenc-rs/blob/main/flacenc-bin/README.md
 [`license`]: https://github.com/yotarok/flacenc-rs/blob/main/LICENSE
 [`source::source`]: https://docs.rs/flacenc/latest/flacenc/source/trait.Source.html

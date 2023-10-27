@@ -1,13 +1,15 @@
 # Example CLI for flacenc-rs
 
-See [flacenc-rs](https://github.com/yotarok/flacenc-rs) for project overview.
+A CLI tool for encoding wav files into flac format, which compresses the
+input waveform by ~60% without any degradation. This is an example application
+of [flacenc](https://github.com/yotarok/flacenc-rs) library.
 
 ## Usage
 
-To install (with using nightly rust):
+To install (with using nightly rust; recommended):
 
 ```bash
-cargo +nightly install flacenc-bin
+cargo +nightly install flacenc-bin --features "simd-nightly"
 ```
 
 Or, if you want to use stable channel:

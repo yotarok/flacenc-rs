@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "built",
  "crc",
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc-bin"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clap",
  "env_logger",
