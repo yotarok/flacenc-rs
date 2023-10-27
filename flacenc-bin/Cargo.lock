@@ -153,6 +153,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "built"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d17f4d6e4dc36d1a02fbedc2753a096848e7c1b0772f7654eab8e2c927dd53"
+
+[[package]]
 name = "bytemuck"
 version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -365,6 +371,7 @@ dependencies = [
 name = "flacenc"
 version = "0.3.0"
 dependencies = [
+ "built",
  "crc",
  "crossbeam-channel",
  "heapless",
@@ -386,6 +393,7 @@ dependencies = [
  "env_logger",
  "flacenc",
  "hound",
+ "log",
  "pprof",
  "termcolor",
  "toml",

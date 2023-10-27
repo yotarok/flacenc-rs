@@ -412,7 +412,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let context = context.finalize();
 
     info!(
-        target: "flacenc::par::jsonl",
+        target: "flacenc::par_run_stat::jsonl",
         "{{ worker_count: {}, frame_count: {}, worker_starvation_count: {}, md5_overdue: {} }}",
         worker_count,
         feed_stats.frame_count,

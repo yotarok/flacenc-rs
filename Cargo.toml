@@ -44,3 +44,6 @@ rand = "0.8.5"
 rstest = "0.18.2"
 tempfile = "3"
 toml = "0.5"
+
+[build-dependencies]
+built = "0.7.1"

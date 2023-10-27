@@ -26,6 +26,7 @@ clap = { version = "4.4.6", features = ["derive"] }
 env_logger = "0.10.0"
 flacenc = { version = "0.3.0", path = "..", features = ["experimental", "mimalloc", "par"] }
 hound = "3.5.0"
+log = "0.4"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
 termcolor = "1.3"
 toml = "0.5"

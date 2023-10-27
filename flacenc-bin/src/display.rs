@@ -108,10 +108,18 @@ pub fn show_banner() -> Result<(), std::io::Error> {
     termout.reset()?;
     writeln!(
         termout,
-        "(engine v{}, CLI v{})",
+        "(CLI v{}, engine v{})",
+        CRATE_VERSION,
         flacenc::constant::build_info::CRATE_VERSION,
-        CRATE_VERSION
-    )
+    )?;
+    termout.set_color(ColorSpec::new().set_dimmed(true))?;
+    writeln!(
+        termout,
+        "{:>10} [{}]",
+        "",
+        flacenc::constant::build_info::FEATURES
+    )?;
+    termout.reset()
 }
 
 /// Outputs after-encode summary to the terminal.
