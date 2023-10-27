@@ -27,7 +27,7 @@ crossbeam-channel = { version = "0.5.8", optional = true }
 heapless = "0.7.10"
 md-5 = "0.10.6"
 mimalloc = { version = "0.1.39", default-features = false, optional = true }
-nalgebra = { version = "0.31", optional = true }
+nalgebra = { version = "0.32", optional = true }
 num-traits = "0.2"
 rustversion = "1.0"
 seq-macro = "0.3"
