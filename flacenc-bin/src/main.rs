@@ -53,6 +53,7 @@ use std::io::Write;
 use std::time::Instant;
 
 use clap::Parser;
+use log::info;
 #[cfg(feature = "pprof")]
 use pprof::protos::Message;
 
@@ -116,10 +117,22 @@ fn run_encoder<S: Source>(
     flacenc::encode_with_fixed_block_size(encoder_config, source, block_size)
 }
 
+fn log_build_constants() {
+    info!(
+        target: "flacenc-bin::build_info::jsonl",
+        "{{ version: \"{}\", features: \"{}\", profile: \"{}\", rustc: \"{}\" }}",
+        flacenc::constant::build_info::CRATE_VERSION,
+        flacenc::constant::build_info::FEATURES,
+        flacenc::constant::build_info::BUILD_PROFILE,
+        flacenc::constant::build_info::RUSTC_VERSION,
+    );
+}
+
 #[allow(clippy::let_underscore_must_use)]
 fn main_body(args: Args) -> Result<(), i32> {
     let io_info = display::IoArgs::new(&args.config, &args.source, &args.output);
     let _ = display::show_banner();
+    log_build_constants();
     let encoder_config = args.config.map_or_else(config::Encoder::default, |path| {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")

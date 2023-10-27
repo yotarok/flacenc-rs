@@ -20,6 +20,10 @@
 // then sub-modules. Constants that are used only in a specific sub-module or
 // its caller should be placed in the corresponding submodule.
 
+mod built {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
+
 /// Minimum length of a block supported.
 pub const MIN_BLOCKSIZE: usize = 32;
 
@@ -33,11 +37,24 @@ pub const MAX_CHANNELS: usize = 8;
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
 /// Sub-module containing constants related to build-time information.
+///
+/// Information in this module is gathered using [`built`] crate.
+///
+/// [`built`]: https://crates.io/crates/built
 pub mod build_info {
-    pub const CRATE_VERSION: &str = match option_env!("CARGO_PKG_VERSION") {
-        Some(v) => v,
-        None => "unknown",
-    };
+    use super::built;
+
+    /// Version of `flacenc` library from Cargo.toml.
+    pub const CRATE_VERSION: &str = built::PKG_VERSION;
+
+    /// Comma-separated strings of features activated.
+    pub const FEATURES: &str = built::FEATURES_LOWERCASE_STR;
+
+    /// Build profile. "debug" or "release".
+    pub const BUILD_PROFILE: &str = built::PROFILE;
+
+    /// `rustc` version used for building this crate.
+    pub const RUSTC_VERSION: &str = built::RUSTC_VERSION;
 }
 
 /// Constants related to keys for the environment variables.
