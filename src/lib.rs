@@ -113,6 +113,14 @@ macro_rules! reuse {
     }};
 }
 
+// internal log macros
+#[allow(unused)]
+macro_rules! info { (target: $t:literal, $($x:tt)*) => (
+    #[cfg(feature = "log")] {
+        log::info!(target: $t, $($x)*)
+    }
+) }
+
 pub(crate) mod arrayutils;
 pub mod bitsink;
 pub(crate) mod coding;

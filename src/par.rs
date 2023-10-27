@@ -234,11 +234,14 @@ impl ParContext {
             .expect(panic_msg::MPMC_SEND_FAILED);
     }
 
-    fn request_stop(&self) {
+    /// Sends stop signal and returns the number of remaining blocks in queue.
+    fn request_stop(&self) -> usize {
+        let ret = self.process_queue.0.len();
         self.process_queue
             .0
             .send(vec![])
             .expect(panic_msg::MPMC_SEND_FAILED);
+        ret
     }
 
     fn finalize(self) -> Context {
@@ -332,31 +335,6 @@ fn determine_worker_count(config: &config::Encoder) -> Result<usize, SourceError
         .map_or(default_parallelism, NonZeroUsize::get))
 }
 
-struct ParRunStats {
-    worker_count: usize,
-    feed: FeedStats,
-}
-
-impl ParRunStats {
-    pub const fn new(worker_count: usize, feed: FeedStats) -> Self {
-        Self { worker_count, feed }
-    }
-}
-
-impl std::fmt::Display for ParRunStats {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(
-            f,
-            "
-worker_count = {}
-frames_processed = {}
-worker_starvation_count = {}
-",
-            self.worker_count, self.feed.frame_count, self.feed.worker_starvation_count,
-        )
-    }
-}
-
 /// Parallel version of `encode_with_fixed_block_size`.
 ///
 /// This function is internally called by `encode_with_fixed_block_size`
@@ -430,13 +408,17 @@ pub fn encode_with_fixed_block_size<T: Source>(
     ));
     let (feed_stats, context) =
         feed_fixed_block_size(src, block_size, worker_count, &parbuf, context)?;
-    context.request_stop();
+    let remaining_md5_blocks = context.request_stop();
     let context = context.finalize();
 
-    if let Ok(path_str) = std::env::var(envvar_key::RUNSTATS_OUTPUT) {
-        let run_stat = ParRunStats::new(worker_count, feed_stats);
-        std::fs::write(path_str, format!("{run_stat}")).unwrap();
-    }
+    info!(
+        target: "flacenc::par::jsonl",
+        "{{ worker_count: {}, frame_count: {}, worker_starvation_count: {}, md5_overdue: {} }}",
+        worker_count,
+        feed_stats.frame_count,
+        feed_stats.worker_starvation_count,
+        remaining_md5_blocks,
+    );
 
     stream
         .stream_info_mut()

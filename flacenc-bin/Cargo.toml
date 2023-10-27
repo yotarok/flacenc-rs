@@ -23,6 +23,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
+env_logger = "0.10.0"
 flacenc = { version = "0.3.0", path = "..", features = ["experimental", "mimalloc", "par"] }
 hound = "3.5.0"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }

@@ -198,5 +198,8 @@ where
 
 #[allow(clippy::expect_used)]
 fn main() -> Result<(), i32> {
+    env_logger::Builder::from_env("FLACENC_LOG")
+        .format_timestamp(None)
+        .init();
     run_with_profiler_if_requested(Args::parse(), main_body)
 }
