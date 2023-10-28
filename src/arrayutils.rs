@@ -36,6 +36,7 @@ where
     T: simd::SimdElement + Default,
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
+    /// Constructs new `SimdVec` with length `0` and the default capacity.
     pub fn new() -> Self {
         Self {
             inner: Vec::new(),
@@ -43,6 +44,7 @@ where
         }
     }
 
+    /// Constructs `SimdVec` from the given slice of scalars.
     #[inline]
     pub fn from_slice(data: &[T]) -> Self {
         let mut ret = Self::new();
@@ -50,29 +52,37 @@ where
         ret
     }
 
+    /// Returns the number of scalar elements.
     #[inline]
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns the number of internal simd-vectors.
     #[inline]
     #[allow(dead_code)]
     pub fn simd_len(&self) -> usize {
         self.inner.len()
     }
 
+    /// Resets the size and contents with values in the given slice.
     #[inline]
     pub fn reset_from_slice(&mut self, data: &[T]) {
         pack_into_simd_vec(data, &mut self.inner);
         self.len = data.len();
     }
 
+    /// Returns an iterator for the simd-vectors.
     #[inline]
     pub fn iter_simd(&self) -> IterSimd<T, N> {
         self.inner.iter()
     }
 
+    /// Resizes the innew storage so it can contain `new_len` scalars.
+    ///
+    /// If resizing needs to add a new simd-vector to the internal storage,
+    /// `value` is used as an initial value.
     #[inline]
     #[allow(dead_code)]
     pub fn resize(&mut self, new_len: usize, value: simd::Simd<T, N>) {
@@ -81,6 +91,11 @@ where
         self.len = new_len;
     }
 
+    /// Resest the size and values from the iterator of simd-vectors.
+    ///
+    /// NOTE: Currently, it's undefined behavior if `new_len` does not
+    /// satisfy `new_len >= iter.len() / N` and
+    /// `new_len < (iter.len() + 1) / N`.
     #[inline]
     pub fn reset_from_iter_simd<I>(&mut self, new_len: usize, iter: I)
     where
@@ -93,17 +108,20 @@ where
         self.len = new_len;
     }
 
+    /// Returns a slice of the scalar values.
     #[inline]
     pub fn as_ref(&self) -> &[T] {
         &transmute_and_flatten_simd(&self.inner)[0..self.len]
     }
 
+    /// Returns a slice of the simd vectors.
     #[inline]
     #[allow(dead_code)]
     pub fn as_ref_simd(&self) -> &[simd::Simd<T, N>] {
         &self.inner
     }
 
+    /// Returns a mutable slice of the simd vectors.
     #[inline]
     #[allow(dead_code)]
     pub fn as_mut_simd(&mut self) -> &mut [simd::Simd<T, N>] {
@@ -291,25 +309,23 @@ where
     }
 }
 
-#[cfg(feature = "simd-nightly")]
+/// A wrapper of `slice::as_simd` with a fallback behavior in stable toolchain.
 fn slice_as_simd<T, const N: usize>(data: &[T]) -> (&[T], &[simd::Simd<T, N>], &[T])
 where
     T: simd::SimdElement,
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
-    data.as_simd()
+    #[cfg(feature = "simd-nightly")]
+    {
+        data.as_simd()
+    }
+    #[cfg(not(feature = "simd-nightly"))]
+    {
+        (data, &[], &[])
+    }
 }
 
-#[cfg(not(feature = "simd-nightly"))]
-fn slice_as_simd<T, const N: usize>(data: &[T]) -> (&[T], &[simd::Simd<T, N>], &[T])
-where
-    T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
-    (data, &[], &[])
-}
-
-#[cfg(feature = "simd-nightly")]
+/// A wrapper of `slice::as_simd_mut` supporting stable toolchain.
 fn slice_as_simd_mut<T, const N: usize>(
     data: &mut [T],
 ) -> (&mut [T], &mut [simd::Simd<T, N>], &mut [T])
@@ -317,18 +333,14 @@ where
     T: simd::SimdElement,
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
-    data.as_simd_mut()
-}
-
-#[cfg(not(feature = "simd-nightly"))]
-fn slice_as_simd_mut<T, const N: usize>(
-    data: &mut [T],
-) -> (&mut [T], &mut [simd::Simd<T, N>], &mut [T])
-where
-    T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
-    (data, &mut [], &mut [])
+    #[cfg(feature = "simd-nightly")]
+    {
+        data.as_simd_mut()
+    }
+    #[cfg(not(feature = "simd-nightly"))]
+    {
+        (data, &mut [], &mut [])
+    }
 }
 
 /// Maps and reduces the array with SIMD acceleration.
@@ -385,6 +397,16 @@ where
     )
 }
 
+/// Updates `dest` using the given functions and their arguments `src`.
+///
+/// This function updates `dest` using a scalar update function `scalar_fn`
+/// that is called as `scalar_fn(&mut dest[t], src[t])` and a vector function
+/// that is called as `vector_fn(&mut dest_v[n], src_v[n])` where `dest_v[n]`
+/// and `src_v[n]` are the n-th simd vectors in `dest` and `src` respectively.
+/// Both `dest` and `src` do not need to be SIMD aligned. This function
+/// splits `dest` into unaligned prefix/ suffix and aligned body, and performs
+/// unaligned load from `src` for preparing the matching simd vector from
+/// `src`.
 #[inline]
 pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
     src: &[U],
