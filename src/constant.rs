@@ -33,10 +33,10 @@ pub const MAX_BLOCKSIZE: usize = 32768;
 /// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;
 
-/// Maximum bits-per-sample supported.
+/// Maximum bits-per-sample supported. (32 in the specification.)
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
-/// Sub-module containing constants related to build-time information.
+/// Constants related to build-time information.
 ///
 /// Information in this module is gathered using [`built`] crate.
 ///

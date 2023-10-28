@@ -320,7 +320,16 @@ impl Verify for Qlpc {
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub enum Window {
+    /// [Rectangular] window.
+    ///
+    /// [Rectangular]: https://en.wikipedia.org/wiki/Window_function#Rectangular_window
     Rectangle,
+    /// [Tukey] window.
+    ///
+    /// `alpha` parameter must satisfy both `0.0 <= alpha` and `alpha <= 1.0`.
+    /// `alpha == 0.0` is equivalent with using a rectangular window.
+    ///
+    /// [Tukey]: https://en.wikipedia.org/wiki/Window_function#Tukey_window
     Tukey { alpha: f32 },
 }
 
