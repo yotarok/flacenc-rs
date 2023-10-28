@@ -265,7 +265,9 @@ pub trait BitSink: Sized {
     }
 }
 
-/// `BitSink` implementation based on [`Vec`] of unsigned ints.
+/// [`BitSink`] implementation based on [`Vec`] of unsigned ints (u8/ u64).
+///
+/// Currently, only `S: u64` and `S: u8` implements [`BitSink`] trait.
 #[derive(Clone, Debug)]
 pub struct MemSink<S> {
     storage: Vec<S>,

@@ -252,6 +252,7 @@ pub trait Verify {
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug)]
 pub enum EncodeError {
+    /// Encoder errors due to input sources.
     Source(SourceError),
 }
 

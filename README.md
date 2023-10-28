@@ -7,7 +7,7 @@
 This crate provides some basic modules for building application customized FLAC
 (Free Lossless Audio Codec) encoder in rust programs. If you are interested in a
 stand-alone FLAC encoder (rather than a library for building it), check out the
-CLI for this module located in [`flacenc-bin`].
+CLI for this module, [`flacenc-bin`].
 
 See the [auto-generated report] for the characteristics of the encoder compared
 to [FLAC reference implementation](https://xiph.org/flac/download.html).
@@ -21,7 +21,7 @@ flacenc = "0.3.0"
 ```
 
 This crate is intended to be, and primarily developed with
-[`portable_simd`](https://github.com/rust-lang/project-portable-simd), and the
+[`portable_simd`](https://github.com/rust-lang/portable-simd), and the
 default configuration above uses "fake" implementation of `portable_simd` for
 making it possible to build within a stable toolchain. If you are okay with
 using a nightly toolchain, use this crate with the SIMD features as follows:

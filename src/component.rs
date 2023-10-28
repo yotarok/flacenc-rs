@@ -972,9 +972,16 @@ impl BitRepr for Frame {
 /// Enum for channel assignment in `FRAME_HEADER`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChannelAssignment {
+    /// Indicates that the frame contains multiple channels independently.
+    ///
+    /// The `u8` field indicates the number of channels. This is the only
+    /// option if the number of channels is not two.
     Independent(u8),
+    /// Indicates that the frame contains left and side channels.
     LeftSide,
+    /// Indicates that the frame contains right and side channels.
     RightSide,
+    /// Indicates that the frame contains mid and side channels.
     MidSide,
 }
 
@@ -1239,7 +1246,7 @@ pub enum SubFrame {
     Verbatim(Verbatim),
     /// This variant contains [`FixedLpc`] sub-frame.
     FixedLpc(FixedLpc),
-    /// This variant contains [`Lpc]` sub-frame.
+    /// This variant contains [`Lpc`] sub-frame.
     Lpc(Lpc),
 }
 
