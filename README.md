@@ -9,10 +9,10 @@ This crate provides some basic modules for building application-customized FLAC
 this crate currently supports the following use cases:
 
 1. Performing FLAC encoding of custom input sources.
-1. Inspecting the encoded objects so you can inspect inside of the FLAC
-   bitstream, and serialize partially for your application usage.
+1. Inspecting the encoded streams so you can analyze/ serialize parts of the
+   encoder results.
 
-It should also be noted that it is easy to hack and enhance the crate to adapt
+It should also be noted that it is easy to hack and enhance this crate to adapt
 to your use cases as this encoder is written in portable and (relatively) clean
 codes.
 
@@ -74,10 +74,10 @@ let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.frame(0).unwrap().write(&mut sink);
 ```
 
-`samples` here is an interleaved sequence, e.g. in the case of stereo inputs,
-it is a sequence like `[left[0], right[0], left[1], right[1], ...]` where
-`left[t]` and `right[t]` denote the `t`-th sample from the left and right
-channels, respectively. All samples are assumed to be in the range of
+`samples` here is an interleaved sequence, e.g. in the case of stereo inputs, it
+is a sequence like `[left[0], right[0], left[1], right[1], ...]` where `left[t]`
+and `right[t]` denote the `t`-th sample from the left and right channels,
+respectively. All samples are assumed to be in the range of
 `- 2.pow(bits_per_samples - 1) .. 2.pow(bits_per_samples - 1)`, i.e. if
 `bits_per_samples == 16`, `samples[t]` must be `-32768 <= samples[t] <= 32767`.
 
@@ -91,7 +91,7 @@ version ("Y" of the version "x.Y.z") when there's a breaking API change.
 The current API provides several ways to control the encoding process. The
 possible customization can be categorized into three groups:
 
-1. Encode behavior customization by configuring [`config::Encoder`],
+1. Encoder algorithm customization by configuring [`config::Encoder`],
 1. Input enhancement by implementing [`source::Source`] trait,
 1. Add custom post-processing via structs in [`component`] submodule.
 
@@ -139,10 +139,10 @@ and Google specifically disclaims all warranties as to its quality,
 merchantability, or fitness for a particular purpose.
 
 This encoder is still unstable and sometimes the encoded file may contain
-distortion, i.e. the encoder is sometimes not "lossless". You can check whether
-you encountered an encoder bug by running the reference decoder. The FLAC format
-contains MD5 digest of the input signal, and the reference decoder checks if the
-digest of the decoded signal matches with the stored one.
+distortion, i.e. the encoder very rarely outputs broken signals. You can check
+whether you encountered an encoder bug by running, e.g., the reference decoder.
+The FLAC format contains MD5 digest of the input signal, and the reference
+decoder checks if the digest of the decoded signal matches with the stored one.
 
 [auto-generated report]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
 [`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
