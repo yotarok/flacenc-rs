@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #![doc = include_str!("../README.md")]
-
 // Note that clippy attributes should be in sync with those declared in "lib.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 #![allow(
