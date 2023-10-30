@@ -268,11 +268,10 @@ fn estimated_qlpc(
 ) -> SubFrame {
     let lpc_order = config.qlpc.lpc_order;
     let lpc_coefs = perform_qlpc(config, signal);
-    let qlpc =
-        lpc::QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
+    let qlpc = lpc::quantize_parameters(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
     let residual = reuse!(QLPC_ERROR_BUFFER, |errors: &mut Vec<i32>| {
         errors.resize(signal.len(), 0i32);
-        qlpc.compute_error(signal, errors);
+        lpc::compute_error(&qlpc, signal, errors);
         encode_residual(&config.prc, errors, qlpc.order())
     });
     Lpc::new(

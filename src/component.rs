@@ -27,11 +27,9 @@ use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
 use super::error::OutputError;
 use super::error::RangeError;
-use super::lpc;
 use super::rice;
 
-// re-export quantized parameters
-pub use lpc::QuantizedParameters;
+import_simd!(as simd);
 
 const CRC_8_FLAC: crc::Algorithm<u8> = crc::CRC_8_SMBUS;
 const CRC_16_FLAC: crc::Algorithm<u16> = crc::CRC_16_UMTS;
@@ -1452,7 +1450,7 @@ impl BitRepr for FixedLpc {
 /// [`SUBFRAME_LPC`](https://xiph.org/flac/format.html#subframe_lpc) component.
 #[derive(Clone, Debug)]
 pub struct Lpc {
-    parameters: lpc::QuantizedParameters,
+    parameters: QuantizedParameters,
     warm_up: heapless::Vec<i32, MAX_LPC_ORDER>,
     residual: Residual,
     bits_per_sample: u8,
@@ -1466,7 +1464,7 @@ impl Lpc {
     /// Panics if the length of `warm_up` is not equal to `parameters.order()`.
     pub(crate) fn new(
         warm_up: &[i32],
-        parameters: lpc::QuantizedParameters,
+        parameters: QuantizedParameters,
         residual: Residual,
         bits_per_sample: usize,
     ) -> Self {
@@ -1491,7 +1489,7 @@ impl Lpc {
     }
 
     /// Returns a reference to parameter struct.
-    pub fn parameters(&self) -> &lpc::QuantizedParameters {
+    pub fn parameters(&self) -> &QuantizedParameters {
         &self.parameters
     }
 
@@ -1543,6 +1541,73 @@ impl BitRepr for Lpc {
         }
 
         self.residual.write(dest)
+    }
+}
+
+/// Quantized LPC coefficients.
+#[derive(Clone, Debug)]
+pub struct QuantizedParameters {
+    pub(crate) coefs: simd::i16x32,
+    order: usize,
+    shift: i8,
+    precision: usize,
+}
+
+/// Dequantizes QLPC parameter. (Only used for debug/ test currently.)
+#[inline]
+fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
+    let scalefac = 2.0f32.powi(-i32::from(shift));
+    f32::from(coef) * scalefac
+}
+
+impl QuantizedParameters {
+    pub(crate) fn from_parts(coefs: &[i16], order: usize, shift: i8, precision: usize) -> Self {
+        debug_assert!(coefs.len() == order);
+        let mut coefs_v = simd::i16x32::default();
+        coefs_v[0..order].copy_from_slice(coefs);
+        Self {
+            coefs: coefs_v,
+            order,
+            shift,
+            precision,
+        }
+    }
+
+    /// Returns the order of LPC specified by this parameter.
+    #[inline]
+    pub const fn order(&self) -> usize {
+        self.order
+    }
+
+    /// Returns precision.
+    #[inline]
+    pub const fn precision(&self) -> usize {
+        self.precision
+    }
+
+    /// Returns the shift parameter.
+    #[inline]
+    pub const fn shift(&self) -> i8 {
+        self.shift
+    }
+
+    /// Returns an individual coefficient in quantized form.
+    pub fn coefficient(&self, idx: usize) -> Option<i16> {
+        (idx <= self.order()).then(|| self.coefs[idx])
+    }
+
+    /// Returns `Vec` containing quantized coefficients.
+    pub(crate) fn coefs(&self) -> Vec<i16> {
+        (0..self.order()).map(|j| self.coefs[j]).collect()
+    }
+
+    /// Returns `Vec` containing dequantized coefficients.
+    #[allow(dead_code)]
+    pub(crate) fn dequantized(&self) -> Vec<f32> {
+        self.coefs()
+            .iter()
+            .map(|x| dequantize_parameter(*x, self.shift))
+            .collect()
     }
 }
 

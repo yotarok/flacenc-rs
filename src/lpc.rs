@@ -20,6 +20,7 @@ use std::rc::Rc;
 use super::arrayutils::find_max_abs;
 use super::arrayutils::unaligned_map_and_update;
 use super::arrayutils::SimdVec;
+use super::component::QuantizedParameters;
 use super::config::Window;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
@@ -113,183 +114,107 @@ fn quantize_parameter(p: f32, shift: i8) -> i16 {
         .clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
 }
 
-/// Dequantizes QLPC parameter. (Only used for debug/ test currently.)
+/// Creates [`QuantizedParameters`] by quantizing the given coefficients.
+pub fn quantize_parameters(coefs: &[f32], precision: usize) -> QuantizedParameters {
+    let shift = find_shift(coefs, precision);
+    let mut q_coefs = [0i16; MAX_LPC_ORDER];
+
+    for (n, coef) in coefs.iter().enumerate() {
+        // This clamp op is mainly for safety, but actually required
+        // because the shift-width estimation `find_shift` used here is not
+        // perfect, and quantization may yields "2^(p-1)" quantized value
+        // for precision "p" configuration, that is larger than a maximum
+        // p-bits signed integer "2^(p-1) - 1".
+        q_coefs[n] = std::cmp::min(
+            std::cmp::max(quantize_parameter(*coef, shift), -(1 << (precision - 1))),
+            (1 << (precision - 1)) - 1,
+        );
+    }
+
+    let tail_zeros = q_coefs
+        .rsplitn(2, |&x| x != 0)
+        .next()
+        .map_or(0, <[i16]>::len);
+    let order = std::cmp::max(1, q_coefs.len() - tail_zeros);
+
+    QuantizedParameters::from_parts(&q_coefs[0..order], order, shift, precision)
+}
+
+/// Implementation of `compute_error` for each SIMD config.
 #[inline]
-fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
-    let scalefac = 2.0f32.powi(-i32::from(shift));
-    f32::from(coef) * scalefac
-}
+fn compute_error_impl<T, const N: usize>(qps: &QuantizedParameters, signal: &[T], errors: &mut [T])
+where
+    T: simd::SimdElement + num_traits::int::PrimInt + From<i8> + From<i16> + std::ops::AddAssign<T>,
+    simd::Simd<T, N>: std::ops::Shr<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+        + std::ops::Sub<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+        + std::ops::Mul<simd::Simd<T, N>, Output = simd::Simd<T, N>>
+        + std::ops::AddAssign<simd::Simd<T, N>>,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let block_size = signal.len();
+    debug_assert!(errors.len() >= block_size);
+    errors.fill(T::zero());
 
-/// Quantized LPC coefficients.
-#[derive(Clone, Debug)]
-pub struct QuantizedParameters {
-    coefs: simd::i16x32,
-    order: usize,
-    shift: i8,
-    precision: usize,
-}
-
-impl QuantizedParameters {
-    /// Constructs `QuantizedParameters` from the parameters and precision.
-    ///
-    /// # Panics
-    ///
-    /// Only panics due to an internal error.
-    pub fn with_coefs(coefs: &[f32], precision: usize) -> Self {
-        let shift = find_shift(coefs, precision);
-        let mut q_coefs = [0i32; MAX_LPC_ORDER];
-
-        for (n, coef) in coefs.iter().enumerate() {
-            // This clamp op is mainly for safety, but actually required
-            // because the shift-width estimation `find_shift` used here is not
-            // perfect, and quantization may yields "2^(p-1)" quantized value
-            // for precision "p" configuration, that is larger than a maximum
-            // p-bits signed integer "2^(p-1) - 1".
-            q_coefs[n] = std::cmp::min(
-                std::cmp::max(
-                    i32::from(quantize_parameter(*coef, shift)),
-                    -(1 << (precision - 1)),
-                ),
-                (1 << (precision - 1)) - 1,
-            );
-        }
-
-        let tail_zeros = q_coefs
-            .rsplitn(2, |&x| x != 0)
-            .next()
-            .map_or(0, <[i32]>::len);
-        let order = std::cmp::max(1, q_coefs.len() - tail_zeros);
-
-        let coefs_v = simd::i16x32::from_array(std::array::from_fn(|i| {
-            if i < q_coefs.len() {
-                q_coefs[i] as i16
-            } else {
-                0
-            }
-        }));
-
-        Self {
-            coefs: coefs_v,
-            order,
-            shift,
-            precision,
-        }
-    }
-
-    /// Returns the order of LPC specified by this parameter.
-    pub const fn order(&self) -> usize {
-        self.order
-    }
-
-    /// Implementation of `compute_error` for each SIMD config.
-    #[inline]
-    fn compute_error_impl<T, const N: usize>(&self, signal: &[T], errors: &mut [T])
-    where
-        T: simd::SimdElement
-            + num_traits::int::PrimInt
-            + From<i8>
-            + From<i16>
-            + std::ops::AddAssign<T>,
-        simd::Simd<T, N>: std::ops::Shr<simd::Simd<T, N>, Output = simd::Simd<T, N>>
-            + std::ops::Sub<simd::Simd<T, N>, Output = simd::Simd<T, N>>
-            + std::ops::Mul<simd::Simd<T, N>, Output = simd::Simd<T, N>>
-            + std::ops::AddAssign<simd::Simd<T, N>>,
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
-        let block_size = signal.len();
-        debug_assert!(errors.len() >= block_size);
-        errors.fill(T::zero());
-
-        for order in 0..self.order {
-            let w = self.coefs[order].into();
-            let wv = simd::Simd::<T, N>::splat(w);
-            unaligned_map_and_update(
-                &signal[0..block_size - order - 1],
-                &mut errors[order + 1..],
-                #[inline]
-                |px, x| {
-                    *px += w * x;
-                },
-                #[inline]
-                |pv, v| {
-                    *pv += wv * v;
-                },
-            );
-        }
-
-        let shift = self.shift as usize;
-        let shift_v = simd::Simd::<T, N>::splat(self.shift.into());
-        unaligned_map_and_update::<T, N, _, _, _>(
-            signal,
-            errors,
+    for order in 0..qps.order() {
+        let w = qps.coefs[order].into();
+        let wv = simd::Simd::<T, N>::splat(w);
+        unaligned_map_and_update(
+            &signal[0..block_size - order - 1],
+            &mut errors[order + 1..],
             #[inline]
             |px, x| {
-                *px = x - (*px >> shift);
+                *px += w * x;
             },
             #[inline]
             |pv, v| {
-                *pv = v - (*pv >> shift_v);
+                *pv += wv * v;
             },
         );
-        errors[0..self.order].fill(T::zero());
     }
 
-    /// Compute error signal from `QuantizedParameters`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `errors.len()` is smaller than `signal.len()`.
-    #[allow(clippy::collapsible_else_if)]
-    pub(crate) fn compute_error(&self, signal: &[i32], errors: &mut [i32]) {
-        assert!(errors.len() >= signal.len());
-        let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
-        let sumabs_coefs: i64 = self.coefs.abs().reduce_sum().into();
-        let maxabs = maxabs_signal * sumabs_coefs as u64;
-        if maxabs < i32::MAX as u64 {
-            // larger lanes here can alleviate inefficiency of unaligned reads.
-            self.compute_error_impl::<i32, 64>(signal, errors);
-        } else {
-            // This is very inefficient, but should rarely happen in BPS=16bit case.
-            let signal64: Vec<i64> = signal.iter().map(|v| (*v).into()).collect();
-            let mut errors64 = vec![0i64; signal64.len()];
-            self.compute_error_impl::<i64, 64>(&signal64, &mut errors64);
-            for (v, p) in errors64
-                .into_iter()
-                .map(|v| v as i32)
-                .zip(errors.iter_mut())
-            {
-                *p = v;
-            }
+    let shift = qps.shift() as usize;
+    let shift_v = simd::Simd::<T, N>::splat(qps.shift().into());
+    unaligned_map_and_update::<T, N, _, _, _>(
+        signal,
+        errors,
+        #[inline]
+        |px, x| {
+            *px = x - (*px >> shift);
+        },
+        #[inline]
+        |pv, v| {
+            *pv = v - (*pv >> shift_v);
+        },
+    );
+    errors[0..qps.order()].fill(T::zero());
+}
+
+/// Compute error signal from `QuantizedParameters`.
+///
+/// # Panics
+///
+/// This function panics if `errors.len()` is smaller than `signal.len()`.
+#[allow(clippy::collapsible_else_if)]
+pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i32]) {
+    assert!(errors.len() >= signal.len());
+    let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
+    let sumabs_coefs: i64 = qps.coefs.abs().reduce_sum().into();
+    let maxabs = maxabs_signal * sumabs_coefs as u64;
+    if maxabs < i32::MAX as u64 {
+        // larger lanes here can alleviate inefficiency of unaligned reads.
+        compute_error_impl::<i32, 64>(qps, signal, errors);
+    } else {
+        // This is very inefficient, but should rarely happen in BPS=16bit case.
+        let signal64: Vec<i64> = signal.iter().map(|v| (*v).into()).collect();
+        let mut errors64 = vec![0i64; signal64.len()];
+        compute_error_impl::<i64, 64>(qps, &signal64, &mut errors64);
+        for (v, p) in errors64
+            .into_iter()
+            .map(|v| v as i32)
+            .zip(errors.iter_mut())
+        {
+            *p = v;
         }
-    }
-
-    /// Returns precision.
-    pub const fn precision(&self) -> usize {
-        self.precision
-    }
-
-    /// Returns the shift parameter.
-    pub const fn shift(&self) -> i8 {
-        self.shift
-    }
-
-    /// Returns an individual coefficient in quantized form.
-    pub fn coef(&self, idx: usize) -> i16 {
-        self.coefs[idx]
-    }
-
-    /// Returns `Vec` containing quantized coefficients.
-    pub fn coefs(&self) -> Vec<i16> {
-        (0..self.order()).map(|j| self.coef(j)).collect()
-    }
-
-    /// Returns `Vec` containing dequantized coefficients.
-    #[allow(dead_code)]
-    pub(crate) fn dequantized(&self) -> Vec<f32> {
-        self.coefs()
-            .iter()
-            .map(|x| dequantize_parameter(*x, self.shift))
-            .collect()
     }
 }
 
@@ -855,11 +780,11 @@ mod tests {
 
     #[test]
     fn parameter_quantizer() {
-        let qp = QuantizedParameters::with_coefs(&[0.0, 0.5, 0.1], 4);
+        let qp = quantize_parameters(&[0.0, 0.5, 0.1], 4);
         eprintln!("{qp:?}");
         assert_eq!(qp.coefs(), vec![0i16, 7i16, 2i16]);
 
-        let qp = QuantizedParameters::with_coefs(&[1.0, -0.5, 0.5], 2);
+        let qp = quantize_parameters(&[1.0, -0.5, 0.5], 2);
         eprintln!("{qp:?}");
         assert_eq!(qp.coefs(), vec![1, -1, 1]);
         assert_eq!(qp.dequantized(), vec![0.5, -0.5, 0.5]);
@@ -868,7 +793,7 @@ mod tests {
     #[test]
     fn qlpc_auto_truncation() {
         let coefs = [1.0, 0.5, 0.0, 0.0];
-        let qp = QuantizedParameters::with_coefs(&coefs, 8);
+        let qp = quantize_parameters(&coefs, 8);
         assert_eq!(qp.order(), 2);
     }
 
@@ -887,14 +812,14 @@ mod tests {
         assert_finite!(lpc_coefs);
         let mut errors = vec![0i32; signal.len()];
         eprintln!("{signal:?}");
-        let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
+        let qlpc = quantize_parameters(&lpc_coefs[0..lpc_order], coef_prec);
 
         // QLPC coefs can be shorter than the specified order because it truncates tail
         // zeroes.
         assert!(qlpc.coefs().len() <= lpc_order);
         eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
         eprintln!("QLPC params: {:?}", &qlpc);
-        qlpc.compute_error(&signal, &mut errors);
+        compute_error(&qlpc, &signal, &mut errors);
 
         let mut signal_energy = 0.0f64;
         let mut error_energy = 0.0f64;
@@ -933,10 +858,10 @@ mod tests {
         symmetric_levinson_recursion(&corr[0..LPC_ORDER], &corr[1..LPC_ORDER + 1], &mut coefs);
         assert_close!(coefs[0], 1.0f32);
 
-        let qlpc = QuantizedParameters::with_coefs(&coefs[0..LPC_ORDER], 15);
+        let qlpc = quantize_parameters(&coefs[0..LPC_ORDER], 15);
         eprintln!("{:?}", qlpc);
         let mut errors = vec![0i32; signal.len()];
-        qlpc.compute_error(&signal, &mut errors);
+        compute_error(&qlpc, &signal, &mut errors);
         for t in 0..errors.len() {
             assert!(errors[t] < 2);
         }
@@ -1039,10 +964,10 @@ mod tests {
         );
 
         let mut errors = vec![0i32; signal.len()];
-        let qlpc = QuantizedParameters::with_coefs(&lpc_coefs[0..lpc_order], coef_prec);
+        let qlpc = quantize_parameters(&lpc_coefs[0..lpc_order], coef_prec);
         assert_eq!(qlpc.coefs().len(), lpc_order);
         eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
-        qlpc.compute_error(&signal, &mut errors);
+        compute_error(&qlpc, &signal, &mut errors);
 
         let error_energy = compute_energy(&errors[lpc_order..]);
         // expect some prediction efficiency.
@@ -1196,10 +1121,7 @@ mod bench {
     fn quantized_parameter_error_dc(b: &mut Bencher) {
         let signal = [10000i32; 4096];
         let mut errors = [0i32; 4096];
-        let qp = QuantizedParameters::with_coefs(
-            &[1.0, 1.0, -1.0, -1.0, 0.0, 1.0, 1.0, -1.0, -1.0, 0.0],
-            12,
-        );
-        b.iter(|| qp.compute_error(black_box(&signal), black_box(&mut errors)));
+        let qp = quantize_parameters(&[1.0, 1.0, -1.0, -1.0, 0.0, 1.0, 1.0, -1.0, -1.0, 0.0], 12);
+        b.iter(|| compute_error(black_box(&qp), black_box(&signal), black_box(&mut errors)));
     }
 }
