@@ -17,8 +17,6 @@
 use std::cmp::max;
 use std::cmp::min;
 
-use seq_macro::seq;
-
 use super::bitsink::BitSink;
 use super::bitsink::ByteSink;
 use super::bitsink::MemSink;
@@ -27,6 +25,7 @@ use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::MAX_CHANNELS;
 use super::error::OutputError;
 use super::error::RangeError;
+use super::repeat::try_repeat;
 use super::rice;
 
 import_simd!(as simd);
@@ -1687,6 +1686,7 @@ impl Residual {
     }
 }
 
+const RESIDUAL_WRITE_UNROLL_N: usize = 4;
 impl BitRepr for Residual {
     #[inline]
     fn count_bits(&self) -> usize {
@@ -1733,20 +1733,21 @@ impl BitRepr for Residual {
             let startbit: u32 = 1u32 << rice_p;
             let rice_p_plus_1: usize = (rice_p + 1) as usize;
             let mut t0 = start;
-            'partition: while t0 < end {
-                seq!(OFFSET in 0..4 {
-                    #[allow(clippy::identity_op)]
-                    let t = t0 + OFFSET;
-                    if t >= end {
-                        break 'partition;
+            while t0 < end {
+                try_repeat!(
+                    offset to RESIDUAL_WRITE_UNROLL_N;
+                    while t0 + offset < end => {
+                        let t = t0 + offset;
+                        let q = self.quotients[t] as usize;
+                        let r_plus_startbit =
+                            (self.remainders[t] | startbit) << (32 - rice_p_plus_1);
+                        dest.write_zeros(q)?;
+                        dest.write_msbs(r_plus_startbit, rice_p_plus_1)?;
+                        Ok::<(), S::Error>(())
                     }
-                    let q = self.quotients[t] as usize;
-                    let r_plus_startbit = (self.remainders[t] | startbit) << (32 - rice_p_plus_1);
-                    dest.write_zeros(q).map_err(OutputError::<S>::from_sink)?;
-                    dest.write_msbs(r_plus_startbit, rice_p_plus_1)
-                        .map_err(OutputError::<S>::from_sink)?;
-                });
-                t0 += 4;
+                )
+                .map_err(OutputError::<S>::from_sink)?;
+                t0 += RESIDUAL_WRITE_UNROLL_N;
             }
             p += 1;
         }

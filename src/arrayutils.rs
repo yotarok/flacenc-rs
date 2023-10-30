@@ -16,6 +16,8 @@
 
 use seq_macro::seq;
 
+use super::repeat::repeat;
+
 import_simd!(as simd);
 
 /// A wrapper for Vec of `simd::Simd` that can be viewed as a scalar slice.
@@ -155,27 +157,21 @@ seq!(N in 2..=8 {
     #[inline]
     #[allow(dead_code)]
     #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::identity_op)]
-    #[allow(clippy::erasing_op)]
     fn deinterleave_ch~N(interleaved: &[i32], channel_stride: usize, dest: &mut [i32]) {
-        let samples = dest.len() / N;
+        let dst_samples = dest.len() / N;
         let src_samples = interleaved.len() / N;
-        let mut t = 0;
-        while t < samples {
-            let t0 = t;
-            seq!(UNROLL in 0..32 {
-                seq!(CH in 0..N {
-                    dest[channel_stride * CH + t0 + UNROLL] = if t < src_samples {
-                        interleaved[N * (t0 + UNROLL) + CH]
+        let mut t0 = 0;
+        while t0 < dst_samples {
+            repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
+                repeat!(ch to N => {
+                    dest[channel_stride * ch + t0 + offset] = if (t0 + offset) < src_samples {
+                        interleaved[N * (t0 + offset) + ch]
                     } else {
                         0i32
                     };
                 });
-                t += 1;
-                if t >= samples {
-                    break;
-                }
             });
+            t0 += 32;
         }
     }
 });
@@ -487,6 +483,38 @@ mod tests {
         let mut dest = vec![0i32; interleaved.len()];
         deinterleave(&interleaved, 2, 4, &mut dest);
         assert_eq!(&dest, &[0, -1, 1, -3, 0, -2, 2, 6]);
+
+        let interleaved = [0, 0, -1, -2, 1, 2, -3, 6];
+        let mut dest = vec![-123i32; interleaved.len() + 4];
+        deinterleave(&interleaved, 4, 3, &mut dest);
+        assert_eq!(&dest, &[0, 1, 0, 0, 2, 0, -1, -3, 0, -2, 6, 0]);
+
+        let mut dest = vec![-123i32; interleaved.len() + 4];
+        deinterleave_gen(&interleaved, 4, 3, &mut dest);
+        assert_eq!(&dest, &[0, 1, 0, 0, 2, 0, -1, -3, 0, -2, 6, 0]);
+    }
+
+    #[test]
+    #[allow(clippy::needless_range_loop)]
+    fn deinterleave_ch2_direct_call() {
+        let block_size: usize = 4096;
+        let src_len: usize = 123;
+        let mut src = Vec::new();
+        src.extend(0i32..(src_len as i32 * 2));
+
+        let mut dest = vec![0i32; block_size * 2];
+        deinterleave_ch2(&src, block_size, &mut dest);
+
+        let mut expected = 0i32;
+        for t in 0..src_len {
+            assert_eq!(dest[t], expected);
+            expected += 2;
+        }
+        let mut expected = 1i32;
+        for t in block_size..(block_size + src_len) {
+            assert_eq!(dest[t], expected);
+            expected += 2;
+        }
     }
 
     #[test]
@@ -630,5 +658,14 @@ mod bench {
         let mut dest: Vec<simd::Simd<i32, 16>> = Vec::new();
 
         b.iter(|| pack_into_simd_vec(black_box(&src), black_box(&mut dest)));
+    }
+
+    #[bench]
+    fn deinterleave_ch2_direct_call(b: &mut Bencher) {
+        let mut src = Vec::new();
+        src.extend(0i32..(4096i32 * 2));
+        let mut dest = vec![0i32; 4096 * 2];
+
+        b.iter(|| deinterleave_ch2(black_box(&src), black_box(4096), black_box(&mut dest)));
     }
 }

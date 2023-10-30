@@ -14,13 +14,12 @@
 
 //! Functions for partitioned rice coding (PRC).
 
-use seq_macro::seq;
-
 use super::arrayutils::unaligned_map_and_update;
 use super::constant::rice::MAX_PARTITIONS as MAX_RICE_PARTITIONS;
 use super::constant::rice::MAX_PARTITION_ORDER as MAX_RICE_PARTITION_ORDER;
 use super::constant::rice::MAX_RICE_PARAMETER;
 use super::constant::rice::MIN_PARTITION_SIZE as MIN_RICE_PARTITION_SIZE;
+use super::repeat::repeat;
 
 import_simd!(as simd);
 
@@ -42,6 +41,8 @@ static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 // being added 2^4 = 16 times each other at maximum.
 static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
 static MAX_P_TO_BITS_VEC: simd::u32x16 = simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
+
+const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
 
 impl PrcBitTable {
     #[cfg(test)]
@@ -67,15 +68,18 @@ impl PrcBitTable {
         // single instruction. However, strangely the use of `saturating_add`
         // and removing `simd_min` from the loop actually slowed down the
         // computation by almost twice.
-        for chunk in errors.chunks(16) {
-            if chunk.len() == 16 {
-                seq!(OFFSET in 0..16 {
-                    p_to_bits += simd::Simd::splat(chunk[OFFSET]) >> INDEX;
+        for chunk in errors.chunks(PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N) {
+            if chunk.len() == PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N {
+                repeat!(n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N => {
+                    p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
                 });
             } else {
-                for error in chunk {
-                    p_to_bits += simd::Simd::splat(*error) >> INDEX;
-                }
+                repeat!(
+                    n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N;
+                    while n < chunk.len() => {
+                        p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
+                    }
+                );
             }
             p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
         }
