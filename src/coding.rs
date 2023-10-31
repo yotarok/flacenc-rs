@@ -678,6 +678,42 @@ mod bench {
     }
 
     #[bench]
+    fn fixed_size_frame_encoder_pure_sine(b: &mut Bencher) {
+        let cfg = &config::Encoder::default();
+        let stream_info = StreamInfo::new(48000, 2, 16);
+        let mut fb = FrameBuf::with_size(2, 4096);
+        // input is always zero, so it should use Constant and fast.
+        let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 0i32);
+        fb.fill_interleaved(&signal).unwrap();
+        b.iter(|| {
+            encode_fixed_size_frame(
+                black_box(cfg),
+                black_box(&fb),
+                black_box(123usize),
+                &stream_info,
+            )
+        });
+    }
+
+    #[bench]
+    fn fixed_size_frame_encoder_noisy_sine(b: &mut Bencher) {
+        let cfg = &config::Encoder::default();
+        let stream_info = StreamInfo::new(48000, 2, 16);
+        let mut fb = FrameBuf::with_size(2, 4096);
+        // input is always zero, so it should use Constant and fast.
+        let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 10000i32);
+        fb.fill_interleaved(&signal).unwrap();
+        b.iter(|| {
+            encode_fixed_size_frame(
+                black_box(cfg),
+                black_box(&fb),
+                black_box(123usize),
+                &stream_info,
+            )
+        });
+    }
+
+    #[bench]
     fn normal_qlpc_noise(b: &mut Bencher) {
         let cfg = &config::SubFrameCoding::default();
         let signal =
