@@ -16,6 +16,7 @@
 
 use seq_macro::seq;
 
+use super::repeat;
 use super::repeat::repeat;
 
 import_simd!(as simd);
@@ -390,6 +391,48 @@ where
         simd::SimdOrd::simd_max,
         simd::SimdUint::reduce_max,
         0,
+    )
+}
+
+/// Finds the element with maximum value from the unsigned data.
+pub fn find_max<const N: usize>(data: &[u32]) -> u32
+where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    simd_map_and_reduce(
+        data,
+        #[inline(always)]
+        |x| x,
+        #[inline(always)]
+        |v| v,
+        std::cmp::max,
+        simd::SimdOrd::simd_max,
+        simd::SimdUint::reduce_max,
+        0,
+    )
+}
+
+/// Computes saturating sum of `data` accelerated by SIMD ops.
+#[inline]
+pub fn wrapping_sum<T, const N: usize>(data: &[T]) -> T
+where
+    T: simd::SimdElement + num_traits::WrappingAdd + num_traits::Zero,
+    simd::Simd<T, N>: simd::SimdUint<Scalar = T> + std::ops::Add<Output = simd::Simd<T, N>>,
+    repeat::Count<N>: repeat::Repeat,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    simd_map_and_reduce::<T, N, _, _, _, _, _, _>(
+        data,
+        #[inline(always)]
+        |x| x,
+        #[inline(always)]
+        |v| v,
+        #[inline(always)]
+        |x, y| x.wrapping_add(&y),
+        #[inline(always)]
+        |v, w| v + w,
+        simd::SimdUint::reduce_sum,
+        T::zero(),
     )
 }
 

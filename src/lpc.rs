@@ -198,7 +198,7 @@ where
 pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i32]) {
     assert!(errors.len() >= signal.len());
     let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
-    let sumabs_coefs: i64 = qps.coefs.abs().reduce_sum().into();
+    let sumabs_coefs: i64 = simd::SimdInt::reduce_sum(qps.coefs.abs()).into();
     let maxabs = maxabs_signal * sumabs_coefs as u64;
     if maxabs < i32::MAX as u64 {
         // larger lanes here can alleviate inefficiency of unaligned reads.

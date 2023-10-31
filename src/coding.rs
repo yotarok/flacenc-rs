@@ -684,7 +684,7 @@ mod bench {
         let mut fb = FrameBuf::with_size(2, 4096);
         // input is always zero, so it should use Constant and fast.
         let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 0i32);
-        fb.fill_interleaved(&signal).unwrap();
+        fb.fill_interleaved(signal).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
                 black_box(cfg),
@@ -702,7 +702,7 @@ mod bench {
         let mut fb = FrameBuf::with_size(2, 4096);
         // input is always zero, so it should use Constant and fast.
         let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 10000i32);
-        fb.fill_interleaved(&signal).unwrap();
+        fb.fill_interleaved(signal).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
                 black_box(cfg),
