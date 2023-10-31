@@ -1,5 +1,13 @@
 # ChangeLog
 
+## Prerelease
+
+### Fixed
+
+- \[bin\] fix `Cargo.toml` depepndency specification.
+  - This requires reupload of the bin crate to crates.io, and an increment of
+    the bin crate version.
+
 ## 0.3.1 - 2023-10-30
 
 ### Added

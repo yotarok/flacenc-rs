@@ -1,6 +1,6 @@
 [package]
 name = "flacenc-bin"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Yotaro Kubo <yotaro@google.com>"]
 description = "FLAC encoder written in pure Rust. An example application for flacenc crate."
 readme = "README.md"
@@ -26,7 +26,7 @@ doc = false
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 env_logger = "0.10.0"
-flacenc = { version = "0.3.0", path = "..", features = ["experimental", "mimalloc", "par"] }
+flacenc = { version = "0.3.1", path = "..", features = ["experimental", "mimalloc", "par"] }
 hound = "3.5.0"
 log = "0.4"
 pprof = { version = "0.12", features = ["flamegraph", "protobuf-codec"], optional = true }
