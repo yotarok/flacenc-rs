@@ -139,6 +139,7 @@ pub trait SimdUint {
     type Scalar;
     fn reduce_max(self) -> Self::Scalar;
     fn reduce_min(self) -> Self::Scalar;
+    fn reduce_sum(self) -> Self::Scalar;
 }
 
 pub trait SimdInt {
@@ -289,7 +290,7 @@ where
 
 impl<T, const N: usize> SimdUint for Simd<T, N>
 where
-    T: SimdElement + num_traits::PrimInt,
+    T: SimdElement + num_traits::PrimInt + std::iter::Sum,
 {
     type Scalar = T;
     #[inline]
@@ -305,6 +306,11 @@ where
             .into_iter()
             .min()
             .expect("INTERNAL ERROR in `reduce_min` of fakesimd.")
+    }
+
+    #[inline]
+    fn reduce_sum(self) -> T {
+        self.0.into_iter().sum()
     }
 }
 

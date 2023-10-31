@@ -17,6 +17,8 @@
 use std::cmp::max;
 use std::cmp::min;
 
+use super::arrayutils::find_max;
+use super::arrayutils::wrapping_sum;
 use super::bitsink::BitSink;
 use super::bitsink::ByteSink;
 use super::bitsink::MemSink;
@@ -1623,6 +1625,10 @@ pub struct Residual {
     // Here, raw-value is expected to have the sign bits encoded as its LSB.
     quotients: Vec<u32>,  // This should have left-padded for warm up samples
     remainders: Vec<u32>, // This should have left-padded for warm up samples
+
+    // Some pre-computed values.
+    sum_quotients: usize,
+    sum_rice_params: usize,
 }
 
 impl Residual {
@@ -1654,6 +1660,17 @@ impl Residual {
         quotients: Vec<u32>,
         remainders: Vec<u32>,
     ) -> Self {
+        debug_assert!(rice_params.len() == 1usize << partition_order as usize);
+
+        let max_quotients: usize = find_max::<64>(&quotients) as usize;
+        let sum_quotients: usize = if max_quotients * block_size < u32::MAX as usize {
+            // If overflow-safe, use SIMD.
+            wrapping_sum::<u32, 32>(&quotients) as usize
+        } else {
+            quotients.iter().map(|x| *x as usize).sum()
+        };
+        let sum_rice_params: usize = rice_params.iter().map(|x| *x as usize).sum();
+
         Self {
             partition_order,
             block_size,
@@ -1661,6 +1678,8 @@ impl Residual {
             rice_params,
             quotients,
             remainders,
+            sum_quotients,
+            sum_rice_params,
         }
     }
 
@@ -1691,17 +1710,10 @@ impl BitRepr for Residual {
     #[inline]
     fn count_bits(&self) -> usize {
         let nparts = 1usize << self.partition_order as usize;
+        let quotient_bits: usize = self.sum_quotients + self.block_size - self.warmup_length;
 
-        // using SIMD for `sum` here didn't help much.
-        let quotient_bits: usize = self.quotients.iter().map(|x| *x as usize).sum::<usize>()
-            + self.block_size
-            - self.warmup_length;
-
-        let mut remainder_bits: usize = 0;
-        let part_len = self.block_size / nparts;
-        for p in 0..nparts {
-            remainder_bits += self.rice_params[p] as usize * part_len;
-        }
+        let mut remainder_bits: usize =
+            self.sum_rice_params * (self.block_size >> self.partition_order);
         remainder_bits -= self.warmup_length * self.rice_params[0] as usize;
         2 + 4 + nparts * 4 + quotient_bits + remainder_bits
     }
@@ -2053,5 +2065,12 @@ mod bench {
             sink.clear();
             residual.write(black_box(&mut sink))
         });
+    }
+
+    #[bench]
+    fn residual_bit_counter(b: &mut Bencher) {
+        let residual = Residual::new(8, 4096, 13, &[8u8; 256], &[2u32; 4096], &[0u32; 4096]);
+
+        b.iter(|| black_box(&residual).count_bits());
     }
 }
