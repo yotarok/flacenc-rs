@@ -1,0 +1,337 @@
+#  Copyright 2023 Google LLC
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+# [`cargo-make`] configuration for development workflow.
+#
+# Top-level targets:
+#
+#  - bench: Runs benchmark with nightly toolchain and updates
+#           `report/bench_results.txt`.
+#  - codehealth: Performs linting, format checking and `test`.
+#  - format: Runs auto-formatter over toml, md, and source codes.
+#  - integration: Generates integration reports (aka performance comparison
+#                 reports) with stable and nightly toolchains.
+#  - profile: Runs binary with pprof mode and updates `report/profile.st.pdf`.
+#  - report: Runs `bench`, `proflie`, and `integration`.
+#  - test: Runs unittests with stable and nightly toolchains.
+
+[config]
+skip_core_tasks = true
+
+[env]
+BENCH_FEATURES = "experimental,par,simd-nightly"
+BENCH_RESULTS_TEXT = "report/bench_results.txt"
+CLIPPY_FEATURES_NIGHTLY = "experimental,par,simd-nightly"
+CLIPPY_FEATURES_STABLE = "experimental,par"
+CLIPPY_FEATURES_BIN_NIGHTLY = "simd-nightly"
+FLAC_VERSION = "1.4.3"
+FLAC_RELEASE_DIR = "https://ftp.osuosl.org/pub/xiph/releases/flac"
+INTEGRATION_REPORT_NIGHTLY = "report/report.nightly.md"
+INTEGRATION_REPORT_STABLE = "report/report.stable.md"
+PROFILE_ENCODER_CONFIG = "report/st.config.toml"
+PROFILE_ENCODER_FEATURES = "pprof,simd-nightly"
+PROFILE_INPUT = "wikimedia.winter_kiss.wav"
+PROFILE_PPROF_OUTPUT_PDF = "report/profile.st.pdf"
+TEST_FEATURES_NIGHTLY = "experimental,par,simd-nightly"
+TEST_FEATURES_STABLE = "experimental,par"
+TEST_FEATURES_BIN_NIGHTLY = "simd-nightly"
+
+#
+# TOP-LEVEL TARGETS
+#
+
+[tasks.bench]
+description = "Run benchmark with nightly toolchain and update `report/bench_results.txt`."
+script = """
+rustup run nightly cargo bench \
+    --features ${BENCH_FEATURES} -- \
+    --skip tests:: | tee ${BENCH_RESULTS_TXT}
+"""
+
+[tasks.codehealth]
+description = "Performs linting, format checking and `test`."
+dependencies = ["fmtcheck", "clippy", "test", "py-codehealth", "toml-lint"]
+
+[tasks.format]
+description = "Runs auto-formatter over toml, md, and source codes."
+dependencies = ["toml-format", "md-format", "rs-format", "py-format"]
+
+[tasks.integration]
+description = "Generates integration reports (aka performance comparison reports) with stableand nightly toolchains."
+dependencies = ["integration-stable", "integration-nightly"]
+
+[tasks.profile]
+description = "Runs binary with pprof mode and updates `report/profile.st.pdf`."
+dependencies = ["testwavs"]
+cwd = "flacenc-bin"
+script = """
+cargo build --release --features ${PROFILE_ENCODER_FEATURES}
+./target/release/flacenc \
+    --output ./tmp.flac --config ../${PROFILE_ENCODER_CONFIG} \
+    --pprof-output ./profile.pb \
+    ../testwav/${PROFILE_INPUT} && \
+    pprof -pdf -output ../${PROFILE_PPROF_OUTPUT_PDF} profile.pb
+rm ./tmp.flac
+"""
+
+[tasks.report]
+description = "Runs `bench`, `proflie`, and `integration`."
+dependencies = ["bench", "profile", "integration"]
+
+[tasks.test]
+description = "Runs unittests with stable and nightly toolchains."
+dependencies = [
+  "test-lib-nightly",
+  "test-bin-nightly",
+  "test-lib-stable",
+  "test-lib-stable-nofeatures",
+]
+
+#
+# SUB-TARGETS
+#
+
+[tasks.clippy]
+dependencies = ["clippy-lib-nightly", "clippy-bin-nightly", "clippy-lib-stable"]
+
+[tasks.clippy-lib-nightly]
+command = "cargo"
+toolchain = "nightly"
+args = [
+  "clippy",
+  "--tests",
+  "--features",
+  "${CLIPPY_FEATURES_NIGHTLY}",
+  "--",
+  "-D",
+  "warnings",
+]
+
+[tasks.clippy-bin-nightly]
+cwd = "flacenc-bin"
+command = "cargo"
+toolchain = "nightly"
+args = [
+  "clippy",
+  "--tests",
+  "--features",
+  "${CLIPPY_FEATURES_BIN_NIGHTLY}",
+  "--",
+  "-D",
+  "warnings",
+]
+
+[tasks.clippy-lib-stable]
+command = "cargo"
+toolchain = "stable"
+args = [
+  "clippy",
+  "--tests",
+  "--features",
+  "${CLIPPY_FEATURES_STABLE}",
+  "--",
+  "-D",
+  "warnings",
+]
+
+[tasks.fmtcheck]
+dependencies = ["fmtcheck-lib", "fmtcheck-bin"]
+
+[tasks.fmtcheck-bin]
+cwd = "flacenc-bin"
+command = "cargo"
+args = ["fmt", "--check", "--all"]
+
+[tasks.fmtcheck-lib]
+command = "cargo"
+args = ["fmt", "--check", "--all"]
+
+[tasks.integration-nightly]
+dependencies = ["py-venv", "reference-bin", "testwavs"]
+script = """
+pushd flacenc-bin
+rustup run nightly cargo build --release --features ${TEST_FEATURES_BIN_NIGHTLY}
+popd
+source venv/bin/activate
+python ./testtool/reporter.py \
+  --flacbin flac-${FLAC_VERSION}/src/flac/flac \
+  --testbin flacenc-bin/target/release/flacenc \
+  --workdir report/out/stable \
+  --output ${INTEGRATION_REPORT_NIGHTLY}
+"""
+
+[tasks.integration-stable]
+dependencies = ["py-venv", "reference-bin", "testwavs"]
+script = """
+pushd flacenc-bin
+rustup run stable cargo build --release
+popd
+source venv/bin/activate
+python ./testtool/reporter.py \
+  --flacbin flac-${FLAC_VERSION}/src/flac/flac \
+  --testbin flacenc-bin/target/release/flacenc \
+  --workdir report/out/stable \
+  --output ${INTEGRATION_REPORT_STABLE}
+"""
+
+[tasks.md-format]
+dependencies = ["py-venv"]
+script = """
+source venv/bin/activate
+venv/bin/mdformat --wrap 80 \
+    README.md \
+    CHANGELOG.md \
+    CONTRIBUTING.md \
+    flacenc-bin/README.md
+"""
+
+[tasks.py-codehealth]
+dependencies = ["py-venv"]
+script = """
+source venv/bin/activate
+black --check --line-length=79 --diff testtool
+pytype testtool
+flake8 testtool
+"""
+
+[tasks.py-format]
+dependencies = ["py-venv"]
+script = """
+source venv/bin/activate
+black --line-length=79 testtool/reporter.py
+"""
+
+[tasks.py-venv]
+script = """
+python3 -m venv venv
+source venv/bin/activate
+
+pip install --quiet --upgrade pip
+pip install --quiet --upgrade black flake8
+pip install --quiet --upgrade pytype --ignore-requires-python
+pip install --quiet --upgrade mdformat
+"""
+
+[tasks.reference-bin]
+condition = { files_not_exist = ["flac-${FLAC_VERSION}/src/flac/flac"] }
+script = """
+if ! command -v curl ; then
+  echo "cURL is not installed, cannot continue downloading testwavs."
+  exit 1
+fi
+rm -fr flac-${FLAC_VERSION}
+curl "${FLAC_RELEASE_DIR}/flac-${FLAC_VERSION}.tar.xz" | tar -xJ
+cd flac-${FLAC_VERSION}
+./configure && make
+"""
+
+[tasks.rs-format]
+dependencies = ["rs-format-bin", "rs-format-lib"]
+
+[tasks.rs-format-bin]
+cwd = "flacenc-bin"
+command = "cargo"
+args = ["fmt"]
+
+[tasks.rs-format-lib]
+command = "cargo"
+args = ["fmt"]
+
+[tasks.test-bin-nightly]
+cwd = "flacenc-bin"
+command = "cargo"
+toolchain = "nightly"
+args = ["test", "--features", "${TEST_FEATURES_BIN_NIGHTLY}"]
+env = { "RUSTFLAGS" = "-D warnings" }
+
+[tasks.test-lib-nightly]
+command = "cargo"
+toolchain = "nightly"
+args = ["test", "--features", "${TEST_FEATURES_NIGHTLY}"]
+env = { "RUSTFLAGS" = "-D warnings" }
+
+[tasks.test-lib-stable]
+command = "cargo"
+toolchain = "stable"
+args = ["test", "--features", "${TEST_FEATURES_STABLE}"]
+env = { "RUSTFLAGS" = "-D warnings" }
+
+[tasks.test-lib-stable-nofeatures]
+command = "cargo"
+toolchain = "stable"
+args = ["test", "--no-default-features"]
+env = { "RUSTFLAGS" = "-D warnings" }
+
+[tasks.testwavs]
+condition = { files_not_exist = [
+  "testwav/wikimedia.i_love_you_california.wav",
+  "testwav/wikimedia.jazz_funk_no1_sax.wav",
+  "testwav/wikimedia.suite_en_fa_op_33_1.wav",
+  "testwav/wikimedia.winter_kiss.wav",
+] }
+script = """
+if ! command -v curl ; then
+  echo "cURL is not installed, cannot continue downloading testwavs."
+  exit 1
+fi
+if ! command -v ffmpeg ; then
+  echo "FFMpeg is not installed, cannot continue downloading testwavs."
+  exit 1
+fi
+
+WIKIMEDIA_ROOT="https://upload.wikimedia.org/wikipedia/commons"
+
+rm -fr testwav; mkdir testwav
+curl "${WIKIMEDIA_ROOT}/9/97/%22I_Love_You%2C_California%22%2C_performed_by_the_Prince%27s_Orchestra_in_1914_for_Columbia_Records.oga" \
+  | ffmpeg -i - testwav/wikimedia.i_love_you_california.wav
+
+curl "${WIKIMEDIA_ROOT}/b/bd/Drozerix_-_A_Winter_Kiss.wav" \
+  > testwav/wikimedia.winter_kiss.wav
+
+curl "${WIKIMEDIA_ROOT}/7/7f/Jazz_Funk_no1_%28saxophone%29.flac" \
+  | ffmpeg -i - testwav/wikimedia.jazz_funk_no1_sax.wav
+
+curl "${WIKIMEDIA_ROOT}/5/5e/Albert_Roussel_-_Suite_en_Fa%2C_op.33_-_I._Pr%C3%A9lude.flac" \
+  | ffmpeg -i - testwav/wikimedia.suite_en_fa_op_33_1.wav
+"""
+
+[tasks.toml-format]
+install_crate = { crate_name = "taplo-cli", binary = "taplo", test_arg = [
+  "--help",
+] }
+command = "taplo"
+args = [
+  "format",
+  "Cargo.toml",
+  "Makefile.toml",
+  "flacenc-bin/Cargo.toml",
+  "report/experimental.config.toml",
+  "report/mt1.config.toml",
+  "report/st.config.toml",
+]
+
+[tasks.toml-lint]
+install_crate = { crate_name = "taplo-cli", binary = "taplo", test_arg = [
+  "--help",
+] }
+command = "taplo"
+args = [
+  "check",
+  "Cargo.toml",
+  "Makefile.toml",
+  "flacenc-bin/Cargo.toml",
+  "report/experimental.config.toml",
+  "report/mt1.config.toml",
+  "report/st.config.toml",
+]
