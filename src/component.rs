@@ -1100,7 +1100,7 @@ impl Frame {
 }
 
 reusable!(FRAME_CRC_BUFFER: (MemSink<u64>, Vec<u8>) = (MemSink::new(), Vec::new()));
-static FRAME_CRC: crc::Crc<u16> = crc::Crc::<u16>::new(&CRC_16_FLAC);
+static FRAME_CRC: crc::Crc<crc::Slice16<u16>> = crc::Crc::<crc::Slice16<u16>>::new(&CRC_16_FLAC);
 
 impl BitRepr for Frame {
     #[inline]
@@ -1454,7 +1454,7 @@ impl FrameHeader {
 }
 
 reusable!(HEADER_CRC_BUFFER: ByteSink = ByteSink::new());
-static HEADER_CRC: crc::Crc<u8> = crc::Crc::<u8>::new(&CRC_8_FLAC);
+static HEADER_CRC: crc::Crc<crc::Slice16<u8>> = crc::Crc::<crc::Slice16<u8>>::new(&CRC_8_FLAC);
 
 impl BitRepr for FrameHeader {
     #[inline]
