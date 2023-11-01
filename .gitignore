@@ -2,10 +2,10 @@
 /flacenc-bin/target
 /Cargo.lock
 # Test materials
-/report/*_out
+/report/out
 /testwav
 # Reference implementation
-/flac-1.3.4
+/flac-1.*
 # Working-copy-specific config
 /.cargo/config.toml
 /.vscode

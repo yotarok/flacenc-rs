@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import statistics
 import time
 import tempfile
@@ -24,8 +25,9 @@ import wave
 
 INPUT_FILES = [
     "testwav/wikimedia.i_love_you_california.wav",
-    "testwav/wikimedia.winter_kiss.wav",
     "testwav/wikimedia.jazz_funk_no1_sax.wav",
+    "testwav/wikimedia.suite_en_fa_op_33_1.wav",
+    "testwav/wikimedia.winter_kiss.wav",
 ]
 REPORT_OUTPUT = "report"
 REFERENCE_ENCODER_OPTS = {
@@ -37,10 +39,8 @@ TEST_ENCODER_OPTS = {
     "default": [],
     "mt1": ["-c", "report/mt1.config.toml"],
     "st": ["-c", "report/st.config.toml"],
-    "dmse": ["-c", "report/dmse.config.toml"],
-    "mae": ["-c", "report/mae.config.toml"],
+    "experimental": ["-c", "report/experimental.config.toml"],
 }
-REFERENCE_BINPATH = "flac-1.3.4/src/flac/flac"
 
 
 def logged(f):
@@ -111,16 +111,14 @@ def assert_eq(expected, actual):
         expected_disp = str(expected)
         actual_disp = str(actual)
         if len(expected_disp) > 80:
+            s = "; len={len(expected)}" if hasattr(expected, "__len__") else ""
             expected_disp = (
-                expected_disp[:10]
-                + f"<snipped; len={len(expected)}>"
-                + expected_disp[-10:]
+                expected_disp[:10] + f"<snipped{s}>" + expected_disp[-10:]
             )
         if len(actual_disp) > 80:
+            s = "; len={len(actual)}" if hasattr(actual, "__len__") else ""
             actual_disp = (
-                actual_disp[:10]
-                + f"<snipped; len={len(actual)}>"
-                + actual_disp[-10:]
+                actual_disp[:10] + f"<snipped{s}>" + actual_disp[-10:]
             )
         raise ValueError(f"{expected_disp} != {actual_disp}")
 
@@ -217,23 +215,22 @@ Sources used: {', '.join(sources)}
         )
 
 
-def main():
+def main(args):
     project_root = pathlib.Path(__file__).parent.parent
     inputs = [project_root / pathlib.Path(p) for p in INPUT_FILES]
-    report_root = project_root / pathlib.Path(REPORT_OUTPUT)
-    refenc_out_root = report_root / "refenc_out"
-    testenc_out_root = report_root / "testenc_out"
-    report_md_out = report_root / "report.md"
+    refenc_out_root = args.workdir / "refenc_out"
+    testenc_out_root = args.workdir / "testenc_out"
+    report_md_out = args.output
 
     print("Running reference encoder.")
     ref_run_results = run_encoder(
-        inputs, refenc_out_root, REFERENCE_BINPATH, REFERENCE_ENCODER_OPTS
+        inputs, refenc_out_root, args.flacbin, REFERENCE_ENCODER_OPTS
     )
     print("Running test encoder.")
     test_run_results = run_encoder(
         inputs,
         testenc_out_root,
-        str(project_root / "flacenc-bin" / "target" / "release" / "flacenc"),
+        args.testbin,
         TEST_ENCODER_OPTS,
     )
 
@@ -241,10 +238,32 @@ def main():
     print(test_run_results)
 
     print("Checking output.")
-    verify_with_decoder(test_run_results, REFERENCE_BINPATH)
+    verify_with_decoder(test_run_results, args.flacbin)
     print("Making report.")
     make_report(ref_run_results, test_run_results, report_md_out)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        prog="reporter", description="Make performance comparison reports."
+    )
+    parser.add_argument(
+        "--flacbin",
+        type=pathlib.Path,
+        required=True,
+        help="Reference FLAC binary.",
+    )
+    parser.add_argument(
+        "--testbin",
+        type=pathlib.Path,
+        required=True,
+        help="flacenc-bin binary.",
+    )
+    parser.add_argument(
+        "--workdir",
+        type=pathlib.Path,
+        help="A directory to store generated files.",
+    )
+    parser.add_argument("--output", type=pathlib.Path, help="Output path.")
+    args = parser.parse_args()
+    main(args)
