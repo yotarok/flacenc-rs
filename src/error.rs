@@ -247,6 +247,70 @@ pub trait Verify {
     fn verify(&self) -> Result<(), VerifyError>;
 }
 
+/// A wrapping function to make it compatible with "?" operator.
+pub(crate) fn verify_macro_impl(cond: bool, varname: &str, msg: &str) -> Result<(), VerifyError> {
+    if !cond {
+        return Err(VerifyError::new(varname, msg));
+    }
+    Ok(())
+}
+
+/// Checks if `$cond` is true and do `return Err(...)` if so.
+///
+/// An error object `VerifyErr` is constructed using `$varname` and
+/// `$msg` that are formatted using the extra args (`$args`).
+macro_rules! verify_true {
+    ($varname:literal, $cond:expr, $msg:literal, $($args: expr),*) => {
+        crate::error::verify_macro_impl(
+            $cond,
+            &format!($varname, $($args),*),
+            &format!($msg, $($args),*),
+        )
+    };
+    ($varname:literal, $cond:expr, $msg:literal) => {
+        verify_true!($varname, $cond, $msg,)
+    }
+}
+pub(crate) use verify_true;
+
+/// Checks if `$actual` is in the range, and emits err with default msgs if not.
+///
+/// An error is constructed using the same way as [`verify_true`].
+macro_rules! verify_range {
+    ($varname: literal, $actual:expr, $lowlimit:tt .. $highlimit:tt) => {
+        verify_range!($varname, $actual, ($lowlimit)..)
+            .and_then(|()| verify_range!($varname, $actual, ..($highlimit)))
+    };
+    ($varname: literal, $actual:expr, $lowlimit:tt ..= $highlimit:tt) => {
+        verify_range!($varname, $actual, ($lowlimit)..)
+            .and_then(|()| verify_range!($varname, $actual, ..=($highlimit)))
+    };
+    ($varname: literal, $actual:expr, $lowlimit:tt ..) => {{
+        #[allow(unused_parens)]
+        let limit = $lowlimit;
+        verify_true!(
+            $varname,
+            $actual >= limit,
+            "must be greater than or equal to {limit}"
+        )
+    }};
+    ($varname: literal, $actual:expr, ..= $highlimit:tt) => {{
+        #[allow(unused_parens)]
+        let limit = $highlimit;
+        verify_true!(
+            $varname,
+            $actual <= limit,
+            "must be less than or equal to {limit}"
+        )
+    }};
+    ($varname: literal, $actual:expr, .. $highlimit:tt) => {{
+        #[allow(unused_parens)]
+        let limit = $highlimit;
+        verify_true!($varname, $actual < limit, "must be less than {limit}")
+    }};
+}
+pub(crate) use verify_range;
+
 /// Enum for possible encoder errors.
 #[non_exhaustive]
 #[allow(clippy::module_name_repetitions)]
