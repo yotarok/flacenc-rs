@@ -18,6 +18,7 @@ debug = 1
 [features]
 default = ["log", "par", "serde"]
 
+__export_decode = []
 __export_sigen = ["dep:rand"]
 experimental = ["dep:nalgebra"]
 log = ["dep:log"]

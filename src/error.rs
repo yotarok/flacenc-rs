@@ -491,3 +491,12 @@ impl fmt::Display for SourceErrorReason {
         }
     }
 }
+
+/// Enum for possible decoder errors.
+#[non_exhaustive]
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Debug)]
+pub enum DecodeError {
+    /// Decode error due to invalid parameter value.
+    Range(RangeError),
+}
