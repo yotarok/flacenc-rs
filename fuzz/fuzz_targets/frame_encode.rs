@@ -1,10 +1,14 @@
 #![no_main]
 
+use std::fs::File;
+use std::io::Write;
+
 use arbitrary::Arbitrary;
 use arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
 
 use flacenc::component;
+use flacenc::component::Decode;
 use flacenc::config;
 use flacenc::constant;
 use flacenc::encode_fixed_size_frame;
@@ -80,7 +84,7 @@ struct Input {
 }
 
 impl Input {
-    pub fn framebuf(&self) -> FrameBuf {
+    pub fn interleaved(&self) -> Vec<i32> {
         let sample_count = self.channel_count * self.block_size;
         let mut buffer = vec![0i32; sample_count];
         for (ch, sig) in self.signals.iter().enumerate() {
@@ -92,8 +96,12 @@ impl Input {
                 buffer[t * self.channel_count + ch] = x;
             }
         }
+        buffer
+    }
 
+    pub fn framebuf(&self) -> FrameBuf {
         let mut fb = FrameBuf::with_size(self.channel_count, self.block_size);
+        let buffer = self.interleaved();
         fb.fill_interleaved(&buffer).unwrap();
         fb
     }
@@ -125,11 +133,22 @@ impl<'a> Arbitrary<'a> for Input {
     }
 }
 
+fn dump_failed_frame(frame: &component::Frame) {
+    let mut f = File::create("fuzz.failed_frame.txt").unwrap();
+    write!(f, "{frame:?}").unwrap();
+}
+
 fuzz_target!(|input: Input| {
     let fb = input.framebuf();
-    match encode_fixed_size_frame(&config::Encoder::default(), &fb, 0, &input.stream_info()) {
+    let config = config::Encoder::default();
+    match encode_fixed_size_frame(&config, &fb, 0, &input.stream_info()) {
         Ok(frame) => {
             frame.verify().unwrap();
+            let decoded = frame.decode();
+            if decoded != input.interleaved() {
+                dump_failed_frame(&frame);
+                panic!("input signal and decoded signal didn't match");
+            }
         }
         Err(_) => {
             // currently all errors are ignorable

@@ -603,6 +603,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::Decode;
     use crate::error::Verify;
     use crate::sigen;
     use crate::sigen::Signal;
@@ -657,6 +658,36 @@ mod tests {
     }
 
     #[test]
+    fn losslessness_residual_coding() {
+        let signal = sigen::Noise::new(0.4).to_vec_quantized(8, 64);
+        let residual = encode_residual(&config::Prc::default(), &signal, 0);
+        let decoded = residual.decode();
+        assert_eq!(decoded, signal);
+
+        let signal = sigen::Noise::new(0.9)
+            .concat(2048, sigen::Sine::new(40, 0.1))
+            .to_vec_quantized(8, 4096);
+        let residual = encode_residual(&config::Prc::default(), &signal, 0);
+        let decoded = residual.decode();
+        assert_eq!(decoded, signal);
+    }
+
+    #[test]
+    fn losslessness_subframe_coding() {
+        let bits_per_sample = 8;
+        let config = config::SubFrameCoding::default();
+        let signal = sigen::Noise::new(0.4).to_vec_quantized(bits_per_sample, 64);
+        let subframe = encode_subframe(&config, &signal, bits_per_sample as u8);
+        let decoded = subframe.decode();
+        assert_eq!(decoded, signal);
+
+        let signal = sigen::Sine::new(40, 0.9).to_vec_quantized(bits_per_sample, 64);
+        let subframe = encode_subframe(&config, &signal, bits_per_sample as u8);
+        let decoded = subframe.decode();
+        assert_eq!(decoded, signal);
+    }
+
+    #[test]
     fn encoding_zeros() {
         let channel_count = 1;
         let block_size = 64;
@@ -668,6 +699,8 @@ mod tests {
         let frame =
             encode_fixed_size_frame(&config::Encoder::default(), &fb, 0, &stream_info).unwrap();
         frame.verify().unwrap();
+
+        assert_eq!(frame.decode(), vec![0; block_size]);
     }
 }
 
