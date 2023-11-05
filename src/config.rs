@@ -61,6 +61,8 @@ use super::constant::qlpc::MAX_PRECISION as QLPC_MAX_PRECISION;
 use super::constant::rice::MAX_RICE_PARAMETER;
 use super::constant::MAX_BLOCKSIZE;
 use super::constant::MIN_BLOCKSIZE;
+use super::error::verify_range;
+use super::error::verify_true;
 use super::error::Verify;
 use super::error::VerifyError;
 
@@ -102,30 +104,19 @@ impl Default for Encoder {
 
 impl Verify for Encoder {
     fn verify(&self) -> Result<(), VerifyError> {
-        if self.block_sizes.is_empty() {
-            return Err(VerifyError::new(
-                "block_sizes",
-                "Must specify at least one block size.",
-            ));
-        }
-        if self.block_sizes.len() > 1 {
-            return Err(VerifyError::new(
-                "block_sizes",
-                "Multiple blocksize mode is not supported currently.",
-            ));
-        }
+        verify_true!(
+            "block_sizes",
+            !self.block_sizes.is_empty(),
+            "must have at least one block size specified",
+        )?;
+        verify_true!(
+            "block_sizes",
+            self.block_sizes.len() == 1,
+            "must be 1 (multiple block sizes are not supported currently)",
+        )?;
+
         for (i, &bs) in self.block_sizes.iter().enumerate() {
-            if bs > MAX_BLOCKSIZE {
-                return Err(VerifyError::new(
-                    &format!("block_sizes[{i}]"),
-                    &format!("Must be less than {MAX_BLOCKSIZE}"),
-                ));
-            } else if bs < MIN_BLOCKSIZE {
-                return Err(VerifyError::new(
-                    &format!("block_sizes[{i}]"),
-                    &format!("Must be more than {MIN_BLOCKSIZE}"),
-                ));
-            }
+            verify_range!("block_sizes[{i}]", bs, MIN_BLOCKSIZE..=MAX_BLOCKSIZE)?;
         }
 
         self.stereo_coding
@@ -227,12 +218,7 @@ impl Default for Prc {
 
 impl Verify for Prc {
     fn verify(&self) -> Result<(), VerifyError> {
-        if self.max_parameter > MAX_RICE_PARAMETER {
-            return Err(VerifyError::new(
-                "max_parameter",
-                &format!("Must not exceed {MAX_RICE_PARAMETER}"),
-            ));
-        }
+        verify_range!("max_parameter", self.max_parameter, ..=MAX_RICE_PARAMETER)?;
         Ok(())
     }
 }
@@ -275,35 +261,23 @@ impl Default for Qlpc {
 
 impl Verify for Qlpc {
     fn verify(&self) -> Result<(), VerifyError> {
-        if self.lpc_order > MAX_LPC_ORDER {
-            return Err(VerifyError::new(
-                "lpc_order",
-                &format!("Must not exceed {MAX_LPC_ORDER}"),
-            ));
-        }
-        if self.lpc_order == 0 {
-            return Err(VerifyError::new("lpc_order", "Must not be zero"));
-        }
-        if self.quant_precision > QLPC_MAX_PRECISION {
-            return Err(VerifyError::new(
-                "quant_precision",
-                &format!("Must not exceed {QLPC_MAX_PRECISION}"),
-            ));
-        }
-        if self.quant_precision == 0 {
-            return Err(VerifyError::new("quant_precision", "Must not be zero"));
-        }
-        if cfg!(not(feature = "experimental")) && self.use_direct_mse {
-            return Err(VerifyError::new(
+        verify_range!("lpc_order", self.lpc_order, 1..=MAX_LPC_ORDER)?;
+        verify_range!(
+            "quant_precision",
+            self.quant_precision,
+            1..=QLPC_MAX_PRECISION
+        )?;
+        if cfg!(not(feature = "experimental")) {
+            verify_true!(
                 "use_direct_mse",
-                "Can only be used when \"experimental\" feature enabled",
-            ));
-        }
-        if cfg!(not(feature = "experimental")) && self.mae_optimization_steps > 0 {
-            return Err(VerifyError::new(
+                !self.use_direct_mse,
+                "this feature is only available in `experimental` build."
+            )?;
+            verify_true!(
                 "mae_optimization_steps",
-                "Can only be used when \"experimental\" feature enabled",
-            ));
+                self.mae_optimization_steps == 0,
+                "this feature is only available in `experimental` build."
+            )?;
         }
 
         self.window.verify().map_err(|err| err.within("window"))?;
@@ -371,12 +345,116 @@ impl Verify for Window {
 
 #[cfg(test)]
 mod tests {
-    // Currently, nothing done if `not(feature = "serde")` but this module is
-    // kept as it is as a placeholder.
-    #[cfg(feature = "serde")]
     use super::super::error::Verify;
-    #[cfg(feature = "serde")]
     use super::*;
+
+    #[test]
+    fn verification_for_encoder() {
+        {
+            let config = Encoder::default();
+            config.verify().unwrap();
+        }
+        {
+            let config = Encoder {
+                block_sizes: vec![1234, 2345],
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+        {
+            let config = Encoder {
+                block_sizes: vec![1],
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+        {
+            let config = Encoder {
+                block_sizes: vec![123_456],
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+    }
+
+    #[test]
+    fn verification_for_stereo_coding() {
+        let config = StereoCoding::default();
+        config.verify().unwrap();
+    }
+
+    #[test]
+    fn verification_for_subframe_coding() {
+        {
+            let config = SubFrameCoding::default();
+            config.verify().unwrap();
+        }
+        {
+            // test error propagation.
+            let mut config = SubFrameCoding::default();
+            config.prc.max_parameter = 1234;
+            config.verify().unwrap_err();
+        }
+    }
+
+    #[test]
+    fn verification_for_prc() {
+        {
+            let config = Prc::default();
+            config.verify().unwrap();
+        }
+        {
+            let config = Prc {
+                max_parameter: 18,
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+    }
+
+    #[test]
+    fn verification_for_qlpc() {
+        {
+            let config = Qlpc::default();
+            config.verify().unwrap();
+        }
+        {
+            let config = Qlpc {
+                lpc_order: 39,
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+        {
+            let config = Qlpc {
+                quant_precision: 256,
+                ..Default::default()
+            };
+            config.verify().unwrap_err();
+        }
+        {
+            let config = Qlpc {
+                use_direct_mse: true,
+                ..Default::default()
+            };
+            if cfg!(feature = "experimental") {
+                config.verify().unwrap();
+            } else {
+                config.verify().unwrap_err();
+            }
+        }
+        {
+            let config = Qlpc {
+                mae_optimization_steps: 20,
+                ..Default::default()
+            };
+            if cfg!(feature = "experimental") {
+                config.verify().unwrap();
+            } else {
+                config.verify().unwrap_err();
+            }
+        }
+    }
 
     #[cfg(feature = "serde")]
     #[test]
