@@ -13,6 +13,9 @@
 // limitations under the License.
 
 //! Configuration constants
+//!
+//! All boundary (prefixed with `MIN_` or `MAX_`) values defined in this module
+//! are inclusive.
 
 #![allow(dead_code)] // it's okay if some FLAC-spec constants are not used.
 
@@ -25,10 +28,10 @@ mod built {
 }
 
 /// Minimum length of a block supported.
-pub const MIN_BLOCKSIZE: usize = 32;
+pub const MIN_BLOCKSIZE: usize = 64;
 
-/// Maximum length of a block supported (65536 in the specification.)
-pub const MAX_BLOCKSIZE: usize = 32768;
+/// Maximum length of a block supported (65535 in the specification.)
+pub const MAX_BLOCKSIZE: usize = 32767;
 
 /// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;
@@ -86,7 +89,7 @@ pub mod qlpc {
     pub const MAX_ORDER: usize = 24;
 
     /// Max number of bits (precision) for storing QLPC coefficients.
-    pub const MAX_PRECISION: usize = 16;
+    pub const MAX_PRECISION: usize = 15;
 
     /// Maximum shift parameter of QLPC defined in the specification.
     pub const MAX_SHIFT: i8 = (1i8 << (SHIFT_BITS - 1)) - 1;
