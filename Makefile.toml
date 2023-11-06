@@ -56,7 +56,7 @@ description = "Run benchmark with nightly toolchain and update `report/bench_res
 script = """
 rustup run nightly cargo bench \
     --features ${BENCH_FEATURES} -- \
-    --skip tests:: | tee ${BENCH_RESULTS_TXT}
+    --skip tests:: | tee ${BENCH_RESULTS_TEXT}
 """
 
 [tasks.codehealth]
