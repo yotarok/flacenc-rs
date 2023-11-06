@@ -395,6 +395,34 @@ where
     )
 }
 
+/// Finds the minimum and maximum of the `data`.
+pub fn find_min_and_max<const N: usize>(data: &[i32], init: i32) -> (i32, i32)
+where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    let mut max_v = simd::Simd::splat(init);
+    let mut min_v = simd::Simd::splat(init);
+    let mut max = init;
+    let mut min = init;
+    let (head, body, foot) = slice_as_simd(data);
+    for x in head {
+        max = std::cmp::max(*x, max);
+        min = std::cmp::min(*x, min);
+    }
+    for v in body {
+        max_v = v.simd_max(max_v);
+        min_v = v.simd_min(min_v);
+    }
+    for x in foot {
+        max = std::cmp::max(*x, max);
+        min = std::cmp::min(*x, min);
+    }
+
+    max = std::cmp::max(max, max_v.reduce_max());
+    min = std::cmp::min(min, min_v.reduce_min());
+    (min, max)
+}
+
 /// Finds the element with maximum value from the unsigned data.
 pub fn find_max<const N: usize>(data: &[u32]) -> u32
 where
@@ -683,6 +711,34 @@ mod tests {
             0,
         ];
         assert_eq!(find_max_abs::<4>(&vs), i32::MIN.unsigned_abs());
+    }
+
+    #[test]
+    fn find_min_and_max_works() {
+        let vs = [
+            123,
+            234,
+            345,
+            234,
+            i32::MAX,
+            456,
+            3,
+            3,
+            4,
+            5,
+            i32::MIN,
+            i32::MAX,
+            2,
+            -2,
+            2,
+        ];
+        assert_eq!(find_min_and_max::<4>(&vs, 0i32), (i32::MIN, i32::MAX));
+
+        let vs = [123, 234, 345, 234, i32::MAX, 456, 3, 3, 4, i32::MAX, 2, 2];
+        assert_eq!(find_min_and_max::<4>(&vs, 0i32), (0i32, i32::MAX));
+
+        let vs = [123, 234, 345, 234, i32::MIN, 3, 3, 4, i32::MIN, 2, 2];
+        assert_eq!(find_min_and_max::<4>(&vs, 456i32), (i32::MIN, 456));
     }
 }
 
