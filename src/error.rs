@@ -318,11 +318,18 @@ pub(crate) use verify_range;
 pub enum EncodeError {
     /// Encoder errors due to input sources.
     Source(SourceError),
+    Config(VerifyError),
 }
 
 impl From<SourceError> for EncodeError {
     fn from(e: SourceError) -> Self {
         Self::Source(e)
+    }
+}
+
+impl From<VerifyError> for EncodeError {
+    fn from(e: VerifyError) -> Self {
+        Self::Config(e)
     }
 }
 
