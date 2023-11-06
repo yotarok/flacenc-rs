@@ -15,12 +15,9 @@
 #![allow(clippy::missing_panics_doc)]
 
 use std::collections::BTreeMap;
-use std::f32::consts::PI;
 use std::io::Write;
 
 use once_cell::sync::Lazy;
-use rand::distributions::Distribution;
-use rand::distributions::Uniform;
 use tempfile::NamedTempFile;
 
 use super::arrayutils::le_bytes_to_i32s;
@@ -58,37 +55,6 @@ macro_rules! assert_finite {
             );
         }
     }};
-}
-
-/// Generates a test signal with sinusoid and uniform-white noise.
-#[allow(dead_code)]
-pub fn sinusoid_plus_noise(
-    block_size: usize,
-    period: usize,
-    amplitude: f32,
-    noise_width: i32,
-) -> Vec<i32> {
-    let mut rng = rand::thread_rng();
-    let period = period as f32;
-    let die = Uniform::from(-noise_width..=noise_width);
-    let mut ret = Vec::new();
-    for t in 0..block_size {
-        let sin = (amplitude * (2.0 * (t as f32) * PI / period).sin()) as i32;
-        ret.push(sin + die.sample(&mut rng));
-    }
-    ret
-}
-
-/// Generates DC signal with constant offset and random uniform-white noise.
-#[allow(dead_code)]
-pub fn constant_plus_noise(block_size: usize, dc_offset: i32, noise_width: i32) -> Vec<i32> {
-    let mut rng = rand::thread_rng();
-    let die = Uniform::from(-noise_width..=noise_width);
-    let mut ret = Vec::new();
-    for _t in 0..block_size {
-        ret.push(dc_offset + die.sample(&mut rng));
-    }
-    ret
 }
 
 #[allow(clippy::similar_names)]

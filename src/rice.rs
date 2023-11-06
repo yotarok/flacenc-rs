@@ -279,7 +279,8 @@ pub fn find_partitioned_rice_parameter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helper;
+    use crate::sigen;
+    use crate::sigen::Signal;
 
     #[test]
     fn bit_table_initialization() {
@@ -290,7 +291,7 @@ mod tests {
 
     #[test]
     fn prc_parameter_search() {
-        let signal = test_helper::constant_plus_noise(64, 0, 4096);
+        let signal = sigen::Noise::new(0.25).to_vec_quantized(12, 64);
         let errors: Vec<u32> = signal.iter().map(|v| encode_signbit(*v)).collect();
         let max_p = 14;
         let table = PrcBitTable::from_errors(&errors, 4);
@@ -315,9 +316,9 @@ mod tests {
 
     #[test]
     fn partitioned_rice_parameter_search() {
-        let signal_left = test_helper::constant_plus_noise(64, 0, 2048);
-        let signal_right = test_helper::constant_plus_noise(64, 0, 12);
-        let signal = [signal_left, signal_right].concat();
+        let signal = sigen::Noise::with_seed(0, 0.5)
+            .concat(64, sigen::Noise::with_seed(1, 0.05))
+            .to_vec_quantized(8, 128);
         let errors: Vec<u32> = signal.iter().map(|v| encode_signbit(*v)).collect();
         let max_p = 14;
         let (_single_param, single_bits) =
@@ -325,7 +326,8 @@ mod tests {
         let prc_p = super::find_partitioned_rice_parameter(&signal, 4, 14);
 
         assert!(prc_p.code_bits <= single_bits);
-        assert_eq!(prc_p.order, 1); // this only holds stochastically
+        // this only holds stochastically but the random seeds are fixed.
+        assert_eq!(prc_p.order, 1);
     }
 
     #[test]

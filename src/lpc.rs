@@ -713,6 +713,8 @@ mod tests {
     use super::*;
     use crate::assert_close;
     use crate::assert_finite;
+    use crate::sigen;
+    use crate::sigen::Signal;
     use crate::test_helper;
 
     use rstest::rstest;
@@ -800,7 +802,9 @@ mod tests {
     #[rstest]
     fn qlpc_recovery(#[values(2, 12, 24)] lpc_order: usize) {
         let coef_prec: usize = 12;
-        let signal = test_helper::sinusoid_plus_noise(1024, 32, 30000.0, 128);
+        let signal = sigen::Sine::new(32, 0.8)
+            .noise(0.01)
+            .to_vec_quantized(16, 1024);
 
         let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
             estimator.borrow_mut().lpc_from_auto_corr(
