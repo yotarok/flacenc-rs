@@ -135,6 +135,8 @@ pub(crate) mod lpc;
 pub(crate) mod par;
 pub(crate) mod repeat;
 pub(crate) mod rice;
+#[cfg(any(test, feature = "__export_sigen"))]
+pub mod sigen;
 pub mod source;
 
 #[cfg(test)]
@@ -160,6 +162,10 @@ mod tests {
     // end-to-end, but transparent test.
     #[cfg(feature = "serde")]
     use super::*;
+    #[cfg(feature = "serde")]
+    use crate::sigen;
+    #[cfg(feature = "serde")]
+    use crate::sigen::Signal;
     #[cfg(feature = "serde")]
     use rstest::rstest;
 
@@ -200,9 +206,11 @@ multithread = false
 
         let mut channel_signals = vec![];
         for _ch in 0..channels {
-            channel_signals.push(test_helper::sinusoid_plus_noise(
-                signal_len, 36, 10000.0, 123,
-            ));
+            channel_signals.push(
+                sigen::Sine::new(36, 0.4)
+                    .noise(0.04)
+                    .to_vec_quantized(bits_per_sample, signal_len),
+            );
         }
 
         let mut signal = vec![];

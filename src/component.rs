@@ -2117,7 +2117,8 @@ mod seal_bit_repr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helper;
+    use crate::sigen;
+    use crate::sigen::Signal;
 
     use bitvec::bits;
     use bitvec::prelude::BitVec;
@@ -2284,10 +2285,14 @@ mod tests {
     #[test]
     fn stream_info_update() {
         let mut stream_info = StreamInfo::new(44100, 2, 16);
-        let framebuf = test_helper::constant_plus_noise(256 * 2, 123, 21);
+        let framebuf = sigen::Dc::new(0.01)
+            .noise(0.002)
+            .to_vec_quantized(16, 256 * 2);
         let frame1 = make_frame(&stream_info, &framebuf, 0);
         stream_info.update_frame_info(&frame1);
-        let framebuf = test_helper::constant_plus_noise(192 * 2, 234, 32);
+        let framebuf = sigen::Dc::new(0.02)
+            .noise(0.1)
+            .to_vec_quantized(16, 192 * 2);
         let frame2 = make_frame(&stream_info, &framebuf, 256);
         stream_info.update_frame_info(&frame2);
 
@@ -2347,7 +2352,9 @@ mod tests {
     #[test]
     fn frame_bitstream_precomputataion() -> Result<(), OutputError<BitVec<usize>>> {
         let stream_info = StreamInfo::new(44100, 2, 16);
-        let samples = test_helper::sinusoid_plus_noise(256 * 2, 128, 200.0, 100);
+        let samples = sigen::Sine::new(128, 0.2)
+            .noise(0.1)
+            .to_vec_quantized(12, 512);
         let mut frame = make_frame(&stream_info, &samples, 0);
         let mut bv_ref: BitVec<usize> = BitVec::new();
         let frame_cloned = frame.clone();

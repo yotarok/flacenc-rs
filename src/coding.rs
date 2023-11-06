@@ -604,14 +604,17 @@ pub fn encode_with_fixed_block_size<T: Source>(
 mod tests {
     use super::*;
     use crate::error::Verify;
+    use crate::sigen;
+    use crate::sigen::Signal;
     use crate::source;
     use crate::source::Fill;
-    use crate::test_helper;
 
     #[test]
     fn fixed_lpc_encoder() {
         let mut errors = FixedLpcErrors::default();
-        let signal = test_helper::sinusoid_plus_noise(64, 32, 10000.0, 128);
+        let signal = sigen::Sine::new(32, 0.3)
+            .noise(0.1)
+            .to_vec_quantized(16, 64);
         reset_fixed_lpc_errors(&mut errors, &signal);
         let unpacked = errors[1].as_ref();
         for t in 1..signal.len() {
@@ -629,9 +632,11 @@ mod tests {
         let bits_per_sample = 24;
         let sample_rate = 16000;
         let block_size = 128;
-        let constant = 23;
+        let constant: f32 = (23f64 / f64::from(1 << 23)) as f32;
         let signal_len = 1024;
-        let signal = test_helper::constant_plus_noise(signal_len * channels, constant, 0);
+        let signal =
+            sigen::Dc::new(constant).to_vec_quantized(bits_per_sample, signal_len * channels);
+        assert_eq!(signal[0], 23);
         let source =
             source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
         let stream = encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
@@ -676,7 +681,8 @@ mod bench {
     use test::bench::Bencher;
     use test::black_box;
 
-    use crate::test_helper;
+    use crate::sigen;
+    use crate::sigen::Signal;
 
     #[bench]
     fn residual_encoder_zero(b: &mut Bencher) {
@@ -739,9 +745,8 @@ mod bench {
         let cfg = &config::Encoder::default();
         let stream_info = StreamInfo::new(48000, 2, 16);
         let mut fb = FrameBuf::with_size(2, 4096);
-        // input is always zero, so it should use Constant and fast.
-        let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 0i32);
-        fb.fill_interleaved(signal).unwrap();
+        let signal = sigen::Sine::new(200, 0.4).to_vec_quantized(16, 4096 * 2);
+        fb.fill_interleaved(&signal).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
                 black_box(cfg),
@@ -757,9 +762,10 @@ mod bench {
         let cfg = &config::Encoder::default();
         let stream_info = StreamInfo::new(48000, 2, 16);
         let mut fb = FrameBuf::with_size(2, 4096);
-        // input is always zero, so it should use Constant and fast.
-        let signal = &test_helper::sinusoid_plus_noise(4096 * 2, 200, 10000.0, 10000i32);
-        fb.fill_interleaved(signal).unwrap();
+        let signal = sigen::Sine::new(200, 0.4)
+            .noise(0.4)
+            .to_vec_quantized(16, 4096 * 2);
+        fb.fill_interleaved(&signal).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
                 black_box(cfg),
@@ -773,14 +779,13 @@ mod bench {
     #[bench]
     fn normal_qlpc_noise(b: &mut Bencher) {
         let cfg = &config::SubFrameCoding::default();
-        let signal =
-            &test_helper::sinusoid_plus_noise(4096, /* not used */ 100, 0.0, 20000i32);
         let bits_per_sample = 16u8;
+        let signal = sigen::Noise::new(0.6).to_vec_quantized(bits_per_sample as usize, 4096);
 
         b.iter(|| {
             estimated_qlpc(
                 black_box(cfg),
-                black_box(signal),
+                black_box(&signal),
                 black_box(bits_per_sample),
             )
         });

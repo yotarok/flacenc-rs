@@ -18,6 +18,7 @@ debug = 1
 [features]
 default = ["log", "par", "serde"]
 
+__export_sigen = ["dep:rand"]
 experimental = ["dep:nalgebra"]
 log = ["dep:log"]
 mimalloc = ["dep:mimalloc"]
@@ -34,6 +35,7 @@ log = { version = "0.4", optional = true }
 mimalloc = { version = "0.1.39", default-features = false, optional = true }
 nalgebra = { version = "0.32", optional = true }
 num-traits = "0.2"
+rand = { version = "0.8.5", optional = true }
 rustversion = "1.0"
 seq-macro = "0.3"
 serde = { version = "1.0", features = ["derive"], optional = true }
