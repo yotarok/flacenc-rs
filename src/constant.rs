@@ -36,6 +36,9 @@ pub const MAX_BLOCKSIZE: usize = 32767;
 /// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;
 
+/// Minimum bits-per-sample supported. (4 in the specification.)
+pub const MIN_BITS_PER_SAMPLE: usize = 8;
+
 /// Maximum bits-per-sample supported. (32 in the specification.)
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
