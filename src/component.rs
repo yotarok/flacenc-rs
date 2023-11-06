@@ -24,9 +24,20 @@ use super::bitsink::ByteSink;
 use super::bitsink::MemSink;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
+use super::constant::qlpc::MAX_PRECISION as MAX_LPC_PRECISION;
+use super::constant::qlpc::MAX_SHIFT as MAX_LPC_SHIFT;
+use super::constant::qlpc::MIN_SHIFT as MIN_LPC_SHIFT;
+use super::constant::MAX_BITS_PER_SAMPLE;
+use super::constant::MAX_BLOCKSIZE;
 use super::constant::MAX_CHANNELS;
+use super::constant::MIN_BITS_PER_SAMPLE;
+use super::constant::MIN_BLOCKSIZE;
+use super::error::verify_range;
+use super::error::verify_true;
 use super::error::OutputError;
 use super::error::RangeError;
+use super::error::Verify;
+use super::error::VerifyError;
 use super::repeat::try_repeat;
 use super::rice;
 
@@ -133,6 +144,36 @@ const fn block_size_spec(block_size: u16) -> (u8, u16, usize) {
             }
         }
     }
+}
+
+// Some (internal) utility macros for value verification.
+macro_rules! verify_block_size {
+    ($varname:literal, $size:expr) => {
+        verify_range!($varname, $size, MIN_BLOCKSIZE..=MAX_BLOCKSIZE)
+    };
+}
+macro_rules! verify_bps {
+    ($varname:literal, $bps:expr) => {
+        verify_range!(
+            $varname,
+            $bps,
+            MIN_BITS_PER_SAMPLE..=(MAX_BITS_PER_SAMPLE + 1)
+        )
+        .and_then(|()| {
+            verify_true!(
+                $varname,
+                ($bps as usize) % 4 == 0 || ($bps as usize) % 4 == 1,
+                "must be a multiple of 4 (or 4n + 1 for side-channel)"
+            )
+        })
+    };
+}
+macro_rules! verify_sample_range {
+    ($varname:literal, $sample:expr, $bps:expr) => {{
+        let min_sample = -((1usize << ($bps as usize - 1)) as i32);
+        let max_sample = (1usize << ($bps as usize - 1)) as i32 - 1;
+        verify_range!($varname, $sample, min_sample..=max_sample)
+    }};
 }
 
 /// [`STREAM`](https://xiph.org/flac/format.html#stream) component.
@@ -267,6 +308,50 @@ impl Stream {
     pub(crate) fn frames(&self) -> &[Frame] {
         &self.frames
     }
+
+    fn verify_frames_in_variable_block_size_mode(&self) -> Result<(), VerifyError> {
+        let mut current = 0u64;
+
+        for (i, frame) in self.frames.iter().enumerate() {
+            verify_true!(
+                "variable_block_size",
+                frame.header.variable_block_size,
+                "must be same for all frames"
+            )
+            .and_then(|()| {
+                verify_true!(
+                    "start_sample_number",
+                    frame.header.start_sample_number == current,
+                    "must be the sum of the block sizes of the preceding frames"
+                )
+            })
+            .map_err(|e| e.within("header").within(&format!("frames[{i}]")))?;
+            current = current.wrapping_add(frame.header.block_size.into());
+        }
+        Ok(())
+    }
+
+    fn verify_frames_in_fixed_block_size_mode(&self) -> Result<(), VerifyError> {
+        let mut current = 0u32;
+
+        for (i, frame) in self.frames.iter().enumerate() {
+            verify_true!(
+                "variable_block_size",
+                !frame.header.variable_block_size,
+                "must be same for all frames"
+            )
+            .and_then(|()| {
+                verify_true!(
+                    "frame_number",
+                    frame.header.frame_number == current,
+                    "must be the count of the preceding frames"
+                )
+            })
+            .map_err(|e| e.within("header").within(&format!("frames[{i}]")))?;
+            current = current.wrapping_add(1);
+        }
+        Ok(())
+    }
 }
 
 impl BitRepr for Stream {
@@ -293,6 +378,41 @@ impl BitRepr for Stream {
             frame.write(dest)?;
         }
         Ok(())
+    }
+}
+
+impl Verify for Stream {
+    fn verify(&self) -> Result<(), VerifyError> {
+        self.stream_info
+            .verify()
+            .map_err(|e| e.within("stream_info"))?;
+        for (i, md) in self.metadata.iter().enumerate() {
+            md.verify()
+                .map_err(|e| e.within(&format!("metadata[{i}]")))?;
+            let is_last = i + 1 == self.metadata.len();
+
+            verify_true!(
+                "is_last",
+                is_last || !md.is_last,
+                "should be unset for non-last metdata blocks"
+            )
+            .and_then(|()| {
+                verify_true!(
+                    "is_last",
+                    !is_last || md.is_last,
+                    "should be set for the last metdata block"
+                )
+            })
+            .map_err(|e| e.within(&format!("metadata[{i}]")))?;
+        }
+
+        if self.frames.is_empty() {
+            Ok(())
+        } else if self.frames[0].header.variable_block_size {
+            self.verify_frames_in_variable_block_size_mode()
+        } else {
+            self.verify_frames_in_fixed_block_size_mode()
+        }
     }
 }
 
@@ -331,6 +451,12 @@ impl BitRepr for MetadataBlock {
             .map_err(OutputError::<S>::from_sink)?;
         self.data.write(dest)?;
         Ok(())
+    }
+}
+
+impl Verify for MetadataBlock {
+    fn verify(&self) -> Result<(), VerifyError> {
+        self.data.verify()
     }
 }
 
@@ -373,6 +499,14 @@ impl BitRepr for MetadataBlockData {
             Self::StreamInfo(info) => info.write(dest)?,
         }
         Ok(())
+    }
+}
+
+impl Verify for MetadataBlockData {
+    fn verify(&self) -> Result<(), VerifyError> {
+        match self {
+            Self::StreamInfo(info) => info.verify(),
+        }
     }
 }
 
@@ -702,6 +836,26 @@ impl BitRepr for StreamInfo {
     }
 }
 
+impl Verify for StreamInfo {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_true!(
+            "min_block_size",
+            self.min_block_size <= self.max_block_size,
+            "must be smaller than `max_block_size`"
+        )?;
+        verify_block_size!("min_block_size", self.min_block_size as usize)?;
+        verify_block_size!("max_block_size", self.max_block_size as usize)?;
+        verify_true!(
+            "min_frame_size",
+            self.min_frame_size <= self.max_frame_size,
+            "must be smaller than `max_frame_size`"
+        )?;
+        verify_range!("sample_rate", self.sample_rate as usize, ..=96_000)?;
+        verify_range!("channels", self.channels as usize, 1..=8)?;
+        verify_bps!("bits_per_sample", self.bits_per_sample as usize)
+    }
+}
+
 /// [`FRAME`](https://xiph.org/flac/format.html#frame) component.
 #[derive(Clone, Debug)]
 pub struct Frame {
@@ -968,6 +1122,38 @@ impl BitRepr for Frame {
     }
 }
 
+impl Verify for Frame {
+    fn verify(&self) -> Result<(), VerifyError> {
+        for (ch, sf) in self.subframes.iter().enumerate() {
+            sf.verify()
+                .map_err(|e| e.within(&format!("subframe[{ch}]")))?;
+        }
+        if let Some(ref buf) = self.precomputed_bitstream {
+            let mut dest = ByteSink::with_capacity(self.count_bits());
+            self.write(&mut dest).map_err(|_| {
+                VerifyError::new(
+                    "self",
+                    "erroroccured while computing verification reference.",
+                )
+            })?;
+            let reference = dest.into_inner();
+            verify_true!(
+                "precomputed_bitstream.len",
+                buf.len() == reference.len(),
+                "must be identical with the recomputed bitstream"
+            )?;
+            for (t, (testbyte, refbyte)) in buf.iter().zip(reference.iter()).enumerate() {
+                verify_true!(
+                    "precomputed_bitstream[{t}]",
+                    testbyte == refbyte,
+                    "must be identical with the recomputed bitstream"
+                )?;
+            }
+        }
+        self.header.verify().map_err(|e| e.within("header"))
+    }
+}
+
 /// Enum for channel assignment in `FRAME_HEADER`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChannelAssignment {
@@ -1063,13 +1249,24 @@ impl BitRepr for ChannelAssignment {
     }
 }
 
+impl Verify for ChannelAssignment {
+    fn verify(&self) -> Result<(), VerifyError> {
+        match *self {
+            Self::Independent(ch) => {
+                verify_range!("Independent(ch)", ch as usize, 1..=MAX_CHANNELS)
+            }
+            Self::LeftSide | Self::RightSide | Self::MidSide => Ok(()),
+        }
+    }
+}
+
 /// [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header) component.
 #[derive(Clone, Debug)]
 pub struct FrameHeader {
     variable_block_size: bool, // must be same in all frames
     block_size: u16,           // encoded with special function
     channel_assignment: ChannelAssignment,
-    sample_size: u8,          // if set, it must be consistent with StreamInfo
+    sample_size_spec: u8,     // if set, it must be consistent with StreamInfo
     frame_number: u32,        // written when variable_block_size == false
     start_sample_number: u64, // written when variable_block_size == true
 }
@@ -1084,7 +1281,7 @@ impl FrameHeader {
             variable_block_size: true,
             block_size: block_size as u16,
             channel_assignment,
-            sample_size: 0,
+            sample_size_spec: 0,
             frame_number: 0,
             start_sample_number: start_sample_number as u64,
         }
@@ -1123,10 +1320,10 @@ impl FrameHeader {
         self.channel_assignment = channel_assignment;
     }
 
-    /// Resets `sample_size` field using [`StreamInfo`].
+    /// Resets `sample_size_spec` field using [`StreamInfo`].
     ///
     /// This field must be specified for Claxon compatibility.
-    pub(crate) fn reset_sample_size(&mut self, stream_info: &StreamInfo) {
+    pub(crate) fn reset_sample_size_spec(&mut self, stream_info: &StreamInfo) {
         let bits = match stream_info.bits_per_sample {
             8 => 1,
             12 => 2,
@@ -1136,7 +1333,7 @@ impl FrameHeader {
             32 => 7,
             _ => 0,
         };
-        self.sample_size = bits;
+        self.sample_size_spec = bits;
     }
 
     /// Returns block size.
@@ -1215,7 +1412,9 @@ impl BitRepr for FrameHeader {
                 .map_err(OutputError::<S>::ignore_sink_error)?;
 
             // sample size specifier + 1-bit reserved (zero)
-            header_buffer.write_lsbs(self.sample_size << 1, 4).unwrap();
+            header_buffer
+                .write_lsbs(self.sample_size_spec << 1, 4)
+                .unwrap();
 
             if self.variable_block_size {
                 let v = encode_to_utf8like(self.start_sample_number)?;
@@ -1232,6 +1431,16 @@ impl BitRepr for FrameHeader {
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
         })
+    }
+}
+
+impl Verify for FrameHeader {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_block_size!("block_size", self.block_size as usize)?;
+
+        self.channel_assignment
+            .verify()
+            .map_err(|e| e.within("channel_assignment"))
     }
 }
 
@@ -1294,19 +1503,37 @@ impl BitRepr for SubFrame {
     }
 }
 
+impl Verify for SubFrame {
+    fn verify(&self) -> Result<(), VerifyError> {
+        match self {
+            Self::Verbatim(c) => c.verify(),
+            Self::Constant(c) => c.verify(),
+            Self::FixedLpc(c) => c.verify(),
+            Self::Lpc(c) => c.verify(),
+        }
+    }
+}
+
 /// [`SUBFRAME_CONSTANT`](https://xiph.org/flac/format.html#subframe_constant) component.
 #[derive(Clone, Debug)]
 pub struct Constant {
+    block_size: usize,
     dc_offset: i32,
     bits_per_sample: u8,
 }
 
 impl Constant {
-    pub(crate) const fn new(dc_offset: i32, bits_per_sample: u8) -> Self {
+    pub(crate) const fn new(block_size: usize, dc_offset: i32, bits_per_sample: u8) -> Self {
         Self {
+            block_size,
             dc_offset,
             bits_per_sample,
         }
+    }
+
+    /// Returns block size.
+    pub fn block_size(&self) -> usize {
+        self.block_size
     }
 
     /// Returns offset value.
@@ -1331,6 +1558,14 @@ impl BitRepr for Constant {
         dest.write_twoc(self.dc_offset, self.bits_per_sample as usize)
             .map_err(OutputError::<S>::from_sink)?;
         Ok(())
+    }
+}
+
+impl Verify for Constant {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_block_size!("block_size", self.block_size)?;
+        verify_bps!("bits_per_sample", self.bits_per_sample as usize)?;
+        verify_sample_range!("dc_offset", self.dc_offset, self.bits_per_sample)
     }
 }
 
@@ -1379,6 +1614,17 @@ impl BitRepr for Verbatim {
         for i in 0..self.data.len() {
             dest.write_twoc(self.data[i], self.bits_per_sample as usize)
                 .map_err(OutputError::<S>::from_sink)?;
+        }
+        Ok(())
+    }
+}
+
+impl Verify for Verbatim {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_block_size!("data.len", self.data.len())?;
+        verify_bps!("bits_per_sample", self.bits_per_sample as usize)?;
+        for (t, v) in self.data.iter().enumerate() {
+            verify_sample_range!("data[{t}]", *v, self.bits_per_sample)?;
         }
         Ok(())
     }
@@ -1445,6 +1691,16 @@ impl BitRepr for FixedLpc {
                 .map_err(OutputError::<S>::from_sink)?;
         }
         self.residual.write(dest)
+    }
+}
+
+impl Verify for FixedLpc {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_bps!("bits_per_sample", self.bits_per_sample as usize)?;
+        for (t, v) in self.warm_up.iter().enumerate() {
+            verify_sample_range!("warm_up[{t}]", *v, self.bits_per_sample)?;
+        }
+        self.residual.verify().map_err(|err| err.within("residual"))
     }
 }
 
@@ -1545,6 +1801,19 @@ impl BitRepr for Lpc {
     }
 }
 
+impl Verify for Lpc {
+    fn verify(&self) -> Result<(), VerifyError> {
+        self.parameters
+            .verify()
+            .map_err(|err| err.within("parameters"))?;
+        verify_bps!("bits_per_sample", self.bits_per_sample as usize)?;
+        for (t, v) in self.warm_up.iter().enumerate() {
+            verify_sample_range!("warm_up[{t}]", *v, self.bits_per_sample)?;
+        }
+        self.residual.verify().map_err(|err| err.within("residual"))
+    }
+}
+
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
 pub struct QuantizedParameters {
@@ -1609,6 +1878,15 @@ impl QuantizedParameters {
             .iter()
             .map(|x| dequantize_parameter(*x, self.shift))
             .collect()
+    }
+}
+
+impl Verify for QuantizedParameters {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_range!("order", self.order, ..=MAX_LPC_ORDER)?;
+        verify_range!("shift", self.shift, MIN_LPC_SHIFT..=MAX_LPC_SHIFT)?;
+        verify_range!("precision", self.precision, ..=MAX_LPC_PRECISION)?;
+        Ok(())
     }
 }
 
@@ -1763,6 +2041,56 @@ impl BitRepr for Residual {
             }
             p += 1;
         }
+        Ok(())
+    }
+}
+
+impl Verify for Residual {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_true!(
+            "self.quotients",
+            self.quotients.len() == self.remainders.len(),
+            "quotients and remainders must have the same number of elements"
+        )?;
+        verify_block_size!("quotients.len", self.quotients.len())?;
+        for t in 0..self.warmup_length {
+            verify_true!(
+                "quotients[{t}]",
+                self.quotients[t] == 0,
+                "must be zero for warmup samples"
+            )?;
+            verify_true!(
+                "remainders[{t}]",
+                self.remainders[t] == 0,
+                "must be zero for warmup samples"
+            )?;
+        }
+
+        let partition_count = 1 << self.partition_order;
+        let partition_len = self.block_size / partition_count;
+        for t in 0..self.block_size {
+            let rice_p = self.rice_params[t / partition_len];
+            verify_range!("remainders[{t}]", self.remainders[t], ..(1 << rice_p))?;
+        }
+
+        let sum_quotients_check: usize = self
+            .quotients
+            .iter()
+            .fold(0usize, |acc, x| acc + *x as usize);
+        let sum_rice_params_check: usize = self
+            .rice_params
+            .iter()
+            .fold(0usize, |acc, x| acc + *x as usize);
+        verify_true!(
+            "sum_quotients",
+            self.sum_quotients == sum_quotients_check,
+            "must be identical with the actual sum of quotients"
+        )?;
+        verify_true!(
+            "sum_rice_params",
+            self.sum_rice_params == sum_rice_params_check,
+            "must be identical with the actual sum of rice parameters"
+        )?;
         Ok(())
     }
 }
@@ -2007,6 +2335,7 @@ mod tests {
             &quotients,
             &remainders,
         );
+        assert!(residual.verify().is_ok());
 
         let mut bv: BitVec<usize> = BitVec::new();
         residual.write(&mut bv)?;

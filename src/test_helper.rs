@@ -27,6 +27,7 @@ use super::arrayutils::le_bytes_to_i32s;
 use super::bitsink::ByteSink;
 use super::component::BitRepr;
 use super::component::Stream;
+use super::error::Verify;
 use super::source::MemSource;
 use super::source::Seekable;
 use super::source::Source;
@@ -153,6 +154,8 @@ where
     Enc: Fn(MemSource) -> Stream,
 {
     let stream = encoder(src.clone());
+
+    assert!(stream.verify().is_ok());
 
     let mut file = NamedTempFile::new().expect("Failed to create temp file.");
 

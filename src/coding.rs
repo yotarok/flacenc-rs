@@ -291,7 +291,7 @@ fn encode_subframe(
 ) -> SubFrame {
     if config.use_constant && is_constant(samples) {
         // Assuming constant is always best if it's applicable.
-        Constant::new(samples[0], bits_per_sample).into()
+        Constant::new(samples.len(), samples[0], bits_per_sample).into()
     } else {
         let baseline_bits =
             Verbatim::count_bits_from_metadata(samples.len(), bits_per_sample as usize);
@@ -338,7 +338,7 @@ fn encode_frame_impl(
     }
 
     // for Claxon compatibility.
-    frame.header_mut().reset_sample_size(stream_info);
+    frame.header_mut().reset_sample_size_spec(stream_info);
 
     frame
 }
