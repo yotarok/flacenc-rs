@@ -1,0 +1,30 @@
+[package]
+name = "flacenc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+rand = "0.8.5"
+
+[dependencies.flacenc]
+path = ".."
+features = ["__export_sigen"]
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "frame_encode"
+path = "fuzz_targets/frame_encode.rs"
+test = false
+doc = false
