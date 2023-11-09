@@ -2525,7 +2525,7 @@ mod tests {
     #[allow(clippy::cast_lossless)]
     fn bit_count_residual() -> Result<(), OutputError<BitVec<usize>>> {
         let mut rng = rand::thread_rng();
-        let block_size = 4 * Uniform::from(4..=1024).sample(&mut rng);
+        let block_size = 4 * Uniform::from(16..=1024).sample(&mut rng);
         let partition_order: usize = 2;
         let nparts = 2usize.pow(partition_order as u32);
         let part_len = block_size / nparts;

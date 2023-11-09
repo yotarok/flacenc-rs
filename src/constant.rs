@@ -42,6 +42,12 @@ pub const MIN_BITS_PER_SAMPLE: usize = 8;
 /// Maximum bits-per-sample supported. (32 in the specification.)
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
+/// The number of partitions used in entropy estimation algorithm.
+pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 32;
+
+/// The max number of partitions used in entropy estimation algorithm.
+pub(crate) const MAX_ENTROPY_ESTIMATOR_PARTITIONS: usize = 64;
+
 /// Constants related to build-time information.
 ///
 /// Information in this module is gathered using [`built`] crate.

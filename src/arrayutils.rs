@@ -22,7 +22,7 @@ use super::repeat::repeat;
 import_simd!(as simd);
 
 /// A wrapper for Vec of `simd::Simd` that can be viewed as a scalar slice.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct SimdVec<T, const N: usize>
 where
     T: simd::SimdElement,
@@ -377,6 +377,22 @@ where
         acc = scalar_reduce_fn(y, acc);
     }
     scalar_reduce_fn(acc, vector_to_scalar_fn(acc_v))
+}
+
+/// Finds the element with maximum absolute value from the data.
+pub fn find_sum_abs_f32<const N: usize>(data: &[i32]) -> f32
+where
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+{
+    simd_map_and_reduce(
+        data,
+        |x| x.abs() as f32,
+        |v| v.abs().cast(),
+        std::ops::Add::add,
+        std::ops::Add::add,
+        simd::SimdFloat::reduce_sum,
+        0.0,
+    )
 }
 
 /// Finds the element with maximum absolute value from the data.

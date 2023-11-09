@@ -183,6 +183,7 @@ fn merge_partitions(tables: &mut [PrcBitTable]) -> usize {
 }
 
 /// Parameter for PRC (partitioned Rice-coding).
+#[derive(Clone, Debug)]
 pub struct PrcParameter {
     pub order: usize,
     pub ps: Vec<u8>,
