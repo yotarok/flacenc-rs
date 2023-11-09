@@ -18,6 +18,41 @@ use flacenc::sigen::Signal;
 use flacenc::source::Fill;
 use flacenc::source::FrameBuf;
 
+fn arbitrary_window_config(u: &mut Unstructured) -> Result<config::Window, arbitrary::Error> {
+    match u.int_in_range(0..=1usize)? {
+        0 => Ok(config::Window::Rectangle),
+        1 => {
+            let alpha = u.int_in_range(0..=i16::MAX)? as f32 / i16::MAX as f32;
+            Ok(config::Window::Tukey { alpha })
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn arbitrary_config(
+    u: &mut Unstructured,
+    block_size: usize,
+) -> Result<config::Encoder, arbitrary::Error> {
+    let mut config = config::Encoder::default();
+    config.block_sizes = vec![block_size];
+    config.stereo_coding.use_leftside = bool::arbitrary(u)?;
+    config.stereo_coding.use_rightside = bool::arbitrary(u)?;
+    config.stereo_coding.use_midside = bool::arbitrary(u)?;
+    config.subframe_coding.use_constant = bool::arbitrary(u)?;
+    config.subframe_coding.use_fixed = bool::arbitrary(u)?;
+    config.subframe_coding.use_lpc = bool::arbitrary(u)?;
+    config.subframe_coding.fixed.max_order = u.int_in_range(0..=constant::fixed::MAX_LPC_ORDER)?;
+    config.subframe_coding.prc.max_parameter =
+        u.int_in_range(0..=constant::rice::MAX_RICE_PARAMETER)?;
+
+    config.subframe_coding.qlpc.lpc_order = u.int_in_range(0..=constant::qlpc::MAX_ORDER)?;
+    config.subframe_coding.qlpc.quant_precision = u.int_in_range(1..=15)?;
+
+    config.subframe_coding.qlpc.window = arbitrary_window_config(u)?;
+
+    Ok(config)
+}
+
 fn arbitrary_signal(
     u: &mut Unstructured,
     block_size: usize,
@@ -80,6 +115,7 @@ struct Input {
     block_size: usize,
     sample_rate: usize,
     bits_per_sample: usize,
+    config: config::Encoder,
     signals: Vec<Box<dyn Signal>>,
 }
 
@@ -118,6 +154,7 @@ impl<'a> Arbitrary<'a> for Input {
         let sample_rate = u.int_in_range(1usize..=192_000)?;
         let bits_per_sample = (u.int_in_range(2u8..=6u8)? * 4) as usize;
 
+        let config = arbitrary_config(u, block_size)?;
         let mut signals = vec![];
         for _ch in 0..channel_count {
             signals.push(arbitrary_signal(u, block_size)?);
@@ -128,6 +165,7 @@ impl<'a> Arbitrary<'a> for Input {
             block_size,
             sample_rate,
             bits_per_sample,
+            config,
             signals,
         })
     }
@@ -140,8 +178,7 @@ fn dump_failed_frame(frame: &component::Frame) {
 
 fuzz_target!(|input: Input| {
     let fb = input.framebuf();
-    let config = config::Encoder::default();
-    match encode_fixed_size_frame(&config, &fb, 0, &input.stream_info()) {
+    match encode_fixed_size_frame(&input.config, &fb, 0, &input.stream_info()) {
         Ok(frame) => {
             frame.verify().unwrap();
             let decoded = frame.decode();

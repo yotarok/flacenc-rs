@@ -26,6 +26,7 @@ use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
+use super::repeat::repeat;
 
 import_simd!(as simd);
 
@@ -33,6 +34,9 @@ import_simd!(as simd);
 pub fn window_weights(win: &Window, len: usize) -> Vec<f32> {
     match *win {
         Window::Rectangle => vec![1.0f32; len],
+        Window::Tukey { alpha } if alpha == 0.0 => {
+            vec![1.0f32; len]
+        }
         Window::Tukey { alpha } => {
             let max_t = len as f32 - 1.0;
             let alpha_len = alpha * max_t;
@@ -116,6 +120,9 @@ fn quantize_parameter(p: f32, shift: i8) -> i16 {
 
 /// Creates [`QuantizedParameters`] by quantizing the given coefficients.
 pub fn quantize_parameters(coefs: &[f32], precision: usize) -> QuantizedParameters {
+    if coefs.is_empty() {
+        return QuantizedParameters::from_parts(&[], 0, 0, precision);
+    }
     let shift = find_shift(coefs, precision);
     let mut q_coefs = [0i16; MAX_LPC_ORDER];
 
@@ -198,7 +205,17 @@ where
 pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i32]) {
     assert!(errors.len() >= signal.len());
     let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
-    let sumabs_coefs: i64 = simd::SimdInt::reduce_sum(qps.coefs.abs()).into();
+    // `Simd::reduce_sum` is avoided to mitigate overflow error.
+    // NOTE: If we restrict the precision to be 11 bit, 24-additions of 11-bit
+    //       ints are 16-bit safe. we assume it's reasonably fast.
+    let sumabs_coefs: i64 = {
+        let mut acc: i64 = 0i64;
+        let abs_coefs = qps.coefs.abs();
+        repeat!(lane to 32 => {
+            acc += i64::from(abs_coefs.as_array()[lane]);
+        });
+        acc
+    };
     let maxabs = maxabs_signal * sumabs_coefs as u64;
     if maxabs < i32::MAX as u64 {
         // larger lanes here can alleviate inefficiency of unaligned reads.
@@ -501,6 +518,9 @@ impl LpcEstimator {
         F: Fn(usize) -> f32,
     {
         let mut ret = heapless::Vec::new();
+        if lpc_order == 0 {
+            return ret;
+        }
         ret.resize(lpc_order, 0.0)
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
         self.corr_coefs.resize(lpc_order + 1, 0.0);
@@ -514,7 +534,10 @@ impl LpcEstimator {
             weight_fn,
         );
         for &v in &self.corr_coefs {
-            assert!(v.is_normal() || v == 0.0);
+            assert!(
+                v.is_normal() || v == 0.0,
+                "corr_coefs[_] = {v} must be normal or zero."
+            );
         }
         symmetric_levinson_recursion(
             &self.corr_coefs[0..lpc_order],
@@ -930,6 +953,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn tukey_window_range() {
+        for alpha in &[0.0, 0.3, 0.5, 0.8, 1.0] {
+            let win = Window::Tukey { alpha: *alpha };
+            let win_vec = get_window(&win, 4096);
+            let win_vec = win_vec.as_ref().as_ref();
+            for (t, v) in win_vec.iter().enumerate() {
+                assert!(
+                    v.is_normal() || *v == 0.0,
+                    "window({alpha})[{t}] = {v} must be normal or zero."
+                );
+            }
+        }
+    }
+
     /// Computes squared sum (energy) of the slice.
     fn compute_energy<T>(signal: &[T]) -> f64
     where
@@ -1045,6 +1083,39 @@ mod tests {
             (4 * 4 + -4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1) as f32
         );
         assert_eq!(result[(1, 0)], result[(0, 1)])
+    }
+
+    #[test]
+    fn overflow_patterns() {
+        let signal = vec![
+            127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127,
+            127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 127, 29, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let lpc_order = 15;
+        let quant_precision = 13;
+        let lpc_coefs = lpc_from_autocorr(&signal, &Window::Rectangle, lpc_order);
+        let qlpc = quantize_parameters(&lpc_coefs[0..lpc_order], quant_precision);
+
+        let mut errors = vec![0i32; signal.len()];
+        compute_error(&qlpc, &signal, &mut errors);
+    }
+
+    #[test]
+    fn order_zero_lpc() {
+        let signal = vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0,
+        ];
+        let lpc_order = 0;
+        let quant_precision = 13;
+        let lpc_coefs = lpc_from_autocorr(&signal, &Window::Rectangle, lpc_order);
+        let qlpc = quantize_parameters(&lpc_coefs[0..lpc_order], quant_precision);
+
+        let mut errors = vec![0i32; signal.len()];
+        compute_error(&qlpc, &signal, &mut errors);
+        assert_eq!(&errors, &vec![0i32; signal.len()]);
     }
 
     #[rstest]
