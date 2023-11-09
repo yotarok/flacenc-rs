@@ -209,12 +209,13 @@ fn fixed_lpc(
     baseline_bits: usize,
 ) -> Option<SubFrame> {
     assert!(bits_per_sample < 30);
+    let max_order = config.fixed.max_order;
 
     reuse!(FIXED_LPC_ERRORS, |errors: &mut FixedLpcErrors| {
         reset_fixed_lpc_errors(errors, signal);
         let mut minimizer = None;
         let mut min_bits = baseline_bits;
-        for order in 0..=MAX_FIXED_LPC_ORDER {
+        for order in 0..=max_order {
             let prc_p = rice::find_partitioned_rice_parameter(
                 errors[order].as_ref(),
                 order,
@@ -611,7 +612,7 @@ mod tests {
     use crate::source::Fill;
 
     #[test]
-    fn fixed_lpc_encoder() {
+    fn fixed_lpc_error_computation() {
         let mut errors = FixedLpcErrors::default();
         let signal = sigen::Sine::new(32, 0.3)
             .noise(0.1)
@@ -624,6 +625,19 @@ mod tests {
         let unpacked = errors[2].as_ref();
         for t in 2..signal.len() {
             assert_eq!(unpacked[t], signal[t] - 2 * signal[t - 1] + signal[t - 2]);
+        }
+    }
+
+    #[test]
+    fn fixed_lpc_of_sine() {
+        let signal = sigen::Sine::new(100, 0.6).to_vec_quantized(8, 1024);
+        let mut config = config::SubFrameCoding::default();
+        for order in 0..=MAX_FIXED_LPC_ORDER {
+            config.fixed.max_order = order;
+            let subframe = fixed_lpc(&config, &signal, 8, usize::MAX)
+                .expect("Should return Some because `baseline_bits` is usize::MAX.");
+            subframe.verify().expect("Should return valid subframe.");
+            assert_eq!(subframe.decode(), signal);
         }
     }
 
