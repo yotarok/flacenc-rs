@@ -53,6 +53,7 @@ use serde::Deserialize;
 #[cfg(feature = "serde")]
 use serde::Serialize;
 
+use super::constant;
 use super::constant::qlpc::DEFAULT_ORDER as QLPC_DEFAULT_ORDER;
 use super::constant::qlpc::DEFAULT_PRECISION as QLPC_DEFAULT_PRECISION;
 use super::constant::qlpc::DEFAULT_TUKEY_ALPHA;
@@ -172,6 +173,8 @@ pub struct SubFrameCoding {
     pub use_fixed: bool,
     /// If set to false, LPC mode will not be used. (default: `true`)
     pub use_lpc: bool,
+    /// Configuration for fixed LPC encoder.
+    pub fixed: Fixed,
     /// Configuration for quantized LPC encoder.
     pub qlpc: Qlpc,
     /// Configuration for partitioned Rice coding.
@@ -184,6 +187,7 @@ impl Default for SubFrameCoding {
             use_constant: true,
             use_fixed: true,
             use_lpc: true,
+            fixed: Fixed::default(),
             qlpc: Qlpc::default(),
             prc: Prc::default(),
         }
@@ -220,6 +224,37 @@ impl Verify for Prc {
     fn verify(&self) -> Result<(), VerifyError> {
         verify_range!("max_parameter", self.max_parameter, ..=MAX_RICE_PARAMETER)?;
         Ok(())
+    }
+}
+
+/// Configuration for fixed-parameter linear-predictive coding.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
+#[non_exhaustive]
+pub struct Fixed {
+    /// maximum LPC order. (default: [`constant::fixed::MAX_LPC_ORDER`])
+    ///
+    /// This value must be less than or equal to [`constant::fixed::MAX_LPC_ORDER`]
+    pub max_order: usize,
+}
+
+impl Verify for Fixed {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_range!(
+            "max_order",
+            self.max_order,
+            ..=(constant::fixed::MAX_LPC_ORDER)
+        )?;
+        Ok(())
+    }
+}
+
+impl Default for Fixed {
+    fn default() -> Self {
+        Self {
+            max_order: constant::fixed::MAX_LPC_ORDER,
+        }
     }
 }
 
