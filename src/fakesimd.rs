@@ -153,6 +153,11 @@ pub trait SimdInt {
     fn cast<T: SimdCast>(self) -> Self::Cast<T>;
 }
 
+pub trait SimdFloat {
+    type Scalar;
+    fn reduce_sum(self) -> Self::Scalar;
+}
+
 pub trait SimdPartialEq {
     type Mask;
     fn simd_eq(self, other: Self) -> Self::Mask;
@@ -308,6 +313,17 @@ where
             .expect("INTERNAL ERROR in `reduce_min` of fakesimd.")
     }
 
+    #[inline]
+    fn reduce_sum(self) -> T {
+        self.0.into_iter().sum()
+    }
+}
+
+impl<T, const N: usize> SimdFloat for Simd<T, N>
+where
+    T: SimdElement + num_traits::Float + std::iter::Sum,
+{
+    type Scalar = T;
     #[inline]
     fn reduce_sum(self) -> T {
         self.0.into_iter().sum()

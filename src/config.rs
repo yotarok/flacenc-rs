@@ -60,7 +60,9 @@ use super::constant::qlpc::DEFAULT_TUKEY_ALPHA;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_PRECISION as QLPC_MAX_PRECISION;
 use super::constant::rice::MAX_RICE_PARAMETER;
+use super::constant::DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS;
 use super::constant::MAX_BLOCKSIZE;
+use super::constant::MAX_ENTROPY_ESTIMATOR_PARTITIONS;
 use super::constant::MIN_BLOCKSIZE;
 use super::error::verify_range;
 use super::error::verify_true;
@@ -233,10 +235,13 @@ impl Verify for Prc {
 #[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Fixed {
-    /// maximum LPC order. (default: [`constant::fixed::MAX_LPC_ORDER`])
+    /// Maximum LPC order. (default: [`constant::fixed::MAX_LPC_ORDER`])
     ///
     /// This value must be less than or equal to [`constant::fixed::MAX_LPC_ORDER`]
     pub max_order: usize,
+
+    /// Configuration for the algorithm for selecting order.
+    pub order_sel: OrderSel,
 }
 
 impl Verify for Fixed {
@@ -254,6 +259,7 @@ impl Default for Fixed {
     fn default() -> Self {
         Self {
             max_order: constant::fixed::MAX_LPC_ORDER,
+            order_sel: OrderSel::default(),
         }
     }
 }
@@ -373,6 +379,51 @@ impl Verify for Window {
                         "alpha must be in range between 0 and 1",
                     ))
                 }
+            }
+        }
+    }
+}
+
+/// Helper fn for serde.
+#[cfg(feature = "serde")]
+const fn default_partition_count() -> usize {
+    DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS
+}
+
+/// Configuration for (LPC) order selection algorithms.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
+pub enum OrderSel {
+    /// Performs actual encoding and count bits.
+    BitCount,
+    /// Estimates the number of bits using partitioned entropy estimation.
+    ApproxEnt {
+        /// The number of partitions used for estimation.
+        #[cfg_attr(feature = "serde", serde(default = "default_partition_count"))]
+        partitions: usize,
+    },
+}
+
+impl Default for OrderSel {
+    fn default() -> Self {
+        Self::ApproxEnt {
+            partitions: DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS,
+        }
+    }
+}
+
+impl Verify for OrderSel {
+    fn verify(&self) -> Result<(), VerifyError> {
+        match *self {
+            Self::BitCount => Ok(()),
+            Self::ApproxEnt { partitions } => {
+                verify_range!(
+                    "ApproxEnt.partitions",
+                    partitions,
+                    1..=MAX_ENTROPY_ESTIMATOR_PARTITIONS
+                )
             }
         }
     }

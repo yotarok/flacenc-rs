@@ -15,6 +15,7 @@
 //! Controller connecting coding algorithms.
 
 use super::arrayutils::find_min_and_max;
+use super::arrayutils::find_sum_abs_f32;
 use super::arrayutils::is_constant;
 use super::arrayutils::SimdVec;
 use super::component::BitRepr;
@@ -194,6 +195,97 @@ fn reset_fixed_lpc_errors(errors: &mut FixedLpcErrors, signal: &[i32]) {
     }
 }
 
+/// Estimate bit count from the error.
+fn estimate_entropy(errors: &[i32], warmup_len: usize, partitions: usize) -> usize {
+    // this function computes partition average of:
+    //   (1 + e) log (1 + e) - e * log e
+    // where log-base is 2 and e is the average error.
+    // This can further be approximated (by Stirling's formula) as:
+    //   log(1 + e) + constant
+    // given e >> 1, it can further be approximated as log(e); however we don't
+    // use this formula as it is anyway cheap to compute.
+    let block_size = errors.len();
+    let partition_size = (block_size + partitions - 1) / partitions;
+
+    let mut offset = 0;
+    let mut acc = 0;
+    for _p in 0..partitions {
+        let end = std::cmp::min(block_size, offset + partition_size);
+        let partition_len = end - offset;
+        if end >= warmup_len {
+            let sample_count = std::cmp::min(end - warmup_len, partition_len);
+            let sum_errors = find_sum_abs_f32::<16>(&errors[offset..end]);
+            let avg_errors = sum_errors * 2.0 / (sample_count as f32 + 0.00001);
+            let geom_p = 1.0 / (avg_errors + 1.0);
+            let xent = avg_errors.mul_add(-(1.0 - geom_p).log2(), -geom_p.log2());
+            acc += (xent * sample_count as f32) as usize;
+        }
+        offset = end;
+    }
+    acc
+}
+
+/// Selects the best LPC order from error signals and encode `Residual`.
+fn select_order_and_encode_residual<'a, I>(
+    order_sel: &config::OrderSel,
+    prc_config: &config::Prc,
+    errors: I,
+    bits_per_sample: usize,
+    baseline_bits: usize,
+) -> Option<(usize, Residual)>
+where
+    I: Iterator<Item = (usize, &'a [i32])>,
+{
+    let max_rice_p = prc_config.max_parameter;
+    match *order_sel {
+        config::OrderSel::BitCount => errors
+            .map(
+                #[inline]
+                |(order, err)| {
+                    let prc_p = rice::find_partitioned_rice_parameter(err, order, max_rice_p);
+                    let bits = bits_per_sample * order + prc_p.code_bits;
+                    (order, err, prc_p, bits)
+                },
+            )
+            .min_by_key(|(_order, _err, _prc_p, bits)| *bits)
+            .and_then(
+                #[inline]
+                |(order, err, prc_p, bits)| {
+                    (bits < baseline_bits).then(
+                        #[inline]
+                        || {
+                            (
+                                order,
+                                encode_residual_with_prc_parameter(prc_config, err, order, prc_p),
+                            )
+                        },
+                    )
+                },
+            ),
+        config::OrderSel::ApproxEnt { partitions } => errors
+            .map(
+                #[inline]
+                |(order, err)| {
+                    (
+                        order,
+                        err,
+                        estimate_entropy(err, order, partitions) + bits_per_sample * order,
+                    )
+                },
+            )
+            .min_by_key(
+                #[inline]
+                |(_order, _err, bits)| *bits,
+            )
+            .and_then(
+                #[inline]
+                |(order, err, bits)| {
+                    (bits < baseline_bits).then(|| (order, encode_residual(prc_config, err, order)))
+                },
+            ),
+    }
+}
+
 /// Tries `0..=4`-th order fixed LPC and returns the smallest `SubFrame`.
 ///
 /// # Panics
@@ -201,7 +293,7 @@ fn reset_fixed_lpc_errors(errors: &mut FixedLpcErrors, signal: &[i32]) {
 /// The current implementation may cause overflow error if `bits_per_sample` is
 /// larger than 29. Therefore, it panics when `bits_per_sample` is larger than
 /// this.
-#[allow(clippy::needless_range_loop)] // plan to truncate the loop.
+#[inline]
 fn fixed_lpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
@@ -213,27 +305,19 @@ fn fixed_lpc(
 
     reuse!(FIXED_LPC_ERRORS, |errors: &mut FixedLpcErrors| {
         reset_fixed_lpc_errors(errors, signal);
-        let mut minimizer = None;
-        let mut min_bits = baseline_bits;
-        for order in 0..=max_order {
-            let prc_p = rice::find_partitioned_rice_parameter(
-                errors[order].as_ref(),
-                order,
-                config.prc.max_parameter,
-            );
-            let bits = bits_per_sample as usize * order + prc_p.code_bits;
-            if bits < min_bits {
-                min_bits = bits;
-                minimizer = Some((order, prc_p));
-            }
-        }
-        minimizer.map(|(order, prc_p)| {
-            let residual = encode_residual_with_prc_parameter(
-                &config.prc,
-                errors[order].as_ref(),
-                order,
-                prc_p,
-            );
+        let errors = errors
+            .iter()
+            .map(SimdVec::as_ref)
+            .take(max_order + 1)
+            .enumerate();
+        select_order_and_encode_residual(
+            &config.fixed.order_sel,
+            &config.prc,
+            errors,
+            bits_per_sample as usize,
+            baseline_bits,
+        )
+        .map(|(order, residual)| {
             FixedLpc::new(&signal[..order], residual, bits_per_sample as usize).into()
         })
     })
@@ -716,6 +800,68 @@ mod tests {
 
         assert_eq!(frame.decode(), vec![0; block_size]);
     }
+
+    #[test]
+    fn order_selector_bitcount() {
+        let block_size = 256;
+        let bits_per_sample = 16;
+        let prc_config = config::Prc::default();
+        let errors = vec![
+            vec![255i32; block_size],
+            vec![256i32; block_size],
+            vec![128i32; block_size],
+        ];
+        let select_result = select_order_and_encode_residual(
+            &config::OrderSel::BitCount,
+            &prc_config,
+            errors.iter().map(AsRef::as_ref).enumerate(),
+            bits_per_sample,
+            usize::MAX,
+        );
+        let (selected_order, residual) =
+            select_result.expect("should be `Some` because baseline_bits == usize::MAX.");
+        residual.verify().expect("should return a valid residual.");
+
+        assert_eq!(selected_order, 0);
+        let selected_count = residual.count_bits() + selected_order * bits_per_sample;
+
+        for (order, err) in errors.iter().enumerate() {
+            let ref_residual = encode_residual(&prc_config, err, order);
+            let ref_count = ref_residual.count_bits() + bits_per_sample * order;
+            assert!(
+                ref_count >= selected_count,
+                "should select the error sequence that minimizes the bit count."
+            );
+            if order == selected_order {
+                assert!(ref_residual.decode() == residual.decode());
+            }
+        }
+    }
+
+    #[test]
+    fn order_selector_approxent() {
+        let block_size = 256;
+        let bits_per_sample = 16;
+        let prc_config = config::Prc::default();
+        let errors = vec![
+            vec![255i32; block_size],
+            vec![256i32; block_size],
+            vec![128i32; block_size],
+            vec![127i32; block_size],
+        ];
+        let select_result = select_order_and_encode_residual(
+            &config::OrderSel::ApproxEnt { partitions: 32 },
+            &prc_config,
+            errors.iter().map(AsRef::as_ref).enumerate(),
+            bits_per_sample,
+            usize::MAX,
+        );
+        let (selected_order, residual) =
+            select_result.expect("should be `Some` because baseline_bits == usize::MAX.");
+        residual.verify().expect("should return a valid residual.");
+
+        assert_eq!(selected_order, 2);
+    }
 }
 
 #[cfg(all(test, feature = "simd-nightly"))]
@@ -787,16 +933,24 @@ mod bench {
         });
     }
 
-    #[bench]
-    fn fixed_size_frame_encoder_pure_sine(b: &mut Bencher) {
-        let cfg = &config::Encoder::default();
+    fn bench_stereo_frame_encoder_impl<S: Signal>(
+        b: &mut Bencher,
+        signal: &S,
+        use_constant: bool,
+        use_fixed: bool,
+        use_lpc: bool,
+    ) {
+        let mut cfg = config::Encoder::default();
+        cfg.subframe_coding.use_constant = use_constant;
+        cfg.subframe_coding.use_fixed = use_fixed;
+        cfg.subframe_coding.use_lpc = use_lpc;
         let stream_info = StreamInfo::new(48000, 2, 16);
         let mut fb = FrameBuf::with_size(2, 4096);
-        let signal = sigen::Sine::new(200, 0.4).to_vec_quantized(16, 4096 * 2);
+        let signal = signal.to_vec_quantized(16, 4096 * 2);
         fb.fill_interleaved(&signal).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
-                black_box(cfg),
+                black_box(&cfg),
                 black_box(&fb),
                 black_box(123usize),
                 &stream_info,
@@ -805,22 +959,35 @@ mod bench {
     }
 
     #[bench]
-    fn fixed_size_frame_encoder_noisy_sine(b: &mut Bencher) {
-        let cfg = &config::Encoder::default();
-        let stream_info = StreamInfo::new(48000, 2, 16);
-        let mut fb = FrameBuf::with_size(2, 4096);
-        let signal = sigen::Sine::new(200, 0.4)
-            .noise(0.4)
-            .to_vec_quantized(16, 4096 * 2);
-        fb.fill_interleaved(&signal).unwrap();
-        b.iter(|| {
-            encode_fixed_size_frame(
-                black_box(cfg),
-                black_box(&fb),
-                black_box(123usize),
-                &stream_info,
-            )
-        });
+    fn stereo_frame_encoder_pure_sine_fixed(b: &mut Bencher) {
+        bench_stereo_frame_encoder_impl(b, &sigen::Sine::new(200, 0.4), false, true, false);
+    }
+
+    #[bench]
+    fn stereo_frame_encoder_pure_sine_lpc(b: &mut Bencher) {
+        bench_stereo_frame_encoder_impl(b, &sigen::Sine::new(200, 0.4), false, false, true);
+    }
+
+    #[bench]
+    fn stereo_frame_encoder_noisy_sine_fixed(b: &mut Bencher) {
+        bench_stereo_frame_encoder_impl(
+            b,
+            &sigen::Sine::new(200, 0.4).noise(0.4),
+            false,
+            true,
+            false,
+        );
+    }
+
+    #[bench]
+    fn stereo_frame_encoder_noisy_sine_lpc(b: &mut Bencher) {
+        bench_stereo_frame_encoder_impl(
+            b,
+            &sigen::Sine::new(200, 0.4).noise(0.4),
+            false,
+            false,
+            true,
+        );
     }
 
     #[bench]
