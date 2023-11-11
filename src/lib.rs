@@ -158,9 +158,12 @@ pub use coding::encode_with_fixed_block_size;
 #[cfg(test)]
 mod tests {
     // end-to-end, but transparent test.
+    #[cfg(feature = "serde")]
     use super::*;
+    #[cfg(feature = "serde")]
     use rstest::rstest;
 
+    #[allow(dead_code)] // only used when `cfg(feature = "serde")`.
     const FIXED_BLOCK_CONFIGS: [&str; 5] = [
         "",
         r"
@@ -180,6 +183,7 @@ multithread = false
         ",
     ];
 
+    #[cfg(feature = "serde")]
     #[rstest]
     fn e2e_with_generated_sinusoids(
         #[values(1, 2, 3, 5, 8)] channels: usize,
