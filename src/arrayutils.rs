@@ -249,6 +249,7 @@ pub fn le_bytes_to_i32s(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize)
 ///
 /// NOTE: Currenty, this function is not used in "flacenc-bin", and therefore
 /// this might be slow.
+#[allow(dead_code)] // only used in unittests with `cfg(features = "serde")`.
 pub fn i32s_to_le_bytes(ints: &[i32], dest: &mut [u8], bytes_per_sample: usize) {
     let mut n = 0;
     for v in ints {

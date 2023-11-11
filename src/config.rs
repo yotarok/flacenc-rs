@@ -48,7 +48,9 @@
 
 use std::num::NonZeroUsize;
 
+#[cfg(feature = "serde")]
 use serde::Deserialize;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
 use super::constant::qlpc::DEFAULT_ORDER as QLPC_DEFAULT_ORDER;
@@ -63,8 +65,9 @@ use super::error::Verify;
 use super::error::VerifyError;
 
 /// Configuration for encoder.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Encoder {
     /// The possible block sizes encoder can use. (default: `[4096]`)
@@ -136,8 +139,9 @@ impl Verify for Encoder {
 }
 
 /// Configuration for stereo coding algorithms.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct StereoCoding {
     /// If set to false, left-side coding will not be used. (default: `true`)
@@ -165,8 +169,9 @@ impl Verify for StereoCoding {
 }
 
 /// Configuration for sub-frame (individual channel) coding.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct SubFrameCoding {
     // Disabling verbatim coding is intentionally prohibited.
@@ -203,8 +208,9 @@ impl Verify for SubFrameCoding {
 }
 
 /// Configuration for partitioned-rice coding (PRC).
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Prc {
     /// Max value for the parameter of rice coding.
@@ -232,8 +238,9 @@ impl Verify for Prc {
 }
 
 /// Configuration for quantized linear-predictive coding (QLPC).
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(default)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Qlpc {
     /// LPC order. (default: [`QLPC_DEFAULT_ORDER`])
@@ -316,8 +323,9 @@ impl Verify for Qlpc {
 ///
 /// The current default value for [`Window`] is "Tukey" with alpha =
 /// [`DEFAULT_TUKEY_ALPHA`].
-#[derive(Clone, Debug, Deserialize, PartialEq, PartialOrd, Serialize)]
-#[serde(tag = "type")]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
 #[non_exhaustive]
 pub enum Window {
     /// [Rectangular] window.
@@ -363,9 +371,14 @@ impl Verify for Window {
 
 #[cfg(test)]
 mod tests {
+    // Currently, nothing done if `not(feature = "serde")` but this module is
+    // kept as it is as a placeholder.
+    #[cfg(feature = "serde")]
     use super::super::error::Verify;
+    #[cfg(feature = "serde")]
     use super::*;
 
+    #[cfg(feature = "serde")]
     #[test]
     fn serialization() -> Result<(), toml::ser::Error> {
         let config = Encoder::default();
@@ -373,6 +386,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn deserialization() {
         let src = "
@@ -395,6 +409,7 @@ lpc_order = 7
         assert!(config.subframe_coding.use_lpc);
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn if_empty_source_yields_default_config() {
         let empty_src = "";
@@ -407,6 +422,7 @@ lpc_order = 7
         assert_eq!(toml::to_string(&config), toml::to_string(&default_config));
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn deserialize_and_verify() {
         let src = "

@@ -16,11 +16,13 @@ repository = "https://github.com/yotarok/flacenc-rs/"
 debug = 1
 
 [features]
-default = ["par", "log"]
+default = ["log", "par", "serde"]
+
 experimental = ["dep:nalgebra"]
 log = ["dep:log"]
-par = ["dep:crossbeam-channel"]
 mimalloc = ["dep:mimalloc"]
+par = ["dep:crossbeam-channel"]
+serde = ["dep:serde"]
 simd-nightly = []
 
 [dependencies]
@@ -34,7 +36,7 @@ nalgebra = { version = "0.32", optional = true }
 num-traits = "0.2"
 rustversion = "1.0"
 seq-macro = "0.3"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
 
 [dev-dependencies]
 bitvec = "1.0.0"
