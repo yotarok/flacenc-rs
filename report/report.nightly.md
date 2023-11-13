@@ -3,34 +3,32 @@
 
 ## Summary
 
-Sources used: wikimedia.i_love_you_california, wikimedia.winter_kiss, wikimedia.jazz_funk_no1_sax
+Sources used: wikimedia.i_love_you_california, wikimedia.jazz_funk_no1_sax, wikimedia.suite_en_fa_op_33_1, wikimedia.winter_kiss
 
 ### Average compression rate
 
   - Reference
-    - opt8lax: 0.5359108109154693
-    - opt8: 0.5359108109154693
-    - opt5: 0.5438954957635126
+    - opt8lax: 0.5256092104541924
+    - opt8: 0.5256092104541924
+    - opt5: 0.5327653441525432
 
   - Ours
-    - default: 0.5443052357800366
-    - mt1: 0.5443052357800366
-    - st: 0.5443052357800366
-    - dmse: 0.5418910269181569
-    - mae: 0.5374571118440491
+    - default: 0.5413519208382899
+    - mt1: 0.5413519208382899
+    - st: 0.5413519208382899
+    - experimental: 0.5398551105759429
 
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 263.8673204228453
-    - opt8: 263.22699757021246
-    - opt5: 496.9572917184555
+    - opt8lax: 263.7421221928728
+    - opt8: 266.8910843762809
+    - opt5: 583.8969460869705
 
   - Ours
-    - default: 1354.5903579312721
-    - mt1: 407.42927252464585
-    - st: 372.33742533949857
-    - dmse: 307.7748729413138
-    - mae: 41.5844585089485
+    - default: 1204.9443865707233
+    - mt1: 354.7129108691414
+    - st: 349.2871368420375
+    - experimental: 381.2203032166346
 
 
