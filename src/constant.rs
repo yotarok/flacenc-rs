@@ -28,10 +28,10 @@ mod built {
 }
 
 /// Minimum length of a block supported.
-pub const MIN_BLOCKSIZE: usize = 64;
+pub const MIN_BLOCK_SIZE: usize = 64;
 
 /// Maximum length of a block supported (65535 in the specification.)
-pub const MAX_BLOCKSIZE: usize = 32767;
+pub const MAX_BLOCK_SIZE: usize = 32767;
 
 /// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;

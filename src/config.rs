@@ -61,9 +61,9 @@ use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_PRECISION as QLPC_MAX_PRECISION;
 use super::constant::rice::MAX_RICE_PARAMETER;
 use super::constant::DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS;
-use super::constant::MAX_BLOCKSIZE;
+use super::constant::MAX_BLOCK_SIZE;
 use super::constant::MAX_ENTROPY_ESTIMATOR_PARTITIONS;
-use super::constant::MIN_BLOCKSIZE;
+use super::constant::MIN_BLOCK_SIZE;
 use super::error::verify_range;
 use super::error::verify_true;
 use super::error::Verify;
@@ -119,7 +119,7 @@ impl Verify for Encoder {
         )?;
 
         for (i, &bs) in self.block_sizes.iter().enumerate() {
-            verify_range!("block_sizes[{i}]", bs, MIN_BLOCKSIZE..=MAX_BLOCKSIZE)?;
+            verify_range!("block_sizes[{i}]", bs, MIN_BLOCK_SIZE..=MAX_BLOCK_SIZE)?;
         }
 
         self.stereo_coding
