@@ -34,8 +34,8 @@ use super::config;
 use super::constant::fixed::MAX_LPC_ORDER as MAX_FIXED_LPC_ORDER;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
-use super::constant::MAX_BLOCKSIZE;
-use super::constant::MIN_BLOCKSIZE;
+use super::constant::MAX_BLOCK_SIZE;
+use super::constant::MIN_BLOCK_SIZE;
 use super::error::EncodeError;
 use super::error::VerifyError;
 use super::lpc;
@@ -570,17 +570,17 @@ pub fn encode_fixed_size_frame(
     stream_info: &StreamInfo,
 ) -> Result<Frame, EncodeError> {
     let block_size = framebuf.size();
-    if block_size < MIN_BLOCKSIZE {
+    if block_size < MIN_BLOCK_SIZE {
         return Err(VerifyError::new(
             "input.framebuf.size",
-            &format!("must be greater than or equal to {MIN_BLOCKSIZE}"),
+            &format!("must be greater than or equal to {MIN_BLOCK_SIZE}"),
         )
         .into());
     }
-    if block_size > MAX_BLOCKSIZE {
+    if block_size > MAX_BLOCK_SIZE {
         return Err(VerifyError::new(
             "input.framebuf.size",
-            &format!("must be lesser than or equal to {MAX_BLOCKSIZE}"),
+            &format!("must be lesser than or equal to {MAX_BLOCK_SIZE}"),
         )
         .into());
     }
