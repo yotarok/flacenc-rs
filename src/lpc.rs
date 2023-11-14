@@ -545,7 +545,7 @@ impl LpcEstimator {
             &mut ret,
         );
         for &v in &ret {
-            assert!(v.is_normal() || v == 0.0);
+            assert!(v.is_normal() || v.is_subnormal() || v == 0.0);
         }
         ret
     }
