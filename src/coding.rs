@@ -862,6 +862,40 @@ mod tests {
 
         assert_eq!(selected_order, 2);
     }
+
+    // The block comment below is left intentionally for future when we found
+    // another fuzz test failure.
+    /*
+    #[test]
+    fn encode_failed_fuzz_pattern_1() {
+        let signals = vec![
+            sigen::Sine::with_initial_phase(21893, 0.92941177, 5.8396664),
+            sigen::Sine::with_initial_phase(21892, 0.92941177, 5.8396664),
+        ];
+        let block_size = 23556;
+        let channel_count = 2;
+        let bits_per_sample = 8;
+        let mut config = config::Encoder::default();
+        let stream_info = crate::component::StreamInfo::new(8000, channel_count, bits_per_sample);
+        config.subframe_coding.qlpc.window = config::Window::Tukey { alpha: 0.8 };
+
+        let sample_count = channel_count * block_size;
+        let mut buffer = vec![0i32; sample_count];
+        for (ch, sig) in signals.iter().enumerate() {
+            for (t, x) in sig
+                .to_vec_quantized(bits_per_sample, block_size)
+                .into_iter()
+                .enumerate()
+            {
+                buffer[t * channel_count + ch] = x;
+            }
+        }
+
+        let mut fb = FrameBuf::with_size(channel_count, block_size);
+        fb.fill_interleaved(&buffer).unwrap();
+        encode_fixed_size_frame(&config, &fb, 0, &stream_info).expect("should be ok");
+    }
+    */
 }
 
 #[cfg(all(test, feature = "simd-nightly"))]
