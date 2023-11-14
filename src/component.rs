@@ -30,10 +30,10 @@ use super::constant::qlpc::MAX_PRECISION as MAX_LPC_PRECISION;
 use super::constant::qlpc::MAX_SHIFT as MAX_LPC_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as MIN_LPC_SHIFT;
 use super::constant::MAX_BITS_PER_SAMPLE;
-use super::constant::MAX_BLOCKSIZE;
+use super::constant::MAX_BLOCK_SIZE;
 use super::constant::MAX_CHANNELS;
 use super::constant::MIN_BITS_PER_SAMPLE;
-use super::constant::MIN_BLOCKSIZE;
+use super::constant::MIN_BLOCK_SIZE;
 use super::error::verify_range;
 use super::error::verify_true;
 use super::error::OutputError;
@@ -179,7 +179,7 @@ const fn block_size_spec(block_size: u16) -> (u8, u16, usize) {
 // Some (internal) utility macros for value verification.
 macro_rules! verify_block_size {
     ($varname:literal, $size:expr) => {
-        verify_range!($varname, $size, MIN_BLOCKSIZE..=MAX_BLOCKSIZE)
+        verify_range!($varname, $size, MIN_BLOCK_SIZE..=MAX_BLOCK_SIZE)
     };
 }
 macro_rules! verify_bps {
