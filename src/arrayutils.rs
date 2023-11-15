@@ -220,6 +220,48 @@ fn le_bytes_to_i32s_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
     }
 }
 
+#[cfg(feature = "simd-nightly")]
+const LE16_BYTES_TO_I32S_LANES: usize = 16;
+
+/// 16-bit specialized SIMD version of `le_bytes_to_i32s`.
+#[cfg(feature = "simd-nightly")]
+fn le16_bytes_to_i32s(bytes: &[u8], dest: &mut [i32]) {
+    let (head, body, foot) = slice_as_simd::<u8, { LE16_BYTES_TO_I32S_LANES * 2 }>(bytes);
+    if head.len() % 2 != 0 {
+        // falls back to the default implementation if buffer is not aligned
+        // to a 2-byte boundary.
+        return le_bytes_to_i32s_impl::<2>(bytes, dest);
+    }
+
+    let mut off = 0;
+    let mut n = 0;
+    while n < head.len() {
+        dest[off] = (i32::from(head[n + 1] as i8) << 8) | i32::from(head[n]);
+        n += 2;
+        off += 1;
+    }
+    for v in body {
+        let first: simd::Simd<u8, LE16_BYTES_TO_I32S_LANES> =
+            simd::Simd::from_slice(&v[..LE16_BYTES_TO_I32S_LANES]);
+        let last: simd::Simd<u8, LE16_BYTES_TO_I32S_LANES> =
+            simd::Simd::from_slice(&v[LE16_BYTES_TO_I32S_LANES..]);
+        let (evens, odds) = first.deinterleave(last);
+        let evens = evens.cast::<u16>();
+        let odds = odds.cast::<u16>() << simd::Simd::splat(8u16);
+        let ints = (evens | odds).cast::<i16>();
+        dest[off..off + LE16_BYTES_TO_I32S_LANES].copy_from_slice(ints.cast().as_array());
+        off += LE16_BYTES_TO_I32S_LANES;
+    }
+
+    debug_assert!(foot.len() % 2 == 0);
+    let mut n = 0;
+    while n < foot.len() {
+        dest[off] = (i32::from(foot[n + 1] as i8) << 8) | i32::from(foot[n]);
+        n += 2;
+        off += 1;
+    }
+}
+
 /// Converts a byte-sequence of little-endian integers to integers (i32).
 ///
 /// NOTE: This can also be done in a zero-copy manner by introducing a wrapper
@@ -233,7 +275,14 @@ fn le_bytes_to_i32s_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
 /// does not have enough elements to store the results.
 pub fn le_bytes_to_i32s(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize) {
     if bytes_per_sample == 2 {
-        le_bytes_to_i32s_impl::<2>(bytes, dest);
+        #[cfg(feature = "simd-nightly")]
+        {
+            le16_bytes_to_i32s(bytes, dest);
+        }
+        #[cfg(not(feature = "simd-nightly"))]
+        {
+            le_bytes_to_i32s_impl::<2>(bytes, dest);
+        }
     } else if bytes_per_sample == 1 {
         le_bytes_to_i32s_impl::<1>(bytes, dest);
     } else if bytes_per_sample == 3 {
@@ -565,6 +614,11 @@ where
 mod tests {
     use super::*;
 
+    #[cfg(feature = "simd-nightly")]
+    use rand::distributions::Distribution;
+    #[cfg(feature = "simd-nightly")]
+    use rand::distributions::Uniform;
+
     #[test]
     fn do_deinterleave() {
         let interleaved = [0, 0, -1, -2, 1, 2, -3, 6];
@@ -613,6 +667,31 @@ mod tests {
         let mut dest = [0i32; 4];
         le_bytes_to_i32s(&bytes, &mut dest, 3);
         assert_eq!(dest, [0x12_3456, 0x13_579B, -1, 0x24_68AC]);
+    }
+
+    #[cfg(feature = "simd-nightly")]
+    #[test]
+    fn convert_le16_bytes_to_ints() {
+        let mut rng = rand::thread_rng();
+        let samples = 64;
+        let mut bytes = vec![];
+
+        for _t in 0..(samples * 2) {
+            let b = Uniform::from(0..=u8::MAX).sample(&mut rng);
+            bytes.push(b);
+        }
+
+        let mut reference = vec![0i32; samples];
+        let mut test = vec![0i32; samples];
+        le_bytes_to_i32s_impl::<2>(&bytes, &mut reference);
+        le16_bytes_to_i32s(&bytes, &mut test);
+        assert_eq!(test, reference);
+
+        let mut reference = vec![0i32; samples];
+        let mut test = vec![0i32; samples];
+        le_bytes_to_i32s(&bytes[1..samples * 2 - 1], &mut reference, 2);
+        le16_bytes_to_i32s(&bytes[1..samples * 2 - 1], &mut test);
+        assert_eq!(test, reference);
     }
 
     #[test]
@@ -783,5 +862,28 @@ mod bench {
         let mut dest = vec![0i32; 4096 * 2];
 
         b.iter(|| deinterleave_ch2(black_box(&src), black_box(4096), black_box(&mut dest)));
+    }
+
+    #[bench]
+    fn le16_to_i32s(b: &mut Bencher) {
+        let mut src = Vec::new();
+        for _n in 0..64 {
+            src.extend(0u8..=255u8);
+        }
+        let mut dest = vec![0i32; 4096 * 2];
+
+        b.iter(|| le_bytes_to_i32s(black_box(&src), black_box(&mut dest), 2));
+    }
+
+    #[bench]
+    fn le16_to_i32s_nonaligned(b: &mut Bencher) {
+        let mut src = Vec::new();
+        for _n in 0..64 {
+            src.extend(0u8..=255u8);
+        }
+        let mut dest = vec![0i32; 4096 * 2];
+
+        let src_off = &src[1..src.len() - 1];
+        b.iter(|| le_bytes_to_i32s(black_box(src_off), black_box(&mut dest), 2));
     }
 }
