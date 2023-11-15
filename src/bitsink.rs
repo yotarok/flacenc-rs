@@ -490,15 +490,16 @@ impl<S: Bits> MemSink<S> {
     /// ```
     pub fn write_to_byte_slice(&self, dest: &mut [u8]) {
         let destlen = dest.len();
+        let bytes_per_elem = std::mem::size_of::<S>();
         let mut head = 0;
-        'outer: for v in &self.storage {
-            for b in v.to_be_bytes().as_ref() {
-                if head >= destlen {
-                    break 'outer;
-                }
-                dest[head] = *b;
-                head += 1;
+        for v in &self.storage {
+            if head + bytes_per_elem <= destlen {
+                dest[head..head + bytes_per_elem].copy_from_slice(v.to_be_bytes().as_ref());
+            } else {
+                let rem = destlen - head;
+                dest[head..].copy_from_slice(&v.to_be_bytes().as_ref()[..rem]);
             }
+            head += bytes_per_elem;
         }
     }
 }
@@ -966,5 +967,27 @@ mod tests {
         );
         assert_eq!(sink.len(), 73);
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "simd-nightly"))]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    use test::bench::Bencher;
+    use test::black_box;
+
+    #[bench]
+    fn u64sink_to_byte(b: &mut Bencher) {
+        let mut bytes = [0u8; 8191];
+        let mut memsink = MemSink::<u64>::new();
+        for t in 0..8191 {
+            memsink
+                .write_bytes_aligned(&[(t % 256) as u8])
+                .expect("should never fail.");
+        }
+        b.iter(|| black_box(&mut memsink).write_to_byte_slice(&mut bytes));
     }
 }
