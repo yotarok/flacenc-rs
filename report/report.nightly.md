@@ -21,14 +21,14 @@ Sources used: wikimedia.i_love_you_california, wikimedia.jazz_funk_no1_sax, wiki
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 266.99253578559166
-    - opt8: 267.7517996294806
-    - opt5: 578.8041743608593
+    - opt8lax: 268.9119066040362
+    - opt8: 269.65129474781776
+    - opt5: 568.0399893231154
 
   - Ours
-    - default: 1596.3252663198816
-    - mt1: 418.85964064588626
-    - st: 391.47582884223806
-    - experimental: 352.58514571795985
+    - default: 1634.5488020454466
+    - mt1: 415.68459146423004
+    - st: 393.1578424301777
+    - experimental: 347.4999014593536
 
 

@@ -182,8 +182,79 @@ fn deinterleave_ch1(interleaved: &[i32], _channel_stride: usize, dest: &mut [i32
     dest[0..n].copy_from_slice(&interleaved[0..n]);
 }
 
+#[cfg(feature = "simd-nightly")]
+const DEINTERLEAVE_CH2_SIMD_LANES: usize = 16;
+
+#[cfg(feature = "simd-nightly")]
+fn deinterleave_ch2_simd(interleaved: &[i32], channel_stride: usize, dest: &mut [i32]) {
+    let n = std::cmp::min(dest.len(), interleaved.len());
+    debug_assert!(
+        n % 2 == 0,
+        "input length (interleaved.len={}, n={}) must be a multiple of the channel count (2).",
+        interleaved.len(),
+        n
+    );
+    let (head, body, foot) =
+        slice_as_simd::<i32, { DEINTERLEAVE_CH2_SIMD_LANES * 2 }>(&interleaved[0..n]);
+    let mut ch_offset = 0;
+    let mut t = 0;
+
+    for chunk in head.chunks(2) {
+        dest[t] = chunk[0];
+        if chunk.len() == 2 {
+            dest[channel_stride + t] = chunk[1];
+            t += 1;
+        } else {
+            ch_offset = 1;
+        }
+    }
+
+    // assuming DEINTERLEAVE_CH2_SIMD_LANES % 2 == 0
+    for v in body {
+        let first: simd::Simd<i32, DEINTERLEAVE_CH2_SIMD_LANES> =
+            simd::Simd::from_slice(&v[..DEINTERLEAVE_CH2_SIMD_LANES]);
+        let last: simd::Simd<i32, DEINTERLEAVE_CH2_SIMD_LANES> =
+            simd::Simd::from_slice(&v[DEINTERLEAVE_CH2_SIMD_LANES..]);
+
+        let (even, odd) = first.deinterleave(last);
+        if ch_offset == 0 {
+            dest[t..t + DEINTERLEAVE_CH2_SIMD_LANES].copy_from_slice(even.as_array());
+            dest[channel_stride + t..channel_stride + t + DEINTERLEAVE_CH2_SIMD_LANES]
+                .copy_from_slice(odd.as_array());
+        } else {
+            #[allow(clippy::range_plus_one)]
+            dest[(t + 1)..(t + DEINTERLEAVE_CH2_SIMD_LANES + 1)].copy_from_slice(odd.as_array());
+            dest[channel_stride + t..channel_stride + t + DEINTERLEAVE_CH2_SIMD_LANES]
+                .copy_from_slice(even.as_array());
+        }
+        t += DEINTERLEAVE_CH2_SIMD_LANES;
+    }
+
+    if ch_offset == 1 {
+        // Accessing `foot[0]` should not fail if n is even.
+        dest[channel_stride + t] = foot[0];
+        t += 1;
+    }
+
+    for chunk in foot[ch_offset..].chunks(2) {
+        if chunk.len() == 2 {
+            dest[t] = chunk[0];
+            dest[channel_stride + t] = chunk[1];
+            t += 1;
+        }
+    }
+    dest[t..channel_stride].fill(0i32);
+    dest[channel_stride + t..].fill(0i32);
+}
+
 /// Deinterleaves channel interleaved samples to the channel-major order.
 pub fn deinterleave(interleaved: &[i32], channels: usize, channel_stride: usize, dest: &mut [i32]) {
+    #[cfg(feature = "simd-nightly")]
+    {
+        if channels == 2 {
+            return deinterleave_ch2_simd(interleaved, channel_stride, dest);
+        }
+    }
     seq!(CH in 1..=8 {
         if channels == CH {
             return deinterleave_ch~CH(interleaved, channel_stride, dest);
@@ -694,6 +765,36 @@ mod tests {
         assert_eq!(test, reference);
     }
 
+    #[cfg(feature = "simd-nightly")]
+    #[test]
+    fn deinterleave_ch2_simd_version() {
+        let mut rng = rand::thread_rng();
+        let samples = 8192;
+        let mut interleaved = vec![];
+
+        for _t in 0..(samples * 2) {
+            interleaved
+                .push(Uniform::from(i32::from(i16::MIN)..=i32::from(i16::MAX)).sample(&mut rng));
+        }
+
+        let mut test = vec![0i32; samples];
+        let mut reference = vec![0i32; samples];
+        deinterleave_ch2(&interleaved, samples / 2, &mut reference);
+        deinterleave_ch2_simd(&interleaved, samples / 2, &mut test);
+        assert_eq!(test, reference);
+
+        // off-aligned
+        let mut test = vec![0i32; samples - 2];
+        let mut reference = vec![0i32; samples - 2];
+        deinterleave_ch2(
+            &interleaved[1..samples - 1],
+            samples / 2 - 1,
+            &mut reference,
+        );
+        deinterleave_ch2_simd(&interleaved[1..samples - 1], samples / 2 - 1, &mut test);
+        assert_eq!(test, reference);
+    }
+
     #[test]
     fn constant_detector() {
         let signal = vec![5; 64];
@@ -862,6 +963,15 @@ mod bench {
         let mut dest = vec![0i32; 4096 * 2];
 
         b.iter(|| deinterleave_ch2(black_box(&src), black_box(4096), black_box(&mut dest)));
+    }
+
+    #[bench]
+    fn deinterleave_ch2_simd_version(b: &mut Bencher) {
+        let mut src = Vec::new();
+        src.extend(0i32..(4096i32 * 2));
+        let mut dest = vec![0i32; 4096 * 2];
+
+        b.iter(|| deinterleave_ch2_simd(black_box(&src), black_box(4096), black_box(&mut dest)));
     }
 
     #[bench]
