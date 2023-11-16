@@ -68,9 +68,12 @@ fn fingerprint_window(w: &Window) -> u64 {
     }
 }
 
+/// A struct used for indexing window cache.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct WindowKey {
+    /// Size of the window cache.
     size: usize,
+    /// A fingerprint computed from window-specific hyper-parameters.
     fingerprint: u64,
 }
 
