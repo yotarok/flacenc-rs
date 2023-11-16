@@ -277,9 +277,9 @@ fn weighted_auto_correlation_simd<F, const N: usize>(
     let mut lagged = simd::Simd::<f32, N>::splat(0f32);
     let mut acc = simd::Simd::<f32, N>::splat(0f32);
     for tau in 0..(order - 1) {
-        lagged[tau] = signal[order - 2 - tau];
+        lagged[tau] = signal[signal.len() - tau - 1];
     }
-    for t in (order - 1)..signal.len() {
+    for t in 0..signal.len() {
         let w = weight_fn(t);
         let y = signal[t];
         lagged = lagged.rotate_lanes_right::<1>();
