@@ -355,8 +355,9 @@ fn estimated_qlpc(
     signal: &[i32],
     bits_per_sample: u8,
 ) -> SubFrame {
-    let lpc_order = config.qlpc.lpc_order;
     let lpc_coefs = perform_qlpc(config, signal);
+    // order must be taken from coefs because it may be truncated.
+    let lpc_order = lpc_coefs.len();
     let qlpc = lpc::quantize_parameters(&lpc_coefs[0..lpc_order], config.qlpc.quant_precision);
     let residual = reuse!(QLPC_ERROR_BUFFER, |errors: &mut Vec<i32>| {
         errors.resize(signal.len(), 0i32);

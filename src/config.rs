@@ -284,6 +284,8 @@ pub struct Qlpc {
     /// This is for an encoder with `experimental` feature. In
     /// non-`experimental` encoders, this setting is simply ignored.
     pub mae_optimization_steps: usize,
+    /// If set, use a heuristic algorithm to truncate the LPC order before quantization.
+    pub use_prequant_truncation: bool,
     /// Window function to be used for LPC estimation.
     pub window: Window,
 }
@@ -296,6 +298,7 @@ impl Default for Qlpc {
             use_direct_mse: false,
             mae_optimization_steps: 0,
             window: Window::default(),
+            use_prequant_truncation: true,
         }
     }
 }

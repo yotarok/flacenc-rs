@@ -385,6 +385,102 @@ fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
     }
 }
 
+struct SymmetricLevinsonRecursion<'a> {
+    solution: Vec<f32>,
+    forward: Vec<f32>,
+    forward_next: Vec<f32>,
+    current_order: usize,
+    // inputs
+    toeplitz_coefs: &'a [f32],
+    targets: &'a [f32],
+}
+
+impl<'a> SymmetricLevinsonRecursion<'a> {
+    pub fn new(toeplitz_coefs: &'a [f32], targets: &'a [f32]) -> Self {
+        let order = targets.len();
+        assert!(toeplitz_coefs.len() >= order);
+
+        Self {
+            solution: vec![0.0f32; order],
+            forward: vec![0.0f32; order],
+            forward_next: vec![0.0f32; order],
+            current_order: 0,
+            toeplitz_coefs,
+            targets,
+        }
+    }
+}
+
+impl<'a> Iterator for SymmetricLevinsonRecursion<'a> {
+    type Item = &'a [f32];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current_order = self.current_order;
+        self.current_order += 1;
+        if current_order == 0 {
+            self.forward[0] = 1.0 / self.toeplitz_coefs[0];
+            self.solution[0] = self.targets[0] / self.toeplitz_coefs[0];
+        } else {
+            let error: f32 = self.toeplitz_coefs[1..=current_order]
+                .iter()
+                .rev()
+                .zip(self.forward.iter())
+                .map(|(x, y)| x * y)
+                .sum();
+            let denom = error.mul_add(-error, 1.0);
+            let (alpha, beta): (f32, f32) = if denom == 0.0 {
+                // TODO: check if this is mathematically sound.  From the definition of
+                //       levinson-recurssion, when error^2 == 1.0, we can only say
+                //       alpha + beta = 1.0, or alpha - beta = 1.0 (depending on sign(error)).
+                //       due to rank deficiency.
+                (1.0, 0.0)
+            } else {
+                let a = 1.0 / denom;
+                (a, -a * error)
+            };
+            for d in 0..=current_order {
+                self.forward_next[d] = alpha.mul_add(self.forward[d], beta * self.forward[current_order - d]);
+            }
+            self.forward.copy_from_slice(&self.forward_next);
+
+            let delta: f32 = self.toeplitz_coefs[1..=current_order]
+                .iter()
+                .rev()
+                .zip(self.solution.iter())
+                .map(|(x, y)| *x * *y)
+                .sum();
+            for d in 0..=current_order {
+                self.solution[d] += (self.targets[current_order] - delta) * self.forward[current_order - d];
+            }
+        }
+        Some(&self.solution[..=current_order])
+    }
+}
+
+pub trait SlrSolution {
+    fn update(&mut self, _solution: &[f32]) -> std::ops::ControlFlow<()> {
+        std::ops::ControlFlow::Continue(())
+    }
+    fn set_final(&mut self, _solution: &[f32]) {
+    }
+}
+
+impl SlrSolution for [f32] {
+    #[inline]
+    fn set_final(&mut self, solution: &[f32]) {
+        assert!(self.len() >= solution.len());
+        self[..solution.len()].copy_from_slice(solution);
+    }
+}
+
+impl<const N: usize> SlrSolution for [f32; N] {
+    #[inline]
+    fn set_final(&mut self, solution: &[f32]) {
+        assert!(self.len() >= solution.len());
+        self[..solution.len()].copy_from_slice(solution);
+    }
+}
+
 /// Solves "y = T x" where T is a Toeplitz matrix with the given coefficients.
 ///
 /// The (i, j)-th element of the Toeplitz matrix "T" is defined by
@@ -397,13 +493,11 @@ fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
 /// the following preconditions are checked.
 /// 1. Signal energy `coefs[0]` is non-negative.
 /// 2. If signal-energy is zero, all `coefs` and `ys` must be zero.
-pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32]) {
-    assert!(dest.len() >= ys.len());
-    assert!(coefs.len() >= ys.len());
+pub fn symmetric_levinson_recursion<T>(coefs: &[f32], ys: &[f32], dest: &mut T) where T: SlrSolution + ?Sized {
+    let order = ys.len();
+    assert!(coefs.len() >= order);
 
-    for p in &mut *dest {
-        *p = 0.0;
-    }
+    let mut solution = vec![0f32; order];
 
     // coefs[0] is energy of the signal, so must be non-negative.
     assert!(coefs[0] >= 0.0);
@@ -414,17 +508,26 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
             .fold(true, |f, &v| f & (v == 0.0));
         assert!(
             allzero,
-            "If signal is digital silence, all coefficients must be zero."
+            "If coefs[0] is zero, all coefficients must be zero."
         );
+
+        for i in 0..order {
+            if dest.update(&solution[0..=i]).is_break() {
+                return;
+            }
+        }
+        dest.set_final(&solution);
         return;
     }
 
-    let order = ys.len();
     let mut forward = vec![0f32; order];
     let mut forward_next = vec![0f32; order];
 
     forward[0] = 1.0 / coefs[0];
-    dest[0] = ys[0] / coefs[0];
+    solution[0] = ys[0] / coefs[0];
+    if dest.update(&solution[..1]).is_break() {
+        return;
+    }
 
     for n in 1..order {
         let error: f32 = coefs[1..=n]
@@ -452,13 +555,17 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
         let delta: f32 = coefs[1..=n]
             .iter()
             .rev()
-            .zip(dest.iter())
+            .zip(solution.iter())
             .map(|(x, y)| *x * *y)
             .sum();
         for d in 0..=n {
-            dest[d] += (ys[n] - delta) * forward[n - d];
+            solution[d] += (ys[n] - delta) * forward[n - d];
+        }
+        if dest.update(&solution[..=n]).is_break() {
+            return;
         }
     }
+    dest.set_final(&solution);
 }
 
 /// Working buffer for (unquantized) LPC estimation.
@@ -545,7 +652,7 @@ impl LpcEstimator {
         symmetric_levinson_recursion(
             &self.corr_coefs[0..lpc_order],
             &self.corr_coefs[1..lpc_order + 1],
-            &mut ret,
+            &mut ret[..],
         );
         for &v in &ret {
             assert!(v.is_normal() || v.is_subnormal() || v == 0.0);
