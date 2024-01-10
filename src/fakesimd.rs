@@ -239,7 +239,7 @@ where
 
     #[allow(clippy::return_self_not_must_use)]
     #[inline]
-    pub fn rotate_lanes_right<const OFFSET: usize>(self) -> Self {
+    pub fn rotate_elements_right<const OFFSET: usize>(self) -> Self {
         Self(array::from_fn(|i| self.0[(i + N - OFFSET) % N]))
     }
 }
@@ -478,4 +478,19 @@ where
     fn default() -> Self {
         Self::splat(T::default())
     }
+}
+
+pub mod prelude {
+    #[allow(unused_imports)]
+    pub use super::SimdFloat;
+    #[allow(unused_imports)]
+    pub use super::SimdInt;
+    #[allow(unused_imports)]
+    pub use super::SimdOrd;
+    #[allow(unused_imports)]
+    pub use super::SimdPartialEq;
+    #[allow(unused_imports)]
+    pub use super::SimdPartialOrd;
+    #[allow(unused_imports)]
+    pub use super::SimdUint;
 }

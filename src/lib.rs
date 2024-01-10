@@ -63,15 +63,7 @@ macro_rules! import_simd {
         use $crate::fakesimd as $modalias;
 
         #[allow(unused_imports)]
-        use simd::SimdInt;
-        #[allow(unused_imports)]
-        use simd::SimdOrd;
-        #[allow(unused_imports)]
-        use simd::SimdPartialEq;
-        #[allow(unused_imports)]
-        use simd::SimdPartialOrd;
-        #[allow(unused_imports)]
-        use simd::SimdUint;
+        use simd::prelude::*;
     };
 }
 

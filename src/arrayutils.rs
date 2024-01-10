@@ -510,7 +510,7 @@ where
         |v| v.abs().cast(),
         std::ops::Add::add,
         std::ops::Add::add,
-        simd::SimdFloat::reduce_sum,
+        SimdFloat::reduce_sum,
         0.0,
     )
 }
@@ -525,8 +525,8 @@ where
         i32::unsigned_abs,
         |v| v.abs().cast(),
         std::cmp::max,
-        simd::SimdOrd::simd_max,
-        simd::SimdUint::reduce_max,
+        SimdOrd::simd_max,
+        SimdUint::reduce_max,
         0,
     )
 }
@@ -571,8 +571,8 @@ where
         #[inline(always)]
         |v| v,
         std::cmp::max,
-        simd::SimdOrd::simd_max,
-        simd::SimdUint::reduce_max,
+        SimdOrd::simd_max,
+        SimdUint::reduce_max,
         0,
     )
 }
@@ -582,7 +582,7 @@ where
 pub fn wrapping_sum<T, const N: usize>(data: &[T]) -> T
 where
     T: simd::SimdElement + num_traits::WrappingAdd + num_traits::Zero,
-    simd::Simd<T, N>: simd::SimdUint<Scalar = T> + std::ops::Add<Output = simd::Simd<T, N>>,
+    simd::Simd<T, N>: SimdUint<Scalar = T> + std::ops::Add<Output = simd::Simd<T, N>>,
     repeat::Count<N>: repeat::Repeat,
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
@@ -596,7 +596,7 @@ where
         |x, y| x.wrapping_add(&y),
         #[inline(always)]
         |v, w| v + w,
-        simd::SimdUint::reduce_sum,
+        SimdUint::reduce_sum,
         T::zero(),
     )
 }
