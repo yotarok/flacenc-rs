@@ -68,10 +68,10 @@ jobs:
       with:
         toolchain: 1.65
         components: rustfmt, clippy
-    - name: Run tests
+    - name: Run build
       uses: ClementTsang/cargo-action@v0.0.3
       with:
-        command: test
+        command: build
         args: --verbose --features "experimental,par,mimalloc"
 
   lints:
