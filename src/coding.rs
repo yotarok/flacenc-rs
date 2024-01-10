@@ -188,7 +188,7 @@ fn reset_fixed_lpc_errors(errors: &mut FixedLpcErrors, signal: &[i32]) {
         errors[next_order].resize(signal.len(), simd::Simd::default());
         for t in 0..errors[order].simd_len() {
             let x = errors[order].as_ref_simd()[t];
-            let mut shifted = x.rotate_lanes_right::<1>();
+            let mut shifted = x.rotate_elements_right::<1>();
             (shifted[0], carry) = (carry, shifted[0]);
             errors[next_order].as_mut_simd()[t] = x - shifted;
         }
