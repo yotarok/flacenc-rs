@@ -806,7 +806,7 @@ mod tests {
         let block_size = 256;
         let bits_per_sample = 16;
         let prc_config = config::Prc::default();
-        let errors = vec![
+        let errors = [
             vec![255i32; block_size],
             vec![256i32; block_size],
             vec![128i32; block_size],
@@ -843,7 +843,7 @@ mod tests {
         let block_size = 256;
         let bits_per_sample = 16;
         let prc_config = config::Prc::default();
-        let errors = vec![
+        let errors = [
             vec![255i32; block_size],
             vec![256i32; block_size],
             vec![128i32; block_size],
