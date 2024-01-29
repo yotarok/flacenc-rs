@@ -867,6 +867,80 @@ impl StreamInfo {
     pub fn set_md5_digest(&mut self, digest: &[u8; 16]) {
         self.md5.copy_from_slice(digest);
     }
+
+    /// Resets `min_block_size` and `max_block_size` fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns error when `min_value` or `max_value` is not a valid block size, or when
+    /// `min_value > max_value`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::*;
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
+    /// info.set_block_sizes(128, 1024).unwrap();
+    /// assert_eq!(info.min_block_size(), 128);
+    /// assert_eq!(info.max_block_size(), 1024);
+    /// ```
+    pub fn set_block_sizes(
+        &mut self,
+        min_value: usize,
+        max_value: usize,
+    ) -> Result<(), VerifyError> {
+        self.min_block_size = min_value
+            .try_into()
+            .map_err(|_| VerifyError::new("min_block_size", "must be a valid block size."))?;
+        self.max_block_size = max_value
+            .try_into()
+            .map_err(|_| VerifyError::new("max_block_size", "must be a valid block size."))?;
+        verify_block_size!("min_block_size", self.min_block_size as usize)?;
+        verify_block_size!("max_block_size", self.max_block_size as usize)?;
+        verify_true!(
+            "min_block_size",
+            self.min_block_size <= self.max_block_size,
+            "must be smaller than `max_block_size`"
+        )?;
+        Ok(())
+    }
+
+    /// Resets `min_frame_size` and `max_frame_size` fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns error when `min_value` or `max_value` is not 32-bit representable, or when
+    /// `min_value > max_value`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::*;
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
+    /// info.set_frame_sizes(128, 2048).unwrap();
+    /// assert_eq!(info.min_frame_size(), 128);
+    /// assert_eq!(info.max_frame_size(), 2048);
+    /// ```
+    pub fn set_frame_sizes(
+        &mut self,
+        min_value: usize,
+        max_value: usize,
+    ) -> Result<(), VerifyError> {
+        self.min_frame_size = min_value
+            .try_into()
+            .map_err(|_| VerifyError::new("min_frame_size", "must be a 32-bit integer."))?;
+        self.max_frame_size = max_value
+            .try_into()
+            .map_err(|_| VerifyError::new("min_frame_size", "must be a 32-bit integer."))?;
+        verify_true!(
+            "min_frame_size",
+            self.min_frame_size <= self.max_frame_size,
+            "must be smaller than `max_frame_size`"
+        )?;
+        Ok(())
+    }
 }
 
 impl BitRepr for StreamInfo {
