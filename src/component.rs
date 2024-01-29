@@ -356,6 +356,9 @@ impl Stream {
                 )
             })
             .map_err(|e| e.within("header").within(&format!("frames[{i}]")))?;
+            frame
+                .verify()
+                .map_err(|e| e.within(&format!("frames[{i}]")))?;
             current = current.wrapping_add(frame.header.block_size.into());
         }
         Ok(())
@@ -378,6 +381,9 @@ impl Stream {
                 )
             })
             .map_err(|e| e.within("header").within(&format!("frames[{i}]")))?;
+            frame
+                .verify()
+                .map_err(|e| e.within(&format!("frames[{i}]")))?;
             current = current.wrapping_add(1);
         }
         Ok(())
@@ -2240,6 +2246,17 @@ impl Verify for Residual {
             "quotients and remainders must have the same number of elements"
         )?;
         verify_block_size!("quotients.len", self.quotients.len())?;
+
+        verify_true!(
+            "quotients.len",
+            self.quotients.len() == self.block_size,
+            "must have the same length as the block size"
+        )?;
+        verify_true!(
+            "remainders.len",
+            self.remainders.len() == self.block_size,
+            "must have the same length as the block size"
+        )?;
         for t in 0..self.warmup_length {
             verify_true!(
                 "quotients[{t}]",
