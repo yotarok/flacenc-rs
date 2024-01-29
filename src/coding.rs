@@ -560,7 +560,7 @@ fn encode_frame(
 ///
 /// let mut source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
 /// let mut fb = FrameBuf::with_size(channels, block_size);
-/// let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample);
+/// let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample).unwrap();
 /// assert!(source.read_samples(block_size, &mut fb).is_ok());
 ///
 /// let frame = encode_fixed_size_frame(
@@ -663,7 +663,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
             return par::encode_with_fixed_block_size(config, src, block_size);
         }
     }
-    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
+    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
     let mut framebuf_and_context = (
         FrameBuf::with_size(src.channels(), block_size),
         Context::new(src.bits_per_sample(), src.channels(), block_size),
@@ -798,7 +798,7 @@ mod tests {
         let block_size = 64;
         let bits_per_sample = 8;
         let sample_rate = 88200;
-        let stream_info = StreamInfo::new(sample_rate, channel_count, bits_per_sample);
+        let stream_info = StreamInfo::new(sample_rate, channel_count, bits_per_sample).unwrap();
         let mut fb = FrameBuf::with_size(channel_count, block_size);
         fb.fill_interleaved(&vec![0; block_size]).unwrap();
         let frame =
@@ -960,7 +960,7 @@ mod bench {
     #[bench]
     fn fixed_size_frame_encoder_zero(b: &mut Bencher) {
         let cfg = &config::Encoder::default();
-        let stream_info = StreamInfo::new(44100, 2, 16);
+        let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let mut fb = FrameBuf::with_size(2, 4096);
         // input is always zero, so it should use Constant and fast.
         fb.fill_interleaved(&[0i32; 4096 * 2]).unwrap();
@@ -985,7 +985,7 @@ mod bench {
         cfg.subframe_coding.use_constant = use_constant;
         cfg.subframe_coding.use_fixed = use_fixed;
         cfg.subframe_coding.use_lpc = use_lpc;
-        let stream_info = StreamInfo::new(48000, 2, 16);
+        let stream_info = StreamInfo::new(48000, 2, 16).unwrap();
         let mut fb = FrameBuf::with_size(2, 4096);
         let signal = signal.to_vec_quantized(16, 4096 * 2);
         fb.fill_interleaved(&signal).unwrap();
