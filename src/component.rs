@@ -1626,7 +1626,45 @@ pub struct Constant {
 }
 
 impl Constant {
-    pub(crate) const fn new(block_size: usize, dc_offset: i32, bits_per_sample: u8) -> Self {
+    /// Constructs new `Constant`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let subframe = Constant::new(1024, 3, 16)?;
+    /// let mut sink = ByteSink::new();
+    /// subframe.write(&mut sink)?;
+    /// assert_eq!(sink.as_slice(), [
+    ///     0x00, /* tag */
+    ///     0x00, 0x03,  /* 16bits written from MSB to LSB */
+    /// ]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(
+        block_size: usize,
+        dc_offset: i32,
+        bits_per_sample: usize,
+    ) -> Result<Self, VerifyError> {
+        verify_block_size!("block_size", block_size)?;
+        verify_bps!("bits_per_sample", bits_per_sample)?;
+        verify_sample_range!("dc_offset", dc_offset, bits_per_sample)?;
+        Ok(Self::from_parts(
+            block_size,
+            dc_offset,
+            bits_per_sample as u8,
+        ))
+    }
+
+    /// Constructs new `Constant`. (unverified version)
+    pub(crate) fn from_parts(block_size: usize, dc_offset: i32, bits_per_sample: u8) -> Self {
         Self {
             block_size,
             dc_offset,
@@ -1692,6 +1730,40 @@ pub struct Verbatim {
 }
 
 impl Verbatim {
+    /// Constructs new `Verbatim`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let subframe = Verbatim::new(&[0xAB; 64], 16)?;
+    /// let mut sink = ByteSink::new();
+    /// subframe.write(&mut sink)?;
+    /// assert_eq!(sink.as_slice()[0], 0x02); /* tag */
+    /// for t in 0..64 {
+    ///     assert_eq!(
+    ///         sink.as_slice()[(1 + t * 2)..][..2],
+    ///         [0x00, 0xAB]
+    ///     );
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(samples: &[i32], bits_per_sample: usize) -> Result<Self, VerifyError> {
+        verify_bps!("bits_per_sample", bits_per_sample)?;
+        for v in samples {
+            verify_sample_range!("samples", *v, bits_per_sample)?;
+        }
+        Ok(Self::from_samples(samples, bits_per_sample as u8))
+    }
+
+    /// Constructs new `Verbatim`. (unverified version)
     pub(crate) fn from_samples(samples: &[i32], bits_per_sample: u8) -> Self {
         Self {
             data: Vec::from(samples),
@@ -1766,20 +1838,57 @@ pub struct FixedLpc {
 }
 
 impl FixedLpc {
+    /// Constructs new `FixedLpc`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let residual = Residual::new(0, 64, 1, &[8], &[0; 64], &[0; 64])?; // zero
+    /// let subframe = FixedLpc::new(&[0xCDi32], residual, 16)?;
+    /// let mut sink = ByteSink::new();
+    /// subframe.write(&mut sink)?;
+    /// assert_eq!(sink.as_slice()[0], 0x12); /* tag */
+    /// assert_eq!(sink.as_slice()[1..3], [0x00, 0xCD]); /* warmup */
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(
+        warm_up: &[i32],
+        residual: Residual,
+        bits_per_sample: usize,
+    ) -> Result<Self, VerifyError> {
+        verify_bps!("bits_per_sample", bits_per_sample)?;
+        for v in warm_up {
+            verify_sample_range!("warm_up", *v, bits_per_sample)?;
+        }
+        let warm_up = heapless::Vec::from_slice(warm_up)
+            .map_err(|()| VerifyError::new("warm_up", "must be shorter than (or equal to) 4"))?;
+        let ret = Self::from_parts(warm_up, residual, bits_per_sample as u8);
+        Ok(ret)
+    }
+
     /// Creates `FixedLpc`.
     ///
     /// # Panics
     ///
     /// Panics when `warm_up.len()`, i.e. the order of LPC, is larger than the
     /// maximum fixed-LPC order (4).
-    pub(crate) fn new(warm_up: &[i32], residual: Residual, bits_per_sample: usize) -> Self {
-        let warm_up = heapless::Vec::from_slice(warm_up)
-            .expect("Exceeded maximum order for FixedLPC component.");
-
+    pub(crate) fn from_parts(
+        warm_up: heapless::Vec<i32, 4>,
+        residual: Residual,
+        bits_per_sample: u8,
+    ) -> Self {
         Self {
             warm_up,
             residual,
-            bits_per_sample: bits_per_sample as u8,
+            bits_per_sample,
         }
     }
 
@@ -1890,24 +1999,67 @@ pub struct Lpc {
 }
 
 impl Lpc {
+    /// Constructs new `Lpc`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let residual = Residual::new(0, 64, 1, &[8], &[0; 64], &[0; 64])?; // zero
+    /// let p = QuantizedParameters::new(&[1], 1, 0, 7)?; // designed to be 16 bits
+    /// let subframe = Lpc::new(&[0xEFi32], p, residual, 16)?;
+    /// let mut sink = ByteSink::new();
+    /// subframe.write(&mut sink)?;
+    /// assert_eq!(sink.as_slice()[0], 0x40); // tag
+    /// assert_eq!(sink.as_slice()[1..3], [0x00, 0xEF]); // warm-up
+    /// assert_eq!(sink.as_slice()[3..5], [0x60, 0x01]); // warm-up
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(
+        warm_up: &[i32],
+        parameters: QuantizedParameters,
+        residual: Residual,
+        bits_per_sample: usize,
+    ) -> Result<Self, VerifyError> {
+        verify_bps!("bits_per_sample", bits_per_sample)?;
+        for v in warm_up {
+            verify_sample_range!("warm_up", *v, bits_per_sample)?;
+        }
+        let warm_up = heapless::Vec::from_slice(warm_up).map_err(|()| {
+            VerifyError::new(
+                "warm_up",
+                "must be shorter than (or equal to) `qlpc::MAX_ORDER`",
+            )
+        })?;
+        let ret = Self::from_parts(warm_up, parameters, residual, bits_per_sample as u8);
+        ret.verify()?;
+        Ok(ret)
+    }
+
     /// Constructs `Lpc`.
     ///
     /// # Panics
     ///
     /// Panics if the length of `warm_up` is not equal to `parameters.order()`.
-    pub(crate) fn new(
-        warm_up: &[i32],
+    pub(crate) fn from_parts(
+        warm_up: heapless::Vec<i32, MAX_LPC_ORDER>,
         parameters: QuantizedParameters,
         residual: Residual,
-        bits_per_sample: usize,
+        bits_per_sample: u8,
     ) -> Self {
         assert_eq!(warm_up.len(), parameters.order());
-        let warm_up = heapless::Vec::from_slice(warm_up).expect("LPC order exceeded the maximum");
         Self {
-            warm_up,
             parameters,
+            warm_up,
             residual,
-            bits_per_sample: bits_per_sample as u8,
+            bits_per_sample,
         }
     }
 
@@ -2024,6 +2176,39 @@ fn dequantize_parameter(coef: i16, shift: i8) -> f32 {
 }
 
 impl QuantizedParameters {
+    /// Constructs new `QuantizedParameters`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::bitsink::*;
+    /// # use flacenc::component::*;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let p = QuantizedParameters::new(&[1], 1, 0, 7)?;
+    /// assert_eq!(p.coefficient(0), Some(1));
+    /// assert_eq!(p.coefficient(1), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(
+        coefs: &[i16],
+        order: usize,
+        shift: i8,
+        precision: usize,
+    ) -> Result<Self, VerifyError> {
+        let ret = Self::from_parts(coefs, order, shift, precision);
+        // `QuantizedParameter` doesn't have a child component, so calling
+        // `verify` here is not redundant whereas it incurs redundant checks
+        // when the struct has a child component.
+        ret.verify()?;
+        Ok(ret)
+    }
+
+    /// Constructs new `QuantizedParameters` from parts without data verification.
     pub(crate) fn from_parts(coefs: &[i16], order: usize, shift: i8, precision: usize) -> Self {
         debug_assert!(coefs.len() == order);
         let mut coefs_v = simd::i16x32::default();
@@ -2056,7 +2241,7 @@ impl QuantizedParameters {
 
     /// Returns an individual coefficient in quantized form.
     pub fn coefficient(&self, idx: usize) -> Option<i16> {
-        (idx <= self.order()).then(|| self.coefs[idx])
+        (idx < self.order()).then(|| self.coefs[idx])
     }
 
     /// Returns `Vec` containing quantized coefficients.
@@ -2103,23 +2288,30 @@ pub struct Residual {
 }
 
 impl Residual {
-    #[cfg(test)]
-    pub(crate) fn new(
+    /// Constructs `Residual` from loaded encodes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if an argument is invalid.
+    pub fn new(
         partition_order: usize,
         block_size: usize,
         warmup_length: usize,
         rice_params: &[u8],
         quotients: &[u32],
         remainders: &[u32],
-    ) -> Self {
-        Self::from_parts(
+    ) -> Result<Self, VerifyError> {
+        // Some pre-construction verification
+        let ret = Self::from_parts(
             partition_order as u8,
             block_size,
             warmup_length,
             rice_params.to_owned(),
             quotients.to_owned(),
             remainders.to_owned(),
-        )
+        );
+        ret.verify()?;
+        Ok(ret)
     }
 
     /// Constructs `Residual` with consuming parts.
@@ -2565,7 +2757,8 @@ mod tests {
             &params,
             &quotients,
             &remainders,
-        );
+        )
+        .expect("Residual construction failed.");
         residual
             .verify()
             .expect("should construct a valid Residual");
@@ -2622,7 +2815,15 @@ mod bench {
 
     #[bench]
     fn residual_write_to_u64s(b: &mut Bencher) {
-        let residual = Residual::new(8, 4096, 13, &[8u8; 256], &[2u32; 4096], &[0u32; 4096]);
+        let warmup_len = 13;
+        let mut quotients = [2u32; 4096];
+        let mut remainders = [0u32; 4096];
+        for t in 0..warmup_len {
+            quotients[t] = 0u32;
+            remainders[t] = 0u32;
+        }
+        let residual = Residual::new(8, 4096, warmup_len, &[8u8; 256], &quotients, &remainders)
+            .expect("Residual construction failed.");
         let mut sink = MemSink::<u64>::with_capacity(4096 * 2 * 8);
 
         b.iter(|| {
@@ -2633,7 +2834,15 @@ mod bench {
 
     #[bench]
     fn residual_bit_counter(b: &mut Bencher) {
-        let residual = Residual::new(8, 4096, 13, &[8u8; 256], &[2u32; 4096], &[0u32; 4096]);
+        let warmup_len = 13;
+        let mut quotients = [2u32; 4096];
+        let mut remainders = [0u32; 4096];
+        for t in 0..warmup_len {
+            quotients[t] = 0u32;
+            remainders[t] = 0u32;
+        }
+        let residual = Residual::new(8, 4096, warmup_len, &[8u8; 256], &quotients, &remainders)
+            .expect("Residual construction failed.");
 
         b.iter(|| black_box(&residual).count_bits());
     }

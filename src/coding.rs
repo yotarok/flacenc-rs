@@ -318,7 +318,13 @@ fn fixed_lpc(
             baseline_bits,
         )
         .map(|(order, residual)| {
-            FixedLpc::new(&signal[..order], residual, bits_per_sample as usize).into()
+            FixedLpc::from_parts(
+                heapless::Vec::from_slice(&signal[..order])
+                    .expect("Exceeded maximum order for FixedLpc component."),
+                residual,
+                bits_per_sample,
+            )
+            .into()
         })
     })
 }
@@ -363,11 +369,12 @@ fn estimated_qlpc(
         lpc::compute_error(&qlpc, signal, errors);
         encode_residual(&config.prc, errors, qlpc.order())
     });
-    Lpc::new(
-        &signal[0..qlpc.order()],
+    Lpc::from_parts(
+        heapless::Vec::from_slice(&signal[0..qlpc.order()])
+            .expect("LPC order exceeded the maximum"),
         qlpc,
         residual,
-        bits_per_sample as usize,
+        bits_per_sample,
     )
     .into()
 }
@@ -380,7 +387,7 @@ fn encode_subframe(
 ) -> SubFrame {
     if config.use_constant && is_constant(samples) {
         // Assuming constant is always best if it's applicable.
-        Constant::new(samples.len(), samples[0], bits_per_sample).into()
+        Constant::from_parts(samples.len(), samples[0], bits_per_sample).into()
     } else {
         let baseline_bits =
             Verbatim::count_bits_from_metadata(samples.len(), bits_per_sample as usize);
