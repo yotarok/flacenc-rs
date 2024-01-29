@@ -1073,7 +1073,7 @@ impl Frame {
     /// Constructs an empty `Frame`.
     ///
     /// This makes an invalid `Frame`; therefore this shouldn't be "pub" so far.
-    pub(crate) fn new(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
+    pub(crate) fn new_empty(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
         let header = FrameHeader::new(block_size, ch_info, offset);
         Self {
             header,
@@ -1082,14 +1082,40 @@ impl Frame {
         }
     }
 
-    /// Constructs Frame from [`FrameHeader`] and [`SubFrame`]s.
-    pub(crate) fn from_parts<I>(header: FrameHeader, subframes: I) -> Self
+    /// Constructs `Frame` from header and subframes.
+    ///
+    /// # Errors
+    ///
+    /// Emits error if the number of channel specified in `header` does not match
+    /// to the length of `subframes`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let chs = ChannelAssignment::Independent(1);
+    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::B8, 0).unwrap();
+    /// let subframe = Constant::new(192, -1, 8).unwrap();
+    /// let frame = Frame::new(header, [subframe.into()].into_iter()).unwrap();
+    /// ```
+    pub fn new<I>(header: FrameHeader, subframes: I) -> Result<Self, VerifyError>
     where
         I: Iterator<Item = SubFrame>,
     {
+        let subframes: Vec<SubFrame> = subframes.collect();
+        verify_true!(
+            "subframes.len()",
+            header.channel_assignment().channels() == subframes.len(),
+            "must match to the channel specification in the header"
+        )?;
+        Ok(Self::from_parts(header, subframes))
+    }
+
+    /// Constructs Frame from [`FrameHeader`] and [`SubFrame`]s.
+    pub(crate) fn from_parts(header: FrameHeader, subframes: Vec<SubFrame>) -> Self {
         Self {
             header,
-            subframes: subframes.collect(),
+            subframes,
             precomputed_bitstream: None,
         }
     }
@@ -1486,6 +1512,14 @@ impl ChannelAssignment {
             Self::LeftSide => (l, s),
             Self::RightSide => (s, r),
             Self::MidSide => (m, s),
+        }
+    }
+
+    pub(crate) fn channels(&self) -> usize {
+        if let Self::Independent(n) = self {
+            *n as usize
+        } else {
+            2
         }
     }
 }
@@ -2919,7 +2953,7 @@ mod tests {
         let block_size = samples.len() / channels;
         let bits_per_sample: u8 = stream_info.bits_per_sample;
         let ch_info = ChannelAssignment::Independent(channels as u8);
-        let mut frame = Frame::new(ch_info, offset, block_size);
+        let mut frame = Frame::new_empty(ch_info, offset, block_size);
         for ch in 0..channels {
             frame.add_subframe(
                 Verbatim::from_samples(

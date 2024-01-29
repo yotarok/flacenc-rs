@@ -424,7 +424,7 @@ fn encode_frame_impl(
 ) -> Frame {
     let nchannels = stream_info.channels();
     let bits_per_sample = stream_info.bits_per_sample();
-    let mut frame = Frame::new(ch_info.clone(), offset, framebuf.size());
+    let mut frame = Frame::new_empty(ch_info.clone(), offset, framebuf.size());
     for ch in 0..nchannels {
         frame.add_subframe(encode_subframe(
             &config.subframe_coding,
@@ -451,7 +451,7 @@ fn recombine_stereo_frame(header: FrameHeader, indep: Frame, ms: Frame) -> Frame
         .expect(panic_msg::DATA_INCONSISTENT);
 
     let chans = header.channel_assignment().select_channels(l, r, m, s);
-    Frame::from_parts(header, [chans.0, chans.1].into_iter())
+    Frame::from_parts(header, vec![chans.0, chans.1])
 }
 
 reusable!(MSFRAMEBUF: FrameBuf = FrameBuf::with_size(2, 4096));
