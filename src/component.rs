@@ -1444,13 +1444,116 @@ impl Verify for ChannelAssignment {
     }
 }
 
+/// Enum for supported sample sizes.
+///
+/// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
+/// specification for details.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SampleSizeSpec {
+    /// `Unspecified` can be used in `FrameHeader` to instruct decoders to get
+    /// sample size information from `StreamInfo`.
+    Unspecified = 0,
+    /// 8 bits-per-second
+    B8 = 1,
+    /// 12 bits-per-second
+    B12 = 2,
+    /// `tag == 3` is reserved.
+    Reserved = 3,
+    /// 16 bits-per-second
+    B16 = 4,
+    /// 20 bits-per-second
+    B20 = 5,
+    /// 24 bits-per-second
+    B24 = 6,
+    /// 32 bits-per-second
+    B32 = 7,
+}
+
+impl SampleSizeSpec {
+    /// Constructs `SampleSizeSpec` from the tag (an integer in the bitstream).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(SampleSizeSpec::from_tag(4), Some(SampleSizeSpec::B16));
+    /// assert_eq!(SampleSizeSpec::from_tag(8), None);
+    /// ```
+    pub const fn from_tag(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Unspecified),
+            1 => Some(Self::B8),
+            2 => Some(Self::B12),
+            3 => Some(Self::Reserved),
+            4 => Some(Self::B16),
+            5 => Some(Self::B20),
+            6 => Some(Self::B24),
+            7 => Some(Self::B32),
+            _ => None,
+        }
+    }
+
+    /// Returns the tag (an integer in the bitstream) corresponding to `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(SampleSizeSpec::from_tag(4).unwrap().into_tag(), 4);
+    /// ```
+    pub const fn into_tag(self) -> u8 {
+        self as u8
+    }
+
+    /// Constructs `SampleSizeSpec` from the bits-per-sample value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(SampleSizeSpec::from_bits(8), Some(SampleSizeSpec::B8));
+    /// assert_eq!(SampleSizeSpec::from_bits(13), None);
+    /// ```
+    pub const fn from_bits(bits: u8) -> Option<Self> {
+        match bits {
+            8 => Some(Self::B8),
+            12 => Some(Self::B12),
+            16 => Some(Self::B16),
+            20 => Some(Self::B20),
+            24 => Some(Self::B24),
+            32 => Some(Self::B32),
+            _ => None,
+        }
+    }
+
+    /// Returns the bits-per-sample value corresponding to `self`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(SampleSizeSpec::from_bits(8).unwrap().into_bits(), Some(8));
+    /// ```
+    pub const fn into_bits(self) -> Option<u8> {
+        match self {
+            Self::Unspecified | Self::Reserved => None,
+            Self::B8 => Some(8),
+            Self::B12 => Some(12),
+            Self::B16 => Some(16),
+            Self::B20 => Some(20),
+            Self::B24 => Some(24),
+            Self::B32 => Some(32),
+        }
+    }
+}
+
 /// [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header) component.
 #[derive(Clone, Debug)]
 pub struct FrameHeader {
     variable_block_size: bool, // must be same in all frames
     block_size: u16,           // encoded with special function
     channel_assignment: ChannelAssignment,
-    sample_size_spec: u8,     // if set, it must be consistent with StreamInfo
+    sample_size_spec: SampleSizeSpec,
     frame_number: u32,        // written when variable_block_size == false
     start_sample_number: u64, // written when variable_block_size == true
 }
@@ -1465,10 +1568,90 @@ impl FrameHeader {
             variable_block_size: true,
             block_size: block_size as u16,
             channel_assignment,
-            sample_size_spec: 0,
+            sample_size_spec: SampleSizeSpec::Unspecified,
             frame_number: 0,
             start_sample_number: start_sample_number as u64,
         }
+    }
+
+    /// Constructs `FrameHeader` in variable-length mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns error when `block_size` or `start_sample_number` is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::bitsink::*;
+    /// let header = FrameHeader::new_variable_size(
+    ///     192,
+    ///     ChannelAssignment::Independent(1),
+    ///     SampleSizeSpec::B8,
+    /// 123456).unwrap();
+    /// let mut sink = ByteSink::new();
+    /// header.write(&mut sink);
+    /// assert_eq!(&sink.as_slice()[..8], &[
+    ///     0xFF, 0xF9, // sync-code + fixed/var
+    ///     0x10, 0x02, // block size + rate + channel + sample size + reserved
+    ///     0xF0, 0x9E, 0x89, 0x80 // start sample number encoded in utf-8
+    /// ]);
+    /// ```
+    pub fn new_variable_size(
+        block_size: usize,
+        channel_assignment: ChannelAssignment,
+        bits_per_sample: SampleSizeSpec,
+        start_sample_number: usize,
+    ) -> Result<Self, VerifyError> {
+        verify_block_size!("block_size", block_size)?;
+        // TODO: `channel_assignment` is not following the verifocation guideline.
+        //       So, it needs to be checked here.
+        channel_assignment.verify()?;
+        let mut ret = Self::new(block_size, channel_assignment, start_sample_number);
+        ret.sample_size_spec = bits_per_sample;
+        Ok(ret)
+    }
+
+    /// Constructs `FrameHeader` in fixed-length mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns error when `block_size` or `start_sample_number` is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::bitsink::*;
+    /// let header = FrameHeader::new_fixed_size(
+    ///     192,
+    ///     ChannelAssignment::Independent(1),
+    ///     SampleSizeSpec::B8,
+    /// 12345).unwrap();
+    /// let mut sink = ByteSink::new();
+    /// header.write(&mut sink);
+    /// assert_eq!(&sink.as_slice()[..7], &[
+    ///     0xFF, 0xF8, // sync-code + fixed/var
+    ///     0x10, 0x02, // block size + rate + channel + sample size + reserved
+    ///     0xE3, 0x80, 0xB9 // frame number encoded in utf-8
+    /// ]);
+    /// ```
+    pub fn new_fixed_size(
+        block_size: usize,
+        channel_assignment: ChannelAssignment,
+        bits_per_sample: SampleSizeSpec,
+        frame_number: usize,
+    ) -> Result<Self, VerifyError> {
+        verify_block_size!("block_size", block_size)?;
+        verify_range!("frame_number", frame_number, 0..=(u32::MAX as usize))?;
+        // TODO: `channel_assignment` is not following the verifocation guideline.
+        //       So, it needs to be checked here.
+        channel_assignment.verify()?;
+        let mut ret = Self::new(block_size, channel_assignment, 0);
+        ret.sample_size_spec = bits_per_sample;
+        ret.set_frame_number(frame_number as u32);
+        Ok(ret)
     }
 
     /// Clear `variable_block_size` flag, and set `frame_number`.
@@ -1508,16 +1691,8 @@ impl FrameHeader {
     ///
     /// This field must be specified for Claxon compatibility.
     pub(crate) fn reset_sample_size_spec(&mut self, stream_info: &StreamInfo) {
-        let bits = match stream_info.bits_per_sample {
-            8 => 1,
-            12 => 2,
-            16 => 4,
-            20 => 5,
-            24 => 6,
-            32 => 7,
-            _ => 0,
-        };
-        self.sample_size_spec = bits;
+        self.sample_size_spec = SampleSizeSpec::from_bits(stream_info.bits_per_sample)
+            .unwrap_or(SampleSizeSpec::Unspecified);
     }
 
     /// Returns block size.
@@ -1537,6 +1712,10 @@ impl FrameHeader {
     /// ```
     pub fn block_size(&self) -> usize {
         self.block_size as usize
+    }
+
+    pub fn bits_per_sample(&self) -> Option<usize> {
+        self.sample_size_spec.into_bits().map(|x| x as usize)
     }
 
     /// Returns [`ChannelAssignment`] of this frame.
@@ -1597,7 +1776,7 @@ impl BitRepr for FrameHeader {
 
             // sample size specifier + 1-bit reserved (zero)
             header_buffer
-                .write_lsbs(self.sample_size_spec << 1, 4)
+                .write_lsbs(self.sample_size_spec.into_tag() << 1, 4)
                 .unwrap();
 
             if self.variable_block_size {
