@@ -216,15 +216,31 @@ pub struct Stream {
 impl Stream {
     /// Constructs `Stream` with the given meta information.
     ///
+    /// # Errors
+    ///
+    /// Returns error if an input argument is invalid.
+    ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let stream = Stream::new(16000, 1, 16);
+    /// let stream = Stream::new(16000, 1, 16).unwrap();
     /// assert_eq!(stream.stream_info().channels(), 1);
     /// ```
-    pub fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
-        let stream_info = StreamInfo::new(sample_rate, channels, bits_per_sample);
+    pub fn new(
+        sample_rate: usize,
+        channels: usize,
+        bits_per_sample: usize,
+    ) -> Result<Self, VerifyError> {
+        Ok(Self::with_stream_info(StreamInfo::new(
+            sample_rate,
+            channels,
+            bits_per_sample,
+        )?))
+    }
+
+    /// Constructs `Stream` with the given `StreamInfo`.
+    pub(crate) fn with_stream_info(stream_info: StreamInfo) -> Self {
         Self {
             stream_info: MetadataBlock::from_stream_info(stream_info, true),
             metadata: vec![],
@@ -242,7 +258,7 @@ impl Stream {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let stream = Stream::new(16000, 1, 24);
+    /// let stream = Stream::new(16000, 1, 24).unwrap();
     /// assert_eq!(stream.stream_info().bits_per_sample(), 24);
     /// ```
     pub fn stream_info(&self) -> &StreamInfo {
@@ -287,7 +303,7 @@ impl Stream {
     /// let (signal_len, block_size, channels, sample_rate) = (32000, 160, 2, 16000);
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     ///
-    /// let mut stream = Stream::new(16000, 1, 24);
+    /// let mut stream = Stream::new(16000, 1, 24).unwrap();
     /// stream.add_frame(frame);
     /// assert_eq!(stream.frame_count(), 1);
     /// ```
@@ -572,15 +588,23 @@ impl StreamInfo {
     /// -  `total_samples`: `0`,
     /// -  `md5_digest`: `[0u8; 16]` (indicating verification disabled.)
     ///
+    /// # Errors
+    ///
+    /// Returns an error if an input argument is out of range.
+    ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.max_frame_size(), 0);
     /// ```
-    pub fn new(sample_rate: usize, channels: usize, bits_per_sample: usize) -> Self {
-        Self {
+    pub fn new(
+        sample_rate: usize,
+        channels: usize,
+        bits_per_sample: usize,
+    ) -> Result<Self, VerifyError> {
+        let ret = Self {
             min_block_size: u16::MAX,
             max_block_size: 0,
             min_frame_size: u32::MAX,
@@ -590,7 +614,9 @@ impl StreamInfo {
             bits_per_sample: bits_per_sample as u8,
             total_samples: 0,
             md5: [0; 16],
-        }
+        };
+        ret.verify()?;
+        Ok(ret)
     }
 
     /// Updates `StreamInfo` with values from the given Frame.
@@ -607,7 +633,7 @@ impl StreamInfo {
     /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// for n in 0..other_stream.frame_count() {
     ///     info.update_frame_info(other_stream.frame(n).unwrap());
@@ -639,7 +665,7 @@ impl StreamInfo {
     /// # #[path = "doctest_helper.rs"]
     /// # mod doctest_helper;
     /// # use doctest_helper::*;
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
@@ -657,7 +683,7 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// assert_eq!(info.max_frame_size(), 0);
     /// ```
@@ -674,7 +700,7 @@ impl StreamInfo {
     /// # #[path = "doctest_helper.rs"]
     /// # mod doctest_helper;
     /// # use doctest_helper::*;
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
@@ -692,7 +718,7 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// assert_eq!(info.max_block_size(), 0);
     /// ```
@@ -706,7 +732,7 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.sample_rate(), 16000);
     /// ```
     pub fn sample_rate(&self) -> usize {
@@ -719,7 +745,7 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.channels(), 2);
     /// ```
     pub fn channels(&self) -> usize {
@@ -732,7 +758,7 @@ impl StreamInfo {
     ///
     /// ```
     /// # use flacenc::component::*;
-    /// let info = StreamInfo::new(16000, 2, 16);
+    /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.bits_per_sample(), 16);
     /// ```
     pub fn bits_per_sample(&self) -> usize {
@@ -750,7 +776,7 @@ impl StreamInfo {
     /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// for n in 0..other_stream.frame_count() {
     ///     info.update_frame_info(other_stream.frame(n).unwrap());
@@ -781,7 +807,7 @@ impl StreamInfo {
     /// # use flacenc::source::{Context, Fill};
     /// # use flacenc::*;
     /// let mut ctx = Context::new(16, 2, 123);
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     /// ctx.fill_interleaved(&[0x0000_0FFFi32; 246]);
     /// info.set_total_samples(ctx.total_samples());
     /// assert_ne!(info.total_samples(), 246);
@@ -801,7 +827,7 @@ impl StreamInfo {
     /// # use doctest_helper::*;
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let other_stream = make_example_stream(signal_len, block_size, channels, sample_rate);
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     ///
     /// assert_eq!(info.md5_digest(), &[0u8; 16]); // default
     ///
@@ -832,7 +858,7 @@ impl StreamInfo {
     /// # use flacenc::*;
     /// # use flacenc::source::{Context, Fill};
     /// let mut ctx = Context::new(16, 2, 128);
-    /// let mut info = StreamInfo::new(16000, 2, 16);
+    /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.md5_digest(), &[0x00u8; 16]);
     /// ctx.fill_interleaved(&[0x0000_0FFFi32; 256]);
     /// info.set_md5_digest(&ctx.md5_digest());
@@ -874,18 +900,20 @@ impl BitRepr for StreamInfo {
 
 impl Verify for StreamInfo {
     fn verify(&self) -> Result<(), VerifyError> {
-        verify_true!(
-            "min_block_size",
-            self.min_block_size <= self.max_block_size,
-            "must be smaller than `max_block_size`"
-        )?;
-        verify_block_size!("min_block_size", self.min_block_size as usize)?;
-        verify_block_size!("max_block_size", self.max_block_size as usize)?;
-        verify_true!(
-            "min_frame_size",
-            self.min_frame_size <= self.max_frame_size,
-            "must be smaller than `max_frame_size`"
-        )?;
+        if self.total_samples != 0 {
+            verify_true!(
+                "min_block_size",
+                self.min_block_size <= self.max_block_size,
+                "must be smaller than `max_block_size`"
+            )?;
+            verify_block_size!("min_block_size", self.min_block_size as usize)?;
+            verify_block_size!("max_block_size", self.max_block_size as usize)?;
+            verify_true!(
+                "min_frame_size",
+                self.min_frame_size <= self.max_frame_size,
+                "must be smaller than `max_frame_size`"
+            )?;
+        }
         verify_range!("sample_rate", self.sample_rate as usize, ..=96_000)?;
         verify_range!("channels", self.channels as usize, 1..=8)?;
         verify_bps!("bits_per_sample", self.bits_per_sample as usize)
@@ -2564,7 +2592,7 @@ mod tests {
 
     #[test]
     fn write_empty_stream() -> Result<(), OutputError<BitVec<u8>>> {
-        let stream = Stream::new(44100, 2, 16);
+        let stream = Stream::new(44100, 2, 16).unwrap();
         let mut bv: BitVec<u8> = BitVec::new();
         stream.write(&mut bv)?;
         assert_eq!(
@@ -2579,7 +2607,7 @@ mod tests {
 
     #[test]
     fn write_stream_info() -> Result<(), OutputError<BitVec<u8>>> {
-        let stream_info = StreamInfo::new(44100, 2, 16);
+        let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let mut bv: BitVec<u8> = BitVec::new();
         stream_info.write(&mut bv)?;
         assert_eq!(bv.len(), 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128);
@@ -2620,7 +2648,7 @@ mod tests {
         let nchannels: usize = 3;
         let nsamples: usize = 17;
         let bits_per_sample: usize = 16;
-        let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample);
+        let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample).unwrap();
         let framebuf = vec![-1i32; nsamples * nchannels];
         let frame = make_frame(&stream_info, &framebuf, 0);
         let mut bv: BitVec<usize> = BitVec::new();
@@ -2701,7 +2729,7 @@ mod tests {
 
     #[test]
     fn stream_info_update() {
-        let mut stream_info = StreamInfo::new(44100, 2, 16);
+        let mut stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let framebuf = sigen::Dc::new(0.01)
             .noise(0.002)
             .to_vec_quantized(16, 256 * 2);
@@ -2772,7 +2800,7 @@ mod tests {
 
     #[test]
     fn frame_bitstream_precomputataion() -> Result<(), OutputError<BitVec<usize>>> {
-        let stream_info = StreamInfo::new(44100, 2, 16);
+        let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let samples = sigen::Sine::new(128, 0.2)
             .noise(0.1)
             .to_vec_quantized(12, 512);

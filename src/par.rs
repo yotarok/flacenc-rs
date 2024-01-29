@@ -355,7 +355,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
     block_size: usize,
 ) -> Result<Stream, EncodeError> {
     let config = Arc::new(config.clone());
-    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample());
+    let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
     let worker_count = determine_worker_count(&config)?;
     let parbuf = Arc::new(ParFrameBuf::new(
         worker_count * constant::par::FRAMEBUF_MULTIPLICITY,
