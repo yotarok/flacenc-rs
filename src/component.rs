@@ -308,6 +308,35 @@ impl Stream {
         self.frames.push(frame);
     }
 
+    /// Add [`MetadataBlockData`] to this `Stream`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # use flacenc::bitsink::*;
+    /// let mut stream = Stream::new(16000, 1, 24).unwrap();
+    /// stream.add_metadata_block(
+    ///     MetadataBlockData::new_unknown(2, &[0xFF]).unwrap()
+    /// );
+    /// let mut sink = ByteSink::new();
+    /// stream.write(&mut sink);
+    /// let bytes = sink.as_slice();
+    /// let first_header_byte = bytes[4];
+    /// assert_eq!(first_header_byte, 0x00); // lastflag + type (STREAMINFO=0)
+    /// let second_header_byte = bytes[bytes.len() - 5];
+    /// assert_eq!(second_header_byte, 0x82); // lastflag + type (=2)
+    /// ```
+    pub fn add_metadata_block(&mut self, metadata: MetadataBlockData) {
+        let metadata = MetadataBlock::from_parts(true, metadata);
+        if let Some(x) = self.metadata.last_mut() {
+            x.is_last = false;
+        } else {
+            self.stream_info.is_last = false;
+        }
+        self.metadata.push(metadata);
+    }
+
     /// Returns [`Frame`] for the given frame number.
     ///
     /// # Examples
@@ -466,19 +495,19 @@ impl Verify for Stream {
 
 /// [`METADATA_BLOCK`](https://xiph.org/flac/format.html#metadata_block) component.
 #[derive(Clone, Debug)]
-struct MetadataBlock {
-    // METADATA_BLOCK_HEADER
+pub struct MetadataBlock {
     is_last: bool,
-    block_type: MetadataBlockType,
-    // METADATA_BLOCK_DATA
     data: MetadataBlockData,
 }
 
 impl MetadataBlock {
+    pub(crate) const fn from_parts(is_last: bool, data: MetadataBlockData) -> Self {
+        Self { is_last, data }
+    }
+
     const fn from_stream_info(info: StreamInfo, is_last: bool) -> Self {
         Self {
             is_last,
-            block_type: MetadataBlockType::StreamInfo,
             data: MetadataBlockData::StreamInfo(info),
         }
     }
@@ -487,11 +516,13 @@ impl MetadataBlock {
 impl BitRepr for MetadataBlock {
     #[inline]
     fn count_bits(&self) -> usize {
+        // This is a bit tricky, but `self.data.count_bits` doesn't include the
+        // number of bits used for storing typetag.
         32 + self.data.count_bits()
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        let block_type: u8 = self.block_type.into_tag() + if self.is_last { 0x80 } else { 0x00 };
+        let block_type: u8 = self.data.typetag() + if self.is_last { 0x80 } else { 0x00 };
         dest.write(block_type)
             .map_err(OutputError::<S>::from_sink)?;
         let data_size: u32 = (self.data.count_bits() / 8) as u32;
@@ -508,34 +539,6 @@ impl Verify for MetadataBlock {
     }
 }
 
-/// Enum for `BLOCK_TYPE` in `METADATA_BLOCK_HEADER`.
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MetadataBlockType {
-    /// Type specifier for a block containing [`StreamInfo`].
-    StreamInfo,
-    /// Opaque variant for unknown/ unimplemented block types.
-    Unknown(u8),
-}
-
-impl MetadataBlockType {
-    /// Constructs `MetadataBlockType` from a tag (integer in bitstream).
-    pub fn from_tag(value: u8) -> Self {
-        match value {
-            0 => Self::StreamInfo,
-            _ => Self::Unknown(value),
-        }
-    }
-
-    /// Returns a tag (integer in bitstream) corresponding to `self`.
-    pub fn into_tag(self) -> u8 {
-        match self {
-            Self::StreamInfo => 0,
-            Self::Unknown(t) => t,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 /// Enum that covers all variants of `METADATA_BLOCK`.
 ///
@@ -543,13 +546,28 @@ impl MetadataBlockType {
 #[non_exhaustive]
 pub enum MetadataBlockData {
     StreamInfo(StreamInfo),
-    Unknown(Vec<u8>),
+    Unknown { typetag: u8, data: Vec<u8> },
 }
 
 impl MetadataBlockData {
     /// Constructs new `MetadataBlockData::Unknown` from the content (in byte vec).
-    pub fn new_unknown(data: &[u8]) -> Self {
-        Self::Unknown(data.to_owned())
+    ///
+    /// # Errors
+    ///
+    /// Emits errors when `tag` is out of range.
+    pub fn new_unknown(tag: u8, data: &[u8]) -> Result<Self, VerifyError> {
+        verify_range!("tag", tag, 0..=126)?;
+        Ok(Self::Unknown {
+            typetag: tag,
+            data: data.to_owned(),
+        })
+    }
+
+    pub(crate) fn typetag(&self) -> u8 {
+        match self {
+            Self::StreamInfo(_) => 0,
+            Self::Unknown { typetag, .. } => *typetag,
+        }
     }
 }
 
@@ -564,15 +582,15 @@ impl BitRepr for MetadataBlockData {
     fn count_bits(&self) -> usize {
         match self {
             Self::StreamInfo(info) => info.count_bits(),
-            Self::Unknown(buf) => buf.len() * 8,
+            Self::Unknown { data, .. } => data.len() * 8,
         }
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
         match self {
             Self::StreamInfo(info) => info.write(dest)?,
-            Self::Unknown(buf) => {
-                dest.write_bytes_aligned(buf)
+            Self::Unknown { data, .. } => {
+                dest.write_bytes_aligned(data)
                     .map_err(OutputError::<S>::from_sink)?;
             }
         };
@@ -584,7 +602,7 @@ impl Verify for MetadataBlockData {
     fn verify(&self) -> Result<(), VerifyError> {
         match self {
             Self::StreamInfo(info) => info.verify(),
-            Self::Unknown(_buf) => Ok(()),
+            Self::Unknown { .. } => Ok(()),
         }
     }
 }
