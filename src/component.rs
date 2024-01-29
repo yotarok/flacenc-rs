@@ -1400,8 +1400,52 @@ pub enum ChannelAssignment {
 }
 
 impl ChannelAssignment {
+    /// Constructs `ChannelAssignment` from the tag.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(
+    ///     ChannelAssignment::from_tag(5),
+    ///     Some(ChannelAssignment::Independent(6)),
+    /// );
+    /// assert_eq!(
+    ///     ChannelAssignment::from_tag(10),
+    ///     Some(ChannelAssignment::MidSide),
+    /// );
+    /// ```
+    pub const fn from_tag(tag: u8) -> Option<Self> {
+        if tag < 8 {
+            Some(Self::Independent(tag + 1))
+        } else if tag == 8 {
+            Some(Self::LeftSide)
+        } else if tag == 9 {
+            Some(Self::RightSide)
+        } else if tag == 10 {
+            Some(Self::MidSide)
+        } else {
+            None
+        }
+    }
+
     /// Returns the number of extra bit required to store the channel samples.
-    pub(crate) const fn bits_per_sample_offset(&self, ch: usize) -> usize {
+    ///
+    /// "Side" signal (as used in mid-side coding) requires an extra bit for
+    /// storing large values such as `i32::MAX - i32::MIN`. This function maps
+    /// `ChannelAssignment` and channel id `ch` to the number of extra bits
+    /// required (0 or 1).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let rs = ChannelAssignment::RightSide;
+    /// // Ride-side coding stores the side signal in channel-0.
+    /// assert_eq!(rs.bits_per_sample_offset(0), 1);
+    /// assert_eq!(rs.bits_per_sample_offset(1), 0);
+    /// ```
+    pub const fn bits_per_sample_offset(&self, ch: usize) -> usize {
         #[allow(clippy::match_same_arms, clippy::bool_to_int_with_if)]
         match *self {
             Self::Independent(_) => 0,
