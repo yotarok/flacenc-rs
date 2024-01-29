@@ -262,12 +262,10 @@ impl Stream {
     /// assert_eq!(stream.stream_info().bits_per_sample(), 24);
     /// ```
     pub fn stream_info(&self) -> &StreamInfo {
-        // This "allow" is required because `MetadataBlockData` variants other
-        // than `StreamInfo` are not implemented yet.
-        #[allow(unreachable_patterns)]
-        match self.stream_info.data {
-            MetadataBlockData::StreamInfo(ref info) => info,
-            _ => panic!("Stream is not properly initialized."),
+        if let MetadataBlockData::StreamInfo(ref info) = self.stream_info.data {
+            info
+        } else {
+            panic!("Stream is not properly initialized.")
         }
     }
 
@@ -277,12 +275,10 @@ impl Stream {
     ///
     /// Panics if `self` is corrupted by manually modifying fields.
     pub(crate) fn stream_info_mut(&mut self) -> &mut StreamInfo {
-        // This "allow" is required because `MetadataBlockData` variants other
-        // than `StreamInfo` are not implemented yet.
-        #[allow(unreachable_patterns)]
-        match self.stream_info.data {
-            MetadataBlockData::StreamInfo(ref mut info) => info,
-            _ => panic!("Stream is not properly initialized."),
+        if let MetadataBlockData::StreamInfo(ref mut info) = self.stream_info.data {
+            info
+        } else {
+            panic!("Stream is not properly initialized.")
         }
     }
 
@@ -495,7 +491,7 @@ impl BitRepr for MetadataBlock {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        let block_type: u8 = self.block_type as u8 + if self.is_last { 0x80 } else { 0x00 };
+        let block_type: u8 = self.block_type.into_tag() + if self.is_last { 0x80 } else { 0x00 };
         dest.write(block_type)
             .map_err(OutputError::<S>::from_sink)?;
         let data_size: u32 = (self.data.count_bits() / 8) as u32;
@@ -513,20 +509,31 @@ impl Verify for MetadataBlock {
 }
 
 /// Enum for `BLOCK_TYPE` in `METADATA_BLOCK_HEADER`.
-#[allow(dead_code)]
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug)]
-enum MetadataBlockType {
-    StreamInfo = 0,
-    Padding,
-    Application,
-    SeekTable,
-    VorbisComment,
-    CueSheet,
-    Picture,
-    ReservedBegin = 7,
-    ReservedEnd = 126,
-    Invalid = 127,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MetadataBlockType {
+    /// Type specifier for a block containing [`StreamInfo`].
+    StreamInfo,
+    /// Opaque variant for unknown/ unimplemented block types.
+    Unknown(u8),
+}
+
+impl MetadataBlockType {
+    /// Constructs `MetadataBlockType` from a tag (integer in bitstream).
+    pub fn from_tag(value: u8) -> Self {
+        match value {
+            0 => Self::StreamInfo,
+            _ => Self::Unknown(value),
+        }
+    }
+
+    /// Returns a tag (integer in bitstream) corresponding to `self`.
+    pub fn into_tag(self) -> u8 {
+        match self {
+            Self::StreamInfo => 0,
+            Self::Unknown(t) => t,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -534,8 +541,22 @@ enum MetadataBlockType {
 ///
 /// Currently only [`StreamInfo`] is covered in this enum.
 #[non_exhaustive]
-enum MetadataBlockData {
+pub enum MetadataBlockData {
     StreamInfo(StreamInfo),
+    Unknown(Vec<u8>),
+}
+
+impl MetadataBlockData {
+    /// Constructs new `MetadataBlockData::Unknown` from the content (in byte vec).
+    pub fn new_unknown(data: &[u8]) -> Self {
+        Self::Unknown(data.to_owned())
+    }
+}
+
+impl From<StreamInfo> for MetadataBlockData {
+    fn from(value: StreamInfo) -> Self {
+        Self::StreamInfo(value)
+    }
 }
 
 impl BitRepr for MetadataBlockData {
@@ -543,13 +564,18 @@ impl BitRepr for MetadataBlockData {
     fn count_bits(&self) -> usize {
         match self {
             Self::StreamInfo(info) => info.count_bits(),
+            Self::Unknown(buf) => buf.len() * 8,
         }
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
         match self {
             Self::StreamInfo(info) => info.write(dest)?,
-        }
+            Self::Unknown(buf) => {
+                dest.write_bytes_aligned(buf)
+                    .map_err(OutputError::<S>::from_sink)?;
+            }
+        };
         Ok(())
     }
 }
@@ -558,6 +584,7 @@ impl Verify for MetadataBlockData {
     fn verify(&self) -> Result<(), VerifyError> {
         match self {
             Self::StreamInfo(info) => info.verify(),
+            Self::Unknown(_buf) => Ok(()),
         }
     }
 }
