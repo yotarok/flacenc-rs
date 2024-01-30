@@ -578,6 +578,24 @@ impl MetadataBlockData {
             Self::Unknown { typetag, .. } => *typetag,
         }
     }
+
+    /// Obtain inner [`StreamInfo`] if `self` contains `StreamInfo`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let stream_info = StreamInfo::new(16000, 1, 8).unwrap();
+    /// let metadata: MetadataBlockData = stream_info.clone().into();
+    /// assert_eq!(metadata.as_stream_info(), Some(&stream_info));
+    /// ```
+    pub fn as_stream_info(&self) -> Option<&StreamInfo> {
+        if let Self::StreamInfo(ref info) = self {
+            Some(info)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<StreamInfo> for MetadataBlockData {
