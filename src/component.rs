@@ -240,7 +240,16 @@ impl Stream {
     }
 
     /// Constructs `Stream` with the given `StreamInfo`.
-    pub(crate) fn with_stream_info(stream_info: StreamInfo) -> Self {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let stream_info = StreamInfo::new(16000, 1, 16).unwrap();
+    /// let stream = Stream::with_stream_info(stream_info);
+    /// assert_eq!(stream.stream_info().sample_rate(), 16000);
+    /// ```
+    pub fn with_stream_info(stream_info: StreamInfo) -> Self {
         Self {
             stream_info: MetadataBlock::from_stream_info(stream_info, true),
             metadata: vec![],
