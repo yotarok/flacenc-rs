@@ -151,6 +151,18 @@ impl fmt::Display for RangeError {
 ///
 /// This error maintains a path to the component that is actually errorneous
 /// in the nested components.
+///
+/// # Design Notes
+///
+/// Parameter verification should happen on the public API boundary. When a
+/// component (e.g. `FixedLpc`) is constructed via `new` from the outside of
+/// this crate, new primitive parameters for `FixedLpc::new` should be
+/// verified. However, the `Residual` parameter for `new` will not be verified
+/// because it can be assumed to be verified in `Residual::new`, and redundant
+/// verification should be avoided for efficiency. A rule of thumb is that any
+/// argument implements `Verify` given to the public API is assumed to be
+/// verified, and the called function should verify the remaining parameters
+/// and interaction between the provided parameters.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
 pub struct VerifyError {
