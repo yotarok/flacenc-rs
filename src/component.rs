@@ -17,6 +17,11 @@
 use std::cmp::max;
 use std::cmp::min;
 
+#[cfg(feature = "serde")]
+use serde::Deserialize;
+#[cfg(feature = "serde")]
+use serde::Serialize;
+
 use super::arrayutils::find_max;
 use super::arrayutils::wrapping_sum;
 use super::bitsink::BitSink;
@@ -47,6 +52,28 @@ import_simd!(as simd);
 
 const CRC_8_FLAC: crc::Algorithm<u8> = crc::CRC_8_SMBUS;
 const CRC_16_FLAC: crc::Algorithm<u16> = crc::CRC_16_UMTS;
+
+/// Proxy type for serializing/ deserializing `simd::Simd`.
+#[cfg(feature = "serde")]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", serde(remote = "simd::Simd"))]
+pub struct SimdDef<T, const N: usize>(#[serde(getter = "simd::Simd::as_array")] [T; N])
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+    [T; N]: for<'a> Deserialize<'a> + Serialize;
+
+#[cfg(feature = "serde")]
+impl<T, const N: usize> From<SimdDef<T, N>> for simd::Simd<T, N>
+where
+    T: simd::SimdElement,
+    simd::LaneCount<N>: simd::SupportedLaneCount,
+    [T; N]: for<'a> Deserialize<'a> + Serialize,
+{
+    fn from(def: SimdDef<T, N>) -> Self {
+        Self::from_array(def.0)
+    }
+}
 
 /// FLAC components that can be represented in a bit sequence.
 pub trait BitRepr: seal_bit_repr::Sealed {
@@ -207,6 +234,7 @@ macro_rules! verify_sample_range {
 }
 
 /// [`STREAM`](https://xiph.org/flac/format.html#stream) component.
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Stream {
     stream_info: MetadataBlock,
     metadata: Vec<MetadataBlock>,
@@ -504,6 +532,7 @@ impl Verify for Stream {
 
 /// [`METADATA_BLOCK`](https://xiph.org/flac/format.html#metadata_block) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataBlock {
     is_last: bool,
     data: MetadataBlockData,
@@ -549,6 +578,8 @@ impl Verify for MetadataBlock {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type", content = "data"))]
 /// Enum that covers all variants of `METADATA_BLOCK`.
 ///
 /// Currently only [`StreamInfo`] is covered in this enum.
@@ -636,6 +667,7 @@ impl Verify for MetadataBlockData {
 
 /// [`METADATA_BLOCK_STREAM_INFO`](https://xiph.org/flac/format.html#metadata_block_streaminfo) component.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StreamInfo {
     min_block_size: u16, // 16 bits: Minimum block size in samples.
     max_block_size: u16, // 16 bits: Maximum block size in samples.
@@ -1068,6 +1100,7 @@ impl Verify for StreamInfo {
 
 /// [`FRAME`](https://xiph.org/flac/format.html#frame) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Frame {
     header: FrameHeader,
     // this making this `heapless` is inefficient in typical use cases.
@@ -1438,6 +1471,8 @@ impl Decode for Frame {
 
 /// Enum for channel assignment in `FRAME_HEADER`.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type", content = "data"))]
 pub enum ChannelAssignment {
     /// Indicates that the frame contains multiple channels independently.
     ///
@@ -1599,6 +1634,8 @@ impl Verify for ChannelAssignment {
 /// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
 /// specification for details.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
 pub enum SampleSizeSpec {
     /// `Unspecified` can be used in `FrameHeader` to instruct decoders to get
     /// sample size information from `StreamInfo`.
@@ -1699,6 +1736,7 @@ impl SampleSizeSpec {
 
 /// [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FrameHeader {
     variable_block_size: bool, // must be same in all frames
     block_size: u16,           // encoded with special function
@@ -1960,6 +1998,8 @@ impl Verify for FrameHeader {
 /// [`SUBFRAME`](https://xiph.org/flac/format.html#subframe) component.
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
 pub enum SubFrame {
     /// This variant contains [`Constant`] sub-frame.
     Constant(Constant),
@@ -2050,6 +2090,7 @@ impl Decode for SubFrame {
 
 /// [`SUBFRAME_CONSTANT`](https://xiph.org/flac/format.html#subframe_constant) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Constant {
     block_size: usize,
     dc_offset: i32,
@@ -2155,6 +2196,7 @@ impl Decode for Constant {
 
 /// [`SUBFRAME_VERBATIM`](https://xiph.org/flac/format.html#subframe_verbatim) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Verbatim {
     data: Vec<i32>,
     bits_per_sample: u8,
@@ -2262,6 +2304,7 @@ impl Decode for Verbatim {
 
 /// [`SUBFRAME_FIXED`](https://xiph.org/flac/format.html#subframe_fixed) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FixedLpc {
     warm_up: heapless::Vec<i32, 4>,
     residual: Residual,
@@ -2422,6 +2465,7 @@ impl Decode for FixedLpc {
 
 /// [`SUBFRAME_LPC`](https://xiph.org/flac/format.html#subframe_lpc) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Lpc {
     parameters: QuantizedParameters,
     warm_up: heapless::Vec<i32, MAX_LPC_ORDER>,
@@ -2592,7 +2636,9 @@ impl Decode for Lpc {
 
 /// Quantized LPC coefficients.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct QuantizedParameters {
+    #[cfg_attr(feature = "serde", serde(with = "SimdDef"))]
     pub(crate) coefs: simd::i16x32,
     order: usize,
     shift: i8,
@@ -2701,6 +2747,7 @@ impl Verify for QuantizedParameters {
 
 /// [`RESIDUAL`](https://xiph.org/flac/format.html#residual) component.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Residual {
     // TODO: Currently only supports 4-bit parameters
     partition_order: u8,
