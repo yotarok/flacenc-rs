@@ -32,8 +32,8 @@ skip_core_tasks = true
 [env]
 BENCH_FEATURES = "experimental,par,simd-nightly"
 BENCH_RESULTS_TEXT = "report/bench_results.txt"
-CLIPPY_FEATURES_NIGHTLY = "experimental,par,simd-nightly"
-CLIPPY_FEATURES_STABLE = "experimental,par"
+CLIPPY_FEATURES_NIGHTLY = "experimental,par,serde,simd-nightly"
+CLIPPY_FEATURES_STABLE = "experimental,par,serde"
 CLIPPY_FEATURES_BIN_NIGHTLY = "simd-nightly"
 FLAC_VERSION = "1.4.3"
 FLAC_RELEASE_DIR = "https://ftp.osuosl.org/pub/xiph/releases/flac"
