@@ -142,6 +142,7 @@ pub trait SimdUint {
     fn reduce_sum(self) -> Self::Scalar;
 }
 
+#[allow(dead_code)]
 pub trait SimdInt {
     type Scalar;
     type Cast<T: SimdElement>;
@@ -158,6 +159,7 @@ pub trait SimdFloat {
     fn reduce_sum(self) -> Self::Scalar;
 }
 
+#[allow(dead_code)]
 pub trait SimdPartialEq {
     type Mask;
     fn simd_eq(self, other: Self) -> Self::Mask;

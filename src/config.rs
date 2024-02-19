@@ -431,7 +431,6 @@ impl Verify for OrderSel {
 
 #[cfg(test)]
 mod tests {
-    use super::super::error::Verify;
     use super::*;
 
     #[test]

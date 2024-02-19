@@ -155,8 +155,6 @@ mod tests {
     #[cfg(feature = "serde")]
     use super::*;
     #[cfg(feature = "serde")]
-    use crate::sigen;
-    #[cfg(feature = "serde")]
     use crate::sigen::Signal;
     #[cfg(feature = "serde")]
     use rstest::rstest;

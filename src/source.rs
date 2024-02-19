@@ -678,7 +678,6 @@ mod tests {
 #[cfg(all(test, feature = "simd-nightly"))]
 mod bench {
     use super::*;
-    use crate::source::Fill;
 
     extern crate test;
 

@@ -2991,22 +2991,20 @@ impl Decode for Residual {
 }
 
 mod seal_bit_repr {
-    use super::*;
-
     pub trait Sealed {}
-    impl Sealed for Stream {}
-    impl Sealed for MetadataBlock {}
-    impl Sealed for MetadataBlockData {}
-    impl Sealed for StreamInfo {}
-    impl Sealed for Frame {}
-    impl Sealed for FrameHeader {}
-    impl Sealed for ChannelAssignment {}
-    impl Sealed for SubFrame {}
-    impl Sealed for Constant {}
-    impl Sealed for FixedLpc {}
-    impl Sealed for Verbatim {}
-    impl Sealed for Lpc {}
-    impl Sealed for Residual {}
+    impl Sealed for super::Stream {}
+    impl Sealed for super::MetadataBlock {}
+    impl Sealed for super::MetadataBlockData {}
+    impl Sealed for super::StreamInfo {}
+    impl Sealed for super::Frame {}
+    impl Sealed for super::FrameHeader {}
+    impl Sealed for super::ChannelAssignment {}
+    impl Sealed for super::SubFrame {}
+    impl Sealed for super::Constant {}
+    impl Sealed for super::FixedLpc {}
+    impl Sealed for super::Verbatim {}
+    impl Sealed for super::Lpc {}
+    impl Sealed for super::Residual {}
 }
 
 #[cfg(test)]
