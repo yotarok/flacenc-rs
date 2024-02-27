@@ -426,42 +426,44 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
     let order = ys.len();
     let mut forward = vec![0f32; order];
     let mut forward_next = vec![0f32; order];
+    let mut diagonal_loading = 0.0f32;
 
-    forward[0] = 1.0 / coefs[0];
-    dest[0] = ys[0] / coefs[0];
+    // this actually should use a go-to statement.
+    #[allow(clippy::never_loop)]
+    loop {
+        forward[0] = 1.0 / (coefs[0] + diagonal_loading);
+        dest[0] = ys[0] / (coefs[0] + diagonal_loading);
 
-    for n in 1..order {
-        let error: f32 = coefs[1..=n]
-            .iter()
-            .rev()
-            .zip(forward.iter())
-            .map(|(x, y)| x * y)
-            .sum();
-        let denom = error.mul_add(-error, 1.0);
-        let (alpha, beta): (f32, f32) = if denom == 0.0 {
-            // TODO: check if this is mathematically sound.  From the definition of
-            //       levinson-recurssion, when error^2 == 1.0, we can only say
-            //       alpha + beta = 1.0, or alpha - beta = 1.0 (depending on sign(error)).
-            //       due to rank deficiency.
-            (1.0, 0.0)
-        } else {
-            let a = 1.0 / denom;
-            (a, -a * error)
-        };
-        for d in 0..=n {
-            forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);
+        for n in 1..order {
+            let error: f32 = coefs[1..=n]
+                .iter()
+                .rev()
+                .zip(forward.iter())
+                .map(|(x, y)| x * y)
+                .sum();
+            let denom = error.mul_add(-error, 1.0);
+            if denom == 0.0 {
+                diagonal_loading = 1.0f32.max(diagonal_loading * 2.0);
+                continue;
+            }
+            let alpha = 1.0 / denom;
+            let beta = -alpha * error;
+            for d in 0..=n {
+                forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);
+            }
+            forward.copy_from_slice(&forward_next);
+
+            let delta: f32 = coefs[1..=n]
+                .iter()
+                .rev()
+                .zip(dest.iter())
+                .map(|(x, y)| *x * *y)
+                .sum();
+            for d in 0..=n {
+                dest[d] += (ys[n] - delta) * forward[n - d];
+            }
         }
-        forward.copy_from_slice(&forward_next);
-
-        let delta: f32 = coefs[1..=n]
-            .iter()
-            .rev()
-            .zip(dest.iter())
-            .map(|(x, y)| *x * *y)
-            .sum();
-        for d in 0..=n {
-            dest[d] += (ys[n] - delta) * forward[n - d];
-        }
+        break;
     }
 }
 
