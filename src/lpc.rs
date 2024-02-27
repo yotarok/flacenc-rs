@@ -30,6 +30,7 @@ use super::repeat::repeat;
 
 import_simd!(as simd);
 
+/// Precomputes window function given the window config `win`.
 #[inline]
 pub fn window_weights(win: &Window, len: usize) -> Vec<f32> {
     match *win {
@@ -57,6 +58,7 @@ pub fn window_weights(win: &Window, len: usize) -> Vec<f32> {
     }
 }
 
+/// Quantizes and fingerprints the window function for caching.
 fn fingerprint_window(w: &Window) -> u64 {
     match *w {
         Window::Rectangle => 0x01_00_00_00_00_00_00_00u64,
@@ -78,6 +80,7 @@ struct WindowKey {
 }
 
 impl WindowKey {
+    /// Constructs `WindowKey` with given window size and parameters.
     fn new(size: usize, params: &Window) -> Self {
         Self {
             size,
@@ -90,6 +93,7 @@ const QLPC_WIN_SIMD_N: usize = 16;
 type WindowMap = BTreeMap<WindowKey, Rc<SimdVec<f32, QLPC_WIN_SIMD_N>>>;
 reusable!(WINDOW_CACHE: WindowMap);
 
+/// Gets the window function for the given config and size.
 fn get_window(window: &Window, size: usize) -> Rc<SimdVec<f32, QLPC_WIN_SIMD_N>> {
     let key = WindowKey::new(size, window);
     reuse!(WINDOW_CACHE, |caches: &mut WindowMap| {
