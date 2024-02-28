@@ -46,8 +46,6 @@ use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Source;
 
-use num_traits::AsPrimitive;
-
 import_simd!(as simd);
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
@@ -334,7 +332,7 @@ fn fixed_lpc(
 fn perform_qlpc(
     config: &config::SubFrameCoding,
     signal: &[i32],
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     if config.qlpc.use_direct_mse {
         if config.qlpc.mae_optimization_steps > 0 {
             lpc::lpc_with_irls_mae(
@@ -348,9 +346,6 @@ fn perform_qlpc(
         }
     } else {
         lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
-            .into_iter()
-            .map(AsPrimitive::as_)
-            .collect()
     }
 }
 

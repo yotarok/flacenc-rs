@@ -37,15 +37,15 @@ import_simd!(as simd);
 pub trait LpcFloat:
     Float
     + std::ops::AddAssign
+    + std::ops::MulAssign
     + std::iter::Sum
-    + Copy
     + std::fmt::Debug
     + std::fmt::Display
+    + simd::SimdElement
+    + simd::SimdCast
     + From<f32>
     + From<i16>
     + AsPrimitive<i16>
-    + simd::SimdElement
-    + simd::SimdCast
     + AsPrimitive<f32>
 {
     #[cfg(feature = "simd-nightly")]
@@ -55,8 +55,12 @@ pub trait LpcFloat:
         signal: simd::Simd<f32, N>,
     ) where
         simd::LaneCount<N>: simd::SupportedLaneCount;
+
+    #[cfg(feature = "experimental")]
+    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool;
 }
 
+// TODO: Below two implementations are almost identical, seek a way to make it DRY.
 impl LpcFloat for f32 {
     #[inline]
     #[cfg(feature = "simd-nightly")]
@@ -69,7 +73,16 @@ impl LpcFloat for f32 {
     {
         *acc += simd::Simd::splat(weight) * signal;
     }
+
+    #[cfg(feature = "experimental")]
+    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool {
+        mat.clone().cholesky().map_or(false, |decompose| {
+            decompose.solve_mut(v);
+            true
+        })
+    }
 }
+
 impl LpcFloat for f64 {
     #[inline]
     #[cfg(feature = "simd-nightly")]
@@ -81,6 +94,14 @@ impl LpcFloat for f64 {
         simd::LaneCount<N>: simd::SupportedLaneCount,
     {
         *acc += simd::Simd::splat(weight) * signal.cast();
+    }
+
+    #[cfg(feature = "experimental")]
+    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool {
+        mat.clone().cholesky().map_or(false, |decompose| {
+            decompose.solve_mut(v);
+            true
+        })
     }
 }
 
@@ -330,7 +351,10 @@ pub fn auto_correlation<T: LpcFloat>(order: usize, signal: &[f32], dest: &mut [T
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
 #[allow(dead_code)]
-pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>) {
+pub fn delay_sum<T>(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<T>)
+where
+    T: LpcFloat,
+{
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
 
@@ -419,25 +443,26 @@ where
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
-pub fn weighted_delay_sum<F>(
+pub fn weighted_delay_sum<T, F>(
     order: usize,
     signal: &[f32],
-    dest: &mut nalgebra::DMatrix<f32>,
+    dest: &mut nalgebra::DMatrix<T>,
     weight_fn: F,
 ) where
     F: Fn(usize) -> f32,
+    T: LpcFloat,
 {
     assert!(dest.ncols() >= order);
     assert!(dest.nrows() >= order);
 
-    dest.fill(0.0f32);
+    dest.fill(T::zero());
 
     for t in (order - 1)..signal.len() {
         let w = weight_fn(t);
         for i in 0..order {
             for j in i..order {
                 let v = signal[t - i] * signal[t - j] * w;
-                dest[(i, j)] += v;
+                dest[(i, j)] += v.into();
             }
         }
     }
@@ -555,7 +580,7 @@ struct LpcEstimator<T> {
     corr_coefs: Vec<T>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
     #[cfg(feature = "experimental")]
-    delay_sum: nalgebra::DMatrix<f32>,
+    delay_sum: nalgebra::DMatrix<T>,
     /// Weights for IRLS.
     #[cfg(feature = "experimental")]
     weights: Vec<f32>,
@@ -660,7 +685,7 @@ where
         window: &Window,
         lpc_order: usize,
         steps: usize,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    ) -> heapless::Vec<T, MAX_LPC_ORDER> {
         self.weights.clear();
         self.weights.resize(signal.len(), 1.0f32);
         let mut raw_errors = vec![0.0f32; signal.len()];
@@ -697,7 +722,7 @@ where
         window: &Window,
         lpc_order: usize,
         weight_fn: F,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER>
+    ) -> heapless::Vec<T, MAX_LPC_ORDER>
     where
         F: Fn(usize) -> f32,
     {
@@ -706,8 +731,8 @@ where
 
         self.fill_windowed_signal(signal, get_window(window, signal.len()).as_ref_simd());
 
-        self.delay_sum.fill(0.0f32);
-        self.delay_sum.resize_mut(lpc_order, lpc_order, 0.0f32);
+        self.delay_sum.fill(T::zero());
+        self.delay_sum.resize_mut(lpc_order, lpc_order, T::zero());
         weighted_auto_correlation(
             lpc_order + 1,
             self.windowed_signal.as_ref(),
@@ -721,24 +746,18 @@ where
             |t| weight_fn(t + 1),
         );
 
-        let corr_coefs: Vec<f32> = self.corr_coefs.iter().map(|x| x.as_()).collect();
+        let mut xy = nalgebra::DVector::<T>::from(self.corr_coefs[1..].to_vec());
 
-        let mut xy = nalgebra::DVector::<f32>::from(corr_coefs[1..].to_vec());
-
-        let mut regularizer = f32::EPSILON;
-        loop {
-            if let Some(decompose) = self.delay_sum.clone().cholesky() {
-                decompose.solve_mut(&mut xy);
-                break;
-            }
+        let mut regularizer = T::epsilon();
+        while !T::solve_sym_mut(&self.delay_sum, &mut xy) {
             for i in 0..lpc_order {
                 self.delay_sum[(i, i)] += regularizer;
             }
-            regularizer *= 10.0;
+            regularizer *= <T as From<f32>>::from(10.0);
         }
 
         let mut ret = heapless::Vec::new();
-        ret.resize(lpc_order, 0.0)
+        ret.resize(lpc_order, T::zero())
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
         for i in 0..lpc_order {
             ret[i] = xy[i];
@@ -752,7 +771,7 @@ where
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    ) -> heapless::Vec<T, MAX_LPC_ORDER> {
         self.weighted_lpc_with_direct_mse(signal, window, lpc_order, |_t| 1.0f32)
     }
 }
@@ -780,7 +799,7 @@ pub fn lpc_with_direct_mse(
     signal: &[i32],
     window: &Window,
     lpc_order: usize,
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
@@ -794,7 +813,7 @@ pub fn lpc_with_direct_mse(
     _signal: &[i32],
     _window: &Window,
     _lpc_order: usize,
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     unimplemented!("not built with \"experimental\" feature flag.")
 }
 
@@ -806,7 +825,7 @@ pub fn lpc_with_irls_mae(
     window: &Window,
     lpc_order: usize,
     steps: usize,
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
@@ -821,7 +840,7 @@ pub fn lpc_with_irls_mae(
     _window: &Window,
     _lpc_order: usize,
     _steps: usize,
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     unimplemented!("not built with \"experimental\" feature flag.")
 }
 
@@ -1163,7 +1182,7 @@ mod tests {
     fn delay_sum_computation() {
         let signal = vec![4.0, -4.0, 3.0, -3.0, 2.0, -2.0, 1.0, -1.0];
         let mut result = nalgebra::DMatrix::zeros(2, 2);
-        delay_sum(2, &signal, &mut result);
+        delay_sum::<f32>(2, &signal, &mut result);
         eprintln!("{result:?}");
         assert_eq!(
             result[(0, 0)],

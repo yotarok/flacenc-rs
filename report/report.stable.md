@@ -13,22 +13,22 @@ Sources used: wikimedia.i_love_you_california, wikimedia.jazz_funk_no1_sax, wiki
     - opt5: 0.5327653441525432
 
   - Ours
-    - default: 0.5337465985356039
-    - mt1: 0.5337465985356039
-    - st: 0.5337465985356039
-    - experimental: 0.5397919047270185
+    - default: 0.5337451175150131
+    - mt1: 0.5337451175150131
+    - st: 0.5337451175150131
+    - experimental: 0.5341182229762562
 
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 257.4397968610522
-    - opt8: 271.510899146056
-    - opt5: 607.9861997183116
+    - opt8lax: 263.3023896855921
+    - opt8: 270.18574629553854
+    - opt5: 572.7666214688647
 
   - Ours
-    - default: 895.9928891341724
-    - mt1: 175.80962526355137
-    - st: 166.67643949962172
-    - experimental: 333.5738912123335
+    - default: 840.8676360800642
+    - mt1: 151.28175553093172
+    - st: 145.96496704404677
+    - experimental: 265.4066564279058
 
 
