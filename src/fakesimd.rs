@@ -119,6 +119,17 @@ impl SimdElement for f32 {
     }
 }
 
+impl SimdElement for f64 {
+    type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self + rhs
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self - rhs
+    }
+}
+
 pub trait SupportedLaneCount {}
 pub struct LaneCount<const LANES: usize>();
 impl SupportedLaneCount for LaneCount<1> {}
