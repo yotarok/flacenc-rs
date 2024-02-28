@@ -46,6 +46,8 @@ use super::source::Context;
 use super::source::FrameBuf;
 use super::source::Source;
 
+use num_traits::AsPrimitive;
+
 import_simd!(as simd);
 
 /// Computes rice encoding of a scalar (used in `encode_residual`.)
@@ -346,6 +348,9 @@ fn perform_qlpc(
         }
     } else {
         lpc::lpc_from_autocorr(signal, &config.qlpc.window, config.qlpc.lpc_order)
+            .into_iter()
+            .map(AsPrimitive::as_)
+            .collect()
     }
 }
 

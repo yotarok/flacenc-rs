@@ -17,6 +17,9 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use num_traits::AsPrimitive;
+use num_traits::Float;
+
 use super::arrayutils::find_max_abs;
 use super::arrayutils::unaligned_map_and_update;
 use super::arrayutils::SimdVec;
@@ -29,6 +32,57 @@ use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
 use super::repeat::repeat;
 
 import_simd!(as simd);
+
+#[allow(clippy::module_name_repetitions)]
+pub trait LpcFloat:
+    Float
+    + std::ops::AddAssign
+    + std::iter::Sum
+    + Copy
+    + std::fmt::Debug
+    + std::fmt::Display
+    + From<f32>
+    + From<i16>
+    + AsPrimitive<i16>
+    + simd::SimdElement
+    + simd::SimdCast
+    + AsPrimitive<f32>
+{
+    #[cfg(feature = "simd-nightly")]
+    fn accumulate_signal<const N: usize>(
+        acc: &mut simd::Simd<Self, N>,
+        weight: Self,
+        signal: simd::Simd<f32, N>,
+    ) where
+        simd::LaneCount<N>: simd::SupportedLaneCount;
+}
+
+impl LpcFloat for f32 {
+    #[inline]
+    #[cfg(feature = "simd-nightly")]
+    fn accumulate_signal<const N: usize>(
+        acc: &mut simd::Simd<Self, N>,
+        weight: Self,
+        signal: simd::Simd<f32, N>,
+    ) where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        *acc += simd::Simd::splat(weight) * signal;
+    }
+}
+impl LpcFloat for f64 {
+    #[inline]
+    #[cfg(feature = "simd-nightly")]
+    fn accumulate_signal<const N: usize>(
+        acc: &mut simd::Simd<Self, N>,
+        weight: Self,
+        signal: simd::Simd<f32, N>,
+    ) where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        *acc += simd::Simd::splat(weight) * signal.cast();
+    }
+}
 
 /// Precomputes window function given the window config `win`.
 #[inline]
@@ -106,27 +160,44 @@ fn get_window(window: &Window, size: usize) -> Rc<SimdVec<f32, QLPC_WIN_SIMD_N>>
 }
 
 /// Finds shift parameter for quantizing the given set of coefficients.
-fn find_shift(coefs: &[f32], precision: usize) -> i8 {
+fn find_shift<T>(coefs: &[T], precision: usize) -> i8
+where
+    T: LpcFloat,
+{
     assert!(precision <= 15);
     assert!(!coefs.is_empty());
-    let max_abs_coef: f32 = coefs.iter().map(|x| x.abs()).reduce(f32::max).unwrap();
+    let max_abs_coef: T = coefs.iter().map(|x| x.abs()).reduce(T::max).unwrap();
     // location of MSB in binary representations of absolute values.
-    let abs_log2: i16 = max_abs_coef.log2().ceil().max(f32::from(i16::MIN + 16)) as i16;
+    let abs_log2: i16 = max_abs_coef
+        .log2()
+        .ceil()
+        .max(<T as From<i16>>::from(i16::MIN + 16))
+        .as_();
     let shift: i16 = (precision as i16 - 1) - abs_log2;
     shift.clamp(i16::from(QLPC_MIN_SHIFT), i16::from(QLPC_MAX_SHIFT)) as i8
 }
 
 /// Quantizes LPC parameter with the given shift parameter.
 #[inline]
-fn quantize_parameter(p: f32, shift: i8) -> i16 {
-    let scalefac = 2.0f32.powi(i32::from(shift));
-    (p * scalefac)
-        .round()
-        .clamp(f32::from(i16::MIN), f32::from(i16::MAX)) as i16
+fn quantize_parameter<T>(p: T, shift: i8) -> i16
+where
+    T: LpcFloat,
+{
+    let scalefac = <T as From<i16>>::from(2).powi(i32::from(shift));
+    let scaled_int = (p * scalefac).round();
+    num_traits::clamp(
+        scaled_int,
+        <T as From<i16>>::from(i16::MIN),
+        <T as From<i16>>::from(i16::MAX),
+    )
+    .as_()
 }
 
 /// Creates [`QuantizedParameters`] by quantizing the given coefficients.
-pub fn quantize_parameters(coefs: &[f32], precision: usize) -> QuantizedParameters {
+pub fn quantize_parameters<T>(coefs: &[T], precision: usize) -> QuantizedParameters
+where
+    T: LpcFloat,
+{
     if coefs.is_empty() {
         return QuantizedParameters::from_parts(&[], 0, 0, precision);
     }
@@ -248,8 +319,8 @@ pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i3
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[allow(dead_code)]
-pub fn auto_correlation(order: usize, signal: &[f32], dest: &mut [f32]) {
-    weighted_auto_correlation(order, signal, dest, |_t| 1.0f32);
+pub fn auto_correlation<T: LpcFloat>(order: usize, signal: &[f32], dest: &mut [T]) {
+    weighted_auto_correlation(order, signal, dest, |_t| 1.0);
 }
 
 /// Compute delay sum.
@@ -263,15 +334,16 @@ pub fn delay_sum(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<f32>
     weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
 }
 
+#[cfg(feature = "simd-nightly")]
 #[inline]
 #[allow(clippy::needless_range_loop)] // for readability
-#[allow(dead_code)] // not used in "fakesimd" but should still be compilable.
-fn weighted_auto_correlation_simd<F, const N: usize>(
+fn weighted_auto_correlation_simd<T, F, const N: usize>(
     order: usize,
     signal: &[f32],
-    dest: &mut [f32],
+    dest: &mut [T],
     weight_fn: F,
 ) where
+    T: LpcFloat,
     F: Fn(usize) -> f32,
     simd::LaneCount<N>: simd::SupportedLaneCount,
 {
@@ -279,7 +351,7 @@ fn weighted_auto_correlation_simd<F, const N: usize>(
     assert!(order <= N);
 
     let mut lagged = simd::Simd::<f32, N>::splat(0f32);
-    let mut acc = simd::Simd::<f32, N>::splat(0f32);
+    let mut acc = simd::Simd::<T, N>::splat(T::zero());
     for tau in 0..(order - 1) {
         lagged[tau] = signal[order - 2 - tau];
     }
@@ -288,10 +360,10 @@ fn weighted_auto_correlation_simd<F, const N: usize>(
         let y = signal[t];
         lagged = lagged.rotate_elements_right::<1>();
         lagged[0] = y;
-        acc += simd::Simd::<f32, N>::splat(w * y) * lagged;
+        T::accumulate_signal(&mut acc, (w * y).into(), lagged);
     }
     for (tau, mut_p) in dest.iter_mut().enumerate() {
-        *mut_p = if tau < order { acc[tau] } else { 0.0 };
+        *mut_p = if tau < order { acc[tau] } else { T::zero() };
     }
 }
 
@@ -300,8 +372,9 @@ fn weighted_auto_correlation_simd<F, const N: usize>(
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
-pub fn weighted_auto_correlation<F>(order: usize, signal: &[f32], dest: &mut [f32], weight_fn: F)
+pub fn weighted_auto_correlation<T, F>(order: usize, signal: &[f32], dest: &mut [T], weight_fn: F)
 where
+    T: LpcFloat,
     F: Fn(usize) -> f32,
 {
     #[cfg(feature = "simd-nightly")]
@@ -309,31 +382,31 @@ where
         // The current implementation is inefficient with fakesimd when order
         // is low. So, here we still have a scalar version of it.
         if order <= 4 {
-            weighted_auto_correlation_simd::<_, 4>(order, signal, dest, weight_fn);
+            weighted_auto_correlation_simd::<T, _, 4>(order, signal, dest, weight_fn);
         } else if order <= 8 {
-            weighted_auto_correlation_simd::<_, 8>(order, signal, dest, weight_fn);
+            weighted_auto_correlation_simd::<T, _, 8>(order, signal, dest, weight_fn);
         } else if order <= 16 {
-            weighted_auto_correlation_simd::<_, 16>(order, signal, dest, weight_fn);
+            weighted_auto_correlation_simd::<T, _, 16>(order, signal, dest, weight_fn);
         } else if order <= 32 {
-            weighted_auto_correlation_simd::<_, 32>(order, signal, dest, weight_fn);
+            weighted_auto_correlation_simd::<T, _, 32>(order, signal, dest, weight_fn);
         } else {
             assert!(order == 33);
             // this is inefficient because there's only 1 element that doesn't fit
             // to Simd with LANE==32. However, this is so far okay as it is rather
             // rare to use order == 33 (i.e. lpc_order == 32).
-            weighted_auto_correlation_simd::<_, 64>(order, signal, dest, weight_fn);
+            weighted_auto_correlation_simd::<T, _, 64>(order, signal, dest, weight_fn);
         }
     }
     #[cfg(not(feature = "simd-nightly"))]
     {
         assert!(dest.len() >= order);
         for p in &mut *dest {
-            *p = 0.0;
+            *p = T::zero();
         }
         for t in (order - 1)..signal.len() {
             let w = weight_fn(t);
             for tau in 0..order {
-                let v: f32 = signal[t] * signal[t - tau] * w;
+                let v: T = (signal[t] * signal[t - tau] * w).into();
                 dest[tau] += v;
             }
         }
@@ -379,12 +452,16 @@ pub fn weighted_delay_sum<F>(
 ///
 /// This function computes "prediction - signal" in floating-point numbers.
 #[allow(dead_code)] // Used either in experimental or tests of non-experimental.
-fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
+fn compute_raw_errors<T>(signal: &[i32], lpc_coefs: &[T], errors: &mut [f32])
+where
+    T: LpcFloat,
+{
     let lpc_order = lpc_coefs.len();
     for t in lpc_order..signal.len() {
         errors[t] = -signal[t] as f32;
         for j in 0..lpc_order {
-            errors[t] += lpc_coefs[j] * signal[t - 1 - j] as f32;
+            let coef: f32 = lpc_coefs[j].as_();
+            errors[t] += coef * signal[t - 1 - j] as f32;
         }
     }
 }
@@ -401,21 +478,24 @@ fn compute_raw_errors(signal: &[i32], lpc_coefs: &[f32], errors: &mut [f32]) {
 /// the following preconditions are checked.
 /// 1. Signal energy `coefs[0]` is non-negative.
 /// 2. If signal-energy is zero, all `coefs` and `ys` must be zero.
-pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32]) {
+pub fn symmetric_levinson_recursion<T>(coefs: &[T], ys: &[T], dest: &mut [T])
+where
+    T: LpcFloat,
+{
     assert!(dest.len() >= ys.len());
     assert!(coefs.len() >= ys.len());
 
     for p in &mut *dest {
-        *p = 0.0;
+        *p = T::zero();
     }
 
     // coefs[0] is energy of the signal, so must be non-negative.
-    assert!(coefs[0] >= 0.0);
-    if coefs[0] == 0.0 {
+    assert!(coefs[0] >= T::zero());
+    if coefs[0].is_zero() {
         let allzero = ys
             .iter()
             .chain(coefs.iter())
-            .fold(true, |f, &v| f & (v == 0.0));
+            .fold(true, |f, &v| f & v.is_zero());
         assert!(
             allzero,
             "If signal is digital silence, all coefficients must be zero."
@@ -424,36 +504,36 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
     }
 
     let order = ys.len();
-    let mut forward = vec![0f32; order];
-    let mut forward_next = vec![0f32; order];
-    let mut diagonal_loading = 0.0f32;
+    let mut forward = vec![T::zero(); order];
+    let mut forward_next = vec![T::zero(); order];
+    let mut diagonal_loading = T::zero();
 
     // this actually should use a go-to statement.
     #[allow(clippy::never_loop)]
     loop {
-        forward[0] = 1.0 / (coefs[0] + diagonal_loading);
+        forward[0] = (coefs[0] + diagonal_loading).recip();
         dest[0] = ys[0] / (coefs[0] + diagonal_loading);
 
         for n in 1..order {
-            let error: f32 = coefs[1..=n]
+            let error: T = coefs[1..=n]
                 .iter()
                 .rev()
                 .zip(forward.iter())
-                .map(|(x, y)| x * y)
+                .map(|(x, y)| *x * *y)
                 .sum();
-            let denom = error.mul_add(-error, 1.0);
-            if denom == 0.0 {
-                diagonal_loading = 1.0f32.max(diagonal_loading * 2.0);
+            let denom = error.mul_add(-error, T::one());
+            if denom.is_zero() {
+                diagonal_loading = T::one().max(diagonal_loading + diagonal_loading);
                 continue;
             }
-            let alpha = 1.0 / denom;
+            let alpha = denom.recip();
             let beta = -alpha * error;
             for d in 0..=n {
                 forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);
             }
             forward.copy_from_slice(&forward_next);
 
-            let delta: f32 = coefs[1..=n]
+            let delta: T = coefs[1..=n]
                 .iter()
                 .rev()
                 .zip(dest.iter())
@@ -468,11 +548,11 @@ pub fn symmetric_levinson_recursion(coefs: &[f32], ys: &[f32], dest: &mut [f32])
 }
 
 /// Working buffer for (unquantized) LPC estimation.
-struct LpcEstimator {
+struct LpcEstimator<T> {
     /// Buffer for storing windowed signal.
     windowed_signal: SimdVec<f32, QLPC_WIN_SIMD_N>,
     /// Buffer for storing auto-correlation coefficients.
-    corr_coefs: Vec<f32>,
+    corr_coefs: Vec<T>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
     #[cfg(feature = "experimental")]
     delay_sum: nalgebra::DMatrix<f32>,
@@ -483,7 +563,10 @@ struct LpcEstimator {
 
 reusable!(CAST_BUFFER: SimdVec<i32, QLPC_WIN_SIMD_N> = SimdVec::new());
 
-impl LpcEstimator {
+impl<T> LpcEstimator<T>
+where
+    T: LpcFloat,
+{
     pub fn new() -> Self {
         Self {
             windowed_signal: SimdVec::new(),
@@ -515,6 +598,7 @@ impl LpcEstimator {
         });
     }
 
+    /// Performs weighted LPC via auto-correlation coefficients.
     #[allow(clippy::range_plus_one)]
     pub fn weighted_lpc_from_auto_corr<F>(
         &mut self,
@@ -522,7 +606,7 @@ impl LpcEstimator {
         window: &Window,
         lpc_order: usize,
         weight_fn: F,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER>
+    ) -> heapless::Vec<T, MAX_LPC_ORDER>
     where
         F: Fn(usize) -> f32,
     {
@@ -530,10 +614,10 @@ impl LpcEstimator {
         if lpc_order == 0 {
             return ret;
         }
-        ret.resize(lpc_order, 0.0)
+        ret.resize(lpc_order, T::zero())
             .expect("INTERNAL ERROR: lpc_order specified exceeded max.");
-        self.corr_coefs.resize(lpc_order + 1, 0.0);
-        self.corr_coefs.fill(0f32);
+        self.corr_coefs.resize(lpc_order + 1, T::zero());
+        self.corr_coefs.fill(T::zero());
         self.fill_windowed_signal(signal, get_window(window, signal.len()).as_ref_simd());
 
         weighted_auto_correlation(
@@ -544,7 +628,7 @@ impl LpcEstimator {
         );
         for &v in &self.corr_coefs {
             assert!(
-                v.is_normal() || v == 0.0,
+                !(v.is_nan() || v.is_infinite()),
                 "corr_coefs[_] = {v} must be normal or zero."
             );
         }
@@ -554,7 +638,7 @@ impl LpcEstimator {
             &mut ret,
         );
         for &v in &ret {
-            assert!(v.is_normal() || v.is_subnormal() || v == 0.0);
+            assert!(!(v.is_nan() || v.is_infinite()));
         }
         ret
     }
@@ -564,7 +648,7 @@ impl LpcEstimator {
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
-    ) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+    ) -> heapless::Vec<T, MAX_LPC_ORDER> {
         self.weighted_lpc_from_auto_corr(signal, window, lpc_order, |_t| 1.0f32)
     }
 
@@ -617,8 +701,8 @@ impl LpcEstimator {
     where
         F: Fn(usize) -> f32,
     {
-        self.corr_coefs.resize(lpc_order + 1, 0.0);
-        self.corr_coefs.fill(0f32);
+        self.corr_coefs.resize(lpc_order + 1, T::zero());
+        self.corr_coefs.fill(T::zero());
 
         self.fill_windowed_signal(signal, get_window(window, signal.len()).as_ref_simd());
 
@@ -637,7 +721,9 @@ impl LpcEstimator {
             |t| weight_fn(t + 1),
         );
 
-        let mut xy = nalgebra::DVector::<f32>::from(self.corr_coefs[1..].to_vec());
+        let corr_coefs: Vec<f32> = self.corr_coefs.iter().map(|x| x.as_()).collect();
+
+        let mut xy = nalgebra::DVector::<f32>::from(corr_coefs[1..].to_vec());
 
         let mut regularizer = f32::EPSILON;
         loop {
@@ -671,7 +757,7 @@ impl LpcEstimator {
     }
 }
 
-reusable!(LPC_ESTIMATOR: LpcEstimator = LpcEstimator::new());
+reusable!(LPC_ESTIMATOR: LpcEstimator<f64> = LpcEstimator::new());
 
 /// Estimates LPC coefficients with auto-correlation method.
 #[allow(clippy::module_name_repetitions)]
@@ -679,7 +765,7 @@ pub fn lpc_from_autocorr(
     signal: &[i32],
     window: &Window,
     lpc_order: usize,
-) -> heapless::Vec<f32, MAX_LPC_ORDER> {
+) -> heapless::Vec<f64, MAX_LPC_ORDER> {
     LPC_ESTIMATOR.with(|estimator| {
         estimator
             .borrow_mut()
@@ -1183,7 +1269,7 @@ mod bench {
         let window_cfg = Window::Tukey { alpha: 0.1 };
         let size = 4096usize;
         let window = get_window(&window_cfg, size);
-        let mut lpc_estimator = LpcEstimator::new();
+        let mut lpc_estimator = LpcEstimator::<f64>::new();
         let signal = [0i32; 4096];
 
         lpc_estimator.fill_windowed_signal(&signal, window.as_ref_simd());
