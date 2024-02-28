@@ -16,7 +16,7 @@
 
 // mimic clippy. This file acts as a part of the crate when checked by clippy.
 // but it is outside of the crate when it is actually used by doctests.
-#[cfg(feature = "cargo-clippy")]
+#[cfg(feature = "clippy")]
 use crate as flacenc;
 
 use flacenc::component::Frame;
