@@ -29,6 +29,7 @@ use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
 use super::constant::qlpc::MAX_SHIFT as QLPC_MAX_SHIFT;
 use super::constant::qlpc::MIN_SHIFT as QLPC_MIN_SHIFT;
+use super::repeat;
 use super::repeat::repeat;
 
 import_simd!(as simd);
@@ -514,9 +515,11 @@ where
 /// the following preconditions are checked.
 /// 1. Signal energy `coefs[0]` is non-negative.
 /// 2. If signal-energy is zero, all `coefs` and `ys` must be zero.
-pub fn symmetric_levinson_recursion<T>(coefs: &[T], ys: &[T], dest: &mut [T])
+#[inline]
+pub fn symmetric_levinson_recursion<T, const N: usize>(coefs: &[T], ys: &[T], dest: &mut [T])
 where
     T: LpcFloat,
+    repeat::Count<N>: repeat::Repeat,
 {
     assert!(dest.len() >= ys.len());
     assert!(coefs.len() >= ys.len());
@@ -540,8 +543,8 @@ where
     }
 
     let order = ys.len();
-    let mut forward = vec![T::zero(); order];
-    let mut forward_next = vec![T::zero(); order];
+    let mut forward = [T::zero(); N];
+    let mut forward_next = [T::zero(); N];
     let mut diagonal_loading = T::zero();
 
     // this actually should use a go-to statement.
@@ -551,12 +554,13 @@ where
         dest[0] = ys[0] / (coefs[0] + diagonal_loading);
 
         for n in 1..order {
-            let error: T = coefs[1..=n]
-                .iter()
-                .rev()
-                .zip(forward.iter())
-                .map(|(x, y)| *x * *y)
-                .sum();
+            let error = {
+                let mut acc = T::zero();
+                repeat!(d to N ; while d < n => {
+                    acc = Float::mul_add(coefs[n - d], forward[d], acc);
+                });
+                acc
+            };
             let denom = Float::mul_add(error, -error, T::one());
             if denom.is_zero() {
                 diagonal_loading = T::one().max(diagonal_loading + diagonal_loading);
@@ -564,20 +568,23 @@ where
             }
             let alpha = Float::recip(denom);
             let beta = -alpha * error;
-            for d in 0..=n {
+            repeat!(d to N ; while d <= n => {
                 forward_next[d] = Float::mul_add(alpha, forward[d], beta * forward[n - d]);
-            }
-            forward.copy_from_slice(&forward_next);
+            });
+            repeat!(d to N ; while d <= n => {
+                forward[d] = forward_next[d];
+            });
 
-            let delta: T = coefs[1..=n]
-                .iter()
-                .rev()
-                .zip(dest.iter())
-                .map(|(x, y)| *x * *y)
-                .sum();
-            for d in 0..=n {
-                dest[d] += (ys[n] - delta) * forward[n - d];
-            }
+            let delta = {
+                let mut acc = T::zero();
+                repeat!(d to N ; while d < n => {
+                    acc = Float::mul_add(coefs[n - d], dest[d], acc);
+                });
+                acc
+            };
+            repeat!(d to N ; while d <= n => {
+                dest[d] = Float::mul_add(ys[n] - delta, forward[n - d], dest[d]);
+            });
         }
         break;
     }
@@ -685,7 +692,7 @@ where
                 "corr_coefs[_] = {v} must be normal or zero."
             );
         }
-        symmetric_levinson_recursion(
+        symmetric_levinson_recursion::<T, MAX_LPC_ORDER>(
             &self.corr_coefs[0..lpc_order],
             &self.corr_coefs[1..lpc_order + 1],
             &mut ret,
@@ -921,7 +928,7 @@ mod tests {
 
         let mut xs: [f32; 4] = [0.0; 4];
 
-        symmetric_levinson_recursion(&coefs, &ys, &mut xs);
+        symmetric_levinson_recursion::<f32, 8>(&coefs, &ys, &mut xs);
         eprintln!("Found solution = {xs:?}");
         assert_eq!(xs, expect_xs);
 
@@ -931,7 +938,7 @@ mod tests {
 
         let mut xs: [f32; 5] = [0.0; 5];
 
-        symmetric_levinson_recursion(&coefs, &ys, &mut xs);
+        symmetric_levinson_recursion::<f32, MAX_LPC_ORDER>(&coefs, &ys, &mut xs);
         eprintln!("Found solution = {xs:?}");
         for (x, expected_x) in xs.iter().zip(expect_xs.iter()) {
             assert_close!(x, expected_x);
@@ -1025,7 +1032,11 @@ mod tests {
         auto_correlation(LPC_ORDER + 1, &signal_float, &mut corr);
 
         let mut coefs = [0f32; LPC_ORDER];
-        symmetric_levinson_recursion(&corr[0..LPC_ORDER], &corr[1..LPC_ORDER + 1], &mut coefs);
+        symmetric_levinson_recursion::<f32, LPC_ORDER>(
+            &corr[0..LPC_ORDER],
+            &corr[1..LPC_ORDER + 1],
+            &mut coefs,
+        );
         assert_close!(coefs[0], 1.0f32);
 
         let qlpc = quantize_parameters(&coefs[0..LPC_ORDER], 15);
@@ -1305,6 +1316,8 @@ mod tests {
 #[cfg(all(test, feature = "simd-nightly"))]
 mod bench {
     use super::*;
+    use crate::sigen;
+    use crate::sigen::Signal;
 
     extern crate test;
 
@@ -1332,6 +1345,29 @@ mod bench {
         let mut dest = [0.0f32; 14];
         b.iter(|| {
             auto_correlation(black_box(14usize), black_box(&signal), black_box(&mut dest));
+        });
+    }
+
+    #[bench]
+    fn levinson_recursion(b: &mut Bencher) {
+        let bps = 16;
+        let lpc_order = 14;
+        let block_size = 4096;
+        let signal: Vec<_> = sigen::Noise::new(0.6)
+            .to_vec_quantized(bps, block_size)
+            .into_iter()
+            .map(|x| x as f32)
+            .collect();
+        let mut corr_coefs = vec![0.0f64; lpc_order + 1];
+        let mut lpc_coefs = vec![0.0f64; lpc_order];
+        auto_correlation(lpc_order + 1, &signal, &mut corr_coefs);
+
+        b.iter(|| {
+            symmetric_levinson_recursion::<f64, 24>(
+                black_box(&corr_coefs[..lpc_order]),
+                black_box(&corr_coefs[1..]),
+                black_box(&mut lpc_coefs),
+            );
         });
     }
 

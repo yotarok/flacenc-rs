@@ -32,7 +32,7 @@ macro_rules! repeat {
             |$counter| $cond,
             #[inline(always)]
             |$counter| $body,
-        );
+        )
     };
 }
 pub(crate) use repeat;
