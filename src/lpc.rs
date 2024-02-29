@@ -748,12 +748,13 @@ where
 
         let mut xy = nalgebra::DVector::<T>::from(self.corr_coefs[1..].to_vec());
 
-        let mut regularizer = T::epsilon();
+        let mut regularizer = T::zero();
         while !T::solve_sym_mut(&self.delay_sum, &mut xy) {
+            let old_regularizer = regularizer;
+            regularizer = T::one().max(regularizer + regularizer);
             for i in 0..lpc_order {
-                self.delay_sum[(i, i)] += regularizer;
+                self.delay_sum[(i, i)] += regularizer - old_regularizer;
             }
-            regularizer *= <T as From<f32>>::from(10.0);
         }
 
         let mut ret = heapless::Vec::new();
@@ -938,7 +939,7 @@ mod tests {
 
     #[rstest]
     fn qlpc_recovery(#[values(2, 12, 24)] lpc_order: usize) {
-        let coef_prec: usize = 12;
+        let coef_prec: usize = 15;
         let signal = sigen::Sine::new(32, 0.8)
             .noise(0.01)
             .to_vec_quantized(16, 1024);

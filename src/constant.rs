@@ -114,10 +114,10 @@ pub mod qlpc {
     pub const DEFAULT_ORDER: usize = 10;
 
     /// Default precision for storing QLPC coefficients.
-    pub const DEFAULT_PRECISION: usize = 12;
+    pub const DEFAULT_PRECISION: usize = 15;
 
     /// Default alpha parameter for Tukey window.
-    pub const DEFAULT_TUKEY_ALPHA: f32 = 0.1;
+    pub const DEFAULT_TUKEY_ALPHA: f32 = 0.4;
 }
 
 /// Constants related to partitioned rice coding (PRC).
