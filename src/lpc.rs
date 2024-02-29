@@ -33,6 +33,30 @@ use super::repeat::repeat;
 
 import_simd!(as simd);
 
+/// This trait is introduced for avoiding abstract type spaghetti.
+///
+/// This module is designed so that either f32 and f64 can be used as an
+/// internal statistics representation for quantized LPC and this is represented
+/// as a trait bound [`LpcFloat`]. However, it becomes a bit complicated when it
+/// comes with `"experimental"` feature and `nalgebra`. This `LpcFloatExp` is used
+/// as a marker that `LpcFloat` is actually implementing `nalgebra::ComplexField`
+/// when `"experimental"` feature is enabled. Otherwise, this is a dummy marker
+/// that marks all types.
+#[cfg(not(feature = "experimental"))]
+#[allow(clippy::module_name_repetitions)]
+pub trait LpcFloatExp {}
+#[cfg(feature = "experimental")]
+#[allow(clippy::module_name_repetitions)]
+pub trait LpcFloatExp: nalgebra::ComplexField {}
+
+#[cfg(not(feature = "experimental"))]
+impl<T> LpcFloatExp for T {}
+#[cfg(feature = "experimental")]
+impl<T: nalgebra::ComplexField> LpcFloatExp for T {}
+
+/// Trait for a type that can be used for storing LPC statistics/ parameters.
+///
+/// Currently, it is only implemented for f32/ f64.
 #[allow(clippy::module_name_repetitions)]
 pub trait LpcFloat:
     Float
@@ -42,12 +66,13 @@ pub trait LpcFloat:
     + std::fmt::Debug
     + std::fmt::Display
     + simd::SimdElement
-    + simd::SimdCast
     + From<f32>
     + From<i16>
-    + AsPrimitive<i16>
     + AsPrimitive<f32>
+    + AsPrimitive<i16>
+    + LpcFloatExp
 {
+    /// Computes `acc += weight * signal` with casting `f32`s in `signal` to `T`s.
     #[cfg(feature = "simd-nightly")]
     fn accumulate_signal<const N: usize>(
         acc: &mut simd::Simd<Self, N>,
@@ -55,12 +80,8 @@ pub trait LpcFloat:
         signal: simd::Simd<f32, N>,
     ) where
         simd::LaneCount<N>: simd::SupportedLaneCount;
-
-    #[cfg(feature = "experimental")]
-    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool;
 }
 
-// TODO: Below two implementations are almost identical, seek a way to make it DRY.
 impl LpcFloat for f32 {
     #[inline]
     #[cfg(feature = "simd-nightly")]
@@ -72,14 +93,6 @@ impl LpcFloat for f32 {
         simd::LaneCount<N>: simd::SupportedLaneCount,
     {
         *acc += simd::Simd::splat(weight) * signal;
-    }
-
-    #[cfg(feature = "experimental")]
-    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool {
-        mat.clone().cholesky().map_or(false, |decompose| {
-            decompose.solve_mut(v);
-            true
-        })
     }
 }
 
@@ -94,14 +107,6 @@ impl LpcFloat for f64 {
         simd::LaneCount<N>: simd::SupportedLaneCount,
     {
         *acc += simd::Simd::splat(weight) * signal.cast();
-    }
-
-    #[cfg(feature = "experimental")]
-    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool {
-        mat.clone().cholesky().map_or(false, |decompose| {
-            decompose.solve_mut(v);
-            true
-        })
     }
 }
 
@@ -187,13 +192,18 @@ where
 {
     assert!(precision <= 15);
     assert!(!coefs.is_empty());
-    let max_abs_coef: T = coefs.iter().map(|x| x.abs()).reduce(T::max).unwrap();
+    let max_abs_coef: T = coefs
+        .iter()
+        .copied()
+        .map(Float::abs)
+        .reduce(T::max)
+        .unwrap();
     // location of MSB in binary representations of absolute values.
-    let abs_log2: i16 = max_abs_coef
-        .log2()
-        .ceil()
-        .max(<T as From<i16>>::from(i16::MIN + 16))
-        .as_();
+    let abs_log2: i16 = Float::max(
+        Float::ceil(Float::log2(max_abs_coef)),
+        <T as From<i16>>::from(i16::MIN + 16),
+    )
+    .as_();
     let shift: i16 = (precision as i16 - 1) - abs_log2;
     shift.clamp(i16::from(QLPC_MIN_SHIFT), i16::from(QLPC_MAX_SHIFT)) as i8
 }
@@ -204,8 +214,8 @@ fn quantize_parameter<T>(p: T, shift: i8) -> i16
 where
     T: LpcFloat,
 {
-    let scalefac = <T as From<i16>>::from(2).powi(i32::from(shift));
-    let scaled_int = (p * scalefac).round();
+    let scalefac = Float::powi(<T as From<i16>>::from(2), i32::from(shift));
+    let scaled_int = Float::round(p * scalefac);
     num_traits::clamp(
         scaled_int,
         <T as From<i16>>::from(i16::MIN),
@@ -396,6 +406,7 @@ fn weighted_auto_correlation_simd<T, F, const N: usize>(
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
+#[inline]
 pub fn weighted_auto_correlation<T, F>(order: usize, signal: &[f32], dest: &mut [T], weight_fn: F)
 where
     T: LpcFloat,
@@ -428,10 +439,9 @@ where
             *p = T::zero();
         }
         for t in (order - 1)..signal.len() {
-            let w = weight_fn(t);
+            let wy: T = (weight_fn(t) * signal[t]).into();
             for tau in 0..order {
-                let v: T = (signal[t] * signal[t - tau] * w).into();
-                dest[tau] += v;
+                dest[tau] += Into::<T>::into(signal[t - tau]) * wy;
             }
         }
     }
@@ -443,6 +453,7 @@ where
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
+#[inline]
 pub fn weighted_delay_sum<T, F>(
     order: usize,
     signal: &[f32],
@@ -536,7 +547,7 @@ where
     // this actually should use a go-to statement.
     #[allow(clippy::never_loop)]
     loop {
-        forward[0] = (coefs[0] + diagonal_loading).recip();
+        forward[0] = Float::recip(coefs[0] + diagonal_loading);
         dest[0] = ys[0] / (coefs[0] + diagonal_loading);
 
         for n in 1..order {
@@ -546,15 +557,15 @@ where
                 .zip(forward.iter())
                 .map(|(x, y)| *x * *y)
                 .sum();
-            let denom = error.mul_add(-error, T::one());
+            let denom = Float::mul_add(error, -error, T::one());
             if denom.is_zero() {
                 diagonal_loading = T::one().max(diagonal_loading + diagonal_loading);
                 continue;
             }
-            let alpha = denom.recip();
+            let alpha = Float::recip(denom);
             let beta = -alpha * error;
             for d in 0..=n {
-                forward_next[d] = alpha.mul_add(forward[d], beta * forward[n - d]);
+                forward_next[d] = Float::mul_add(alpha, forward[d], beta * forward[n - d]);
             }
             forward.copy_from_slice(&forward_next);
 
@@ -570,6 +581,23 @@ where
         }
         break;
     }
+}
+
+/// Solves symetric positive-definite linear equation in-place.
+///
+/// This computes `v = matmul(inverse(mat), v)` where `mat` is assumed to be
+/// symmetric positive-definite (SPD), and if not it returns `false`.
+/// Otherwise, it returns `true` and `v` is overwritten by the solution.
+#[cfg(feature = "experimental")]
+#[inline]
+fn solve_sym_mut<T>(mat: &nalgebra::DMatrix<T>, v: &mut nalgebra::DVector<T>) -> bool
+where
+    T: nalgebra::ComplexField,
+{
+    mat.clone().cholesky().map_or(false, |decompose| {
+        decompose.solve_mut(v);
+        true
+    })
 }
 
 /// Working buffer for (unquantized) LPC estimation.
@@ -749,7 +777,7 @@ where
         let mut xy = nalgebra::DVector::<T>::from(self.corr_coefs[1..].to_vec());
 
         let mut regularizer = T::zero();
-        while !T::solve_sym_mut(&self.delay_sum, &mut xy) {
+        while !solve_sym_mut(&self.delay_sum, &mut xy) {
             let old_regularizer = regularizer;
             regularizer = T::one().max(regularizer + regularizer);
             for i in 0..lpc_order {
