@@ -352,7 +352,13 @@ pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i3
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[allow(dead_code)]
 pub fn auto_correlation<T: LpcFloat>(order: usize, signal: &[f32], dest: &mut [T]) {
-    weighted_auto_correlation(order, signal, dest, |_t| 1.0);
+    weighted_auto_correlation(
+        order,
+        signal,
+        dest,
+        #[inline]
+        |_t| 1.0,
+    );
 }
 
 /// Compute delay sum.
@@ -366,7 +372,13 @@ pub fn delay_sum<T>(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<T
 where
     T: LpcFloat,
 {
-    weighted_delay_sum(order, signal, dest, |_t| 1.0f32);
+    weighted_delay_sum(
+        order,
+        signal,
+        dest,
+        #[inline]
+        |_t| 1.0f32,
+    );
 }
 
 #[cfg(feature = "simd-nightly")]
@@ -709,7 +721,13 @@ where
         window: &Window,
         lpc_order: usize,
     ) -> heapless::Vec<T, MAX_LPC_ORDER> {
-        self.weighted_lpc_from_auto_corr(signal, window, lpc_order, |_t| 1.0f32)
+        self.weighted_lpc_from_auto_corr(
+            signal,
+            window,
+            lpc_order,
+            #[inline]
+            |_t| 1.0f32,
+        )
     }
 
     /// Optimizes LPC with Mean-Absolute-Error criterion.
@@ -808,7 +826,13 @@ where
         window: &Window,
         lpc_order: usize,
     ) -> heapless::Vec<T, MAX_LPC_ORDER> {
-        self.weighted_lpc_with_direct_mse(signal, window, lpc_order, |_t| 1.0f32)
+        self.weighted_lpc_with_direct_mse(
+            signal,
+            window,
+            lpc_order,
+            #[inline]
+            |_t| 1.0f32,
+        )
     }
 }
 
