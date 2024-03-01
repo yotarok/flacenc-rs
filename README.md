@@ -50,11 +50,14 @@ The simplest way to implement FLAC encoder given the recorded samples in
 
 ```rust
 use flacenc::component::BitRepr;
+use flacenc::error::Verify;
 
 let samples: &[i32] = &[0i32; 4096]; // replace this with real samples.
 
 let (channels, bits_per_sample, sample_rate) = (2, 16, 44100);
-let config = flacenc::config::Encoder::default();
+let config = flacenc::config::Encoder::default().into_verified().expect(
+  "Config data error."
+);
 let source = flacenc::source::MemSource::from_samples(
     samples, channels, bits_per_sample, sample_rate);
 let flac_stream = flacenc::encode_with_fixed_block_size(

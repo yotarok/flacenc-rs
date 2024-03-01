@@ -19,13 +19,25 @@ use std::fmt;
 use md5::Digest;
 
 use super::arrayutils::deinterleave;
+use super::arrayutils::find_min_and_max;
 use super::arrayutils::le_bytes_to_i32s;
+use super::constant::MAX_BLOCK_SIZE;
+use super::constant::MAX_CHANNELS;
+use super::constant::MIN_BLOCK_SIZE;
+use super::error::verify_range;
+use super::error::verify_true;
 use super::error::SourceError;
+use super::error::VerifyError;
 
 /// Traits for buffer-like objects that can be filled by [`Source`].
 ///
 /// An implementation of [`Source::read_samples`] is expected to call one
 /// of the `fill_*` method declared in this trait.
+///
+/// Note that arguments of `Fill` can be shorter than the actual block size
+/// (or `FrameBuf` size). An impl of `Fill` must accept the samples that is
+/// shorter than the pre-defined length. On the other hand, `Fill` is expected
+/// to return an error if the number of samples is larger than the block size.
 pub trait Fill {
     /// Fills the target variable with the given interleaved samples.
     ///
@@ -40,7 +52,7 @@ pub trait Fill {
     ///
     /// ```
     /// # use flacenc::source::{Fill, FrameBuf};
-    /// let mut fb = FrameBuf::with_size(8, 1024);
+    /// let mut fb = FrameBuf::with_size(8, 1024).unwrap();
     /// fb.fill_interleaved(&[0i32; 8 * 1024]);
     /// ```
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError>;
@@ -49,7 +61,7 @@ pub trait Fill {
     ///
     /// # Errors
     ///
-    /// This may fail when configuration of `Fill` is not consistent withto the
+    /// This may fail when configuration of `Fill` is not consistent with the
     /// input `bytes` or `bytes_per_sample` values.
     ///
     /// # Examples
@@ -58,7 +70,8 @@ pub trait Fill {
     ///
     /// ```
     /// # use flacenc::source::{Fill, FrameBuf};
-    /// let mut fb = FrameBuf::with_size(2, 3);
+    /// let mut fb = FrameBuf::with_size(2, 64).unwrap();
+    /// // Note that `FrameBuf` (or `Fill` in general) accepts shorter inputs.
     /// fb.fill_le_bytes(&[0x12, 0x34, 0x54, 0x76, 0x56, 0x78, 0x10, 0x32], 2);
     /// // this FrameBuf now has 2 channels with elements:
     /// //   - channel-1 (left) : [0x3412, 0x7856]
@@ -102,22 +115,47 @@ pub struct FrameBuf {
 }
 
 impl FrameBuf {
+    /// Constructs new 2-channel `FrameBuf` that will be later resized.
+    ///
+    /// This is a safe constructor that never fails, and always produce a valid
+    /// `FrameBuf`. This constructor is intended to be used for preparing
+    /// reusable buffer for stereo coding.
+    pub(crate) fn new_stereo_buffer() -> Self {
+        Self {
+            samples: vec![0i32; 256 * 2],
+            channels: 2,
+            size: 256,
+            readbuf: vec![],
+        }
+    }
+
     /// Constructs `FrameBuf` of the specified size.
+    ///
+    /// # Errors
+    ///
+    /// Returns `VerifyError` if arguments are out of the ranges of FLAC
+    /// specifications.
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::source::FrameBuf;
-    /// let fb = FrameBuf::with_size(2, 1024);
+    /// let fb = FrameBuf::with_size(2, 1024).unwrap();
     /// assert_eq!(fb.size(), 1024);
     /// ```
-    pub fn with_size(channels: usize, size: usize) -> Self {
-        Self {
+    pub fn with_size(channels: usize, size: usize) -> Result<Self, VerifyError> {
+        verify_range!("FrameBuf::with_size (channels)", channels, 1..=MAX_CHANNELS)?;
+        verify_range!(
+            "FrameBuf::with_size (block size)",
+            size,
+            MIN_BLOCK_SIZE..=MAX_BLOCK_SIZE
+        )?;
+        Ok(Self {
             samples: vec![0i32; size * channels],
             channels,
             size,
             readbuf: vec![],
-        }
+        })
     }
 
     /// Returns the size in the number of per-channel samples.
@@ -126,7 +164,7 @@ impl FrameBuf {
     ///
     /// ```
     /// # use flacenc::source::FrameBuf;
-    /// let fb = FrameBuf::with_size(2, 1024);
+    /// let fb = FrameBuf::with_size(2, 1024).unwrap();
     /// assert_eq!(fb.size(), 1024);
     /// ```
     pub const fn size(&self) -> usize {
@@ -139,7 +177,7 @@ impl FrameBuf {
     ///
     /// ```
     /// # use flacenc::source::FrameBuf;
-    /// let mut fb = FrameBuf::with_size(2, 1024);
+    /// let mut fb = FrameBuf::with_size(2, 1024).unwrap();
     /// assert_eq!(fb.size(), 1024);
     /// fb.resize(2048);
     /// assert_eq!(fb.size(), 2048);
@@ -155,7 +193,7 @@ impl FrameBuf {
     ///
     /// ```
     /// # use flacenc::source::FrameBuf;
-    /// let fb = FrameBuf::with_size(8, 1024);
+    /// let fb = FrameBuf::with_size(8, 1024).unwrap();
     /// assert_eq!(fb.channels(), 8);
     /// ```
     pub const fn channels(&self) -> usize {
@@ -176,6 +214,22 @@ impl FrameBuf {
     #[cfg(test)]
     pub(crate) fn raw_slice(&self) -> &[i32] {
         &self.samples
+    }
+
+    /// Verifies data consistency with the given stream info.
+    pub(crate) fn verify_samples(&self, bits_per_sample: usize) -> Result<(), VerifyError> {
+        let max_allowed = (1i32 << (bits_per_sample - 1)) - 1;
+        let min_allowed = -(1i32 << (bits_per_sample - 1));
+        for ch in 0..self.channels() {
+            let (min, max) = find_min_and_max::<64>(self.channel_slice(ch), 0i32);
+            if min < min_allowed || max > max_allowed {
+                return Err(VerifyError::new(
+                    "input.framebuf",
+                    &format!("input sample must be in the range of bits={bits_per_sample}"),
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -583,7 +637,7 @@ mod tests {
 
         let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
         let mut framebuf_and_ctx = (
-            FrameBuf::with_size(channels, block_size),
+            FrameBuf::with_size(channels, block_size).unwrap(),
             Context::new(16, channels, block_size),
         );
         let read = src
@@ -615,7 +669,7 @@ mod tests {
         let block_size = 128;
         let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
         let ctx = Context::new(16, channels, block_size);
-        let framebuf = FrameBuf::with_size(channels, block_size);
+        let framebuf = FrameBuf::with_size(channels, block_size).unwrap();
         let mut framebuf_and_ctx = (framebuf, ctx);
 
         for step in 0..8 {

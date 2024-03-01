@@ -23,6 +23,8 @@ use flacenc::component::Frame;
 use flacenc::component::FrameHeader;
 use flacenc::component::Stream;
 use flacenc::config;
+use flacenc::error::Verified;
+use flacenc::error::Verify;
 use flacenc::source::MemSource;
 
 /// Makes a `Stream` for doctest.
@@ -35,8 +37,14 @@ pub fn make_example_stream(
     let signal = vec![0i32; signal_len * channels];
     let bits_per_sample = 16;
     let source = MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
-    flacenc::encode_with_fixed_block_size(&config::Encoder::default(), source, block_size)
-        .expect("encoder error")
+    flacenc::encode_with_fixed_block_size(
+        &config::Encoder::default()
+            .into_verified()
+            .expect("config value error"),
+        source,
+        block_size,
+    )
+    .expect("encoder error")
 }
 
 /// Makes a `Frame` for doctest.

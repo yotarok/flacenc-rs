@@ -62,6 +62,7 @@ use flacenc::component::BitRepr;
 use flacenc::component::Stream;
 use flacenc::config;
 use flacenc::error::EncodeError;
+use flacenc::error::Verified;
 use flacenc::error::Verify;
 use flacenc::source::Source;
 
@@ -111,7 +112,7 @@ fn write_stream<F: Write>(stream: &Stream, file: &mut F) -> usize {
 }
 
 fn run_encoder<S: Source>(
-    encoder_config: &config::Encoder,
+    encoder_config: &Verified<config::Encoder>,
     source: S,
 ) -> Result<Stream, EncodeError> {
     let block_size = encoder_config.block_sizes[0];
@@ -138,6 +139,9 @@ fn main_body(args: Args) -> Result<(), i32> {
         let conf_str = std::fs::read_to_string(path).expect("Config file read error.");
         toml::from_str(&conf_str).expect("Config file syntax error.")
     });
+    let encoder_config = encoder_config
+        .into_verified()
+        .expect("Config file value error.");
     if let Err(e) = encoder_config.verify() {
         eprintln!("Error: {}", e.within("encoder_config"));
         return Err(ExitCode::InvalidConfig as i32);

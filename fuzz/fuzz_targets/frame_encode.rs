@@ -26,6 +26,7 @@ use flacenc::component::Decode;
 use flacenc::config;
 use flacenc::constant;
 use flacenc::encode_fixed_size_frame;
+use flacenc::error::Verified;
 use flacenc::error::Verify;
 use flacenc::sigen;
 use flacenc::sigen::Signal;
@@ -46,7 +47,7 @@ fn arbitrary_window_config(u: &mut Unstructured) -> Result<config::Window, arbit
 fn arbitrary_config(
     u: &mut Unstructured,
     block_size: usize,
-) -> Result<config::Encoder, arbitrary::Error> {
+) -> Result<Verified<config::Encoder>, arbitrary::Error> {
     let mut config = config::Encoder::default();
     config.block_sizes = vec![block_size];
     config.stereo_coding.use_leftside = bool::arbitrary(u)?;
@@ -59,12 +60,12 @@ fn arbitrary_config(
     config.subframe_coding.prc.max_parameter =
         u.int_in_range(0..=constant::rice::MAX_RICE_PARAMETER)?;
 
-    config.subframe_coding.qlpc.lpc_order = u.int_in_range(0..=constant::qlpc::MAX_ORDER)?;
+    config.subframe_coding.qlpc.lpc_order = u.int_in_range(1..=constant::qlpc::MAX_ORDER)?;
     config.subframe_coding.qlpc.quant_precision = u.int_in_range(1..=15)?;
 
     config.subframe_coding.qlpc.window = arbitrary_window_config(u)?;
 
-    Ok(config)
+    Ok(config.into_verified().expect("Invalid config generated"))
 }
 
 fn arbitrary_signal(
@@ -129,7 +130,7 @@ struct Input {
     block_size: usize,
     sample_rate: usize,
     bits_per_sample: usize,
-    config: config::Encoder,
+    config: Verified<config::Encoder>,
     signals: Vec<Box<dyn Signal>>,
 }
 
@@ -150,7 +151,7 @@ impl Input {
     }
 
     pub fn framebuf(&self) -> FrameBuf {
-        let mut fb = FrameBuf::with_size(self.channel_count, self.block_size);
+        let mut fb = FrameBuf::with_size(self.channel_count, self.block_size).unwrap();
         let buffer = self.interleaved();
         fb.fill_interleaved(&buffer).unwrap();
         fb

@@ -153,6 +153,8 @@ pub use coding::encode_with_fixed_block_size;
 mod tests {
     // end-to-end, but transparent test.
     #[cfg(feature = "serde")]
+    use super::error::Verify;
+    #[cfg(feature = "serde")]
     use super::*;
     #[cfg(feature = "serde")]
     use crate::sigen::Signal;
@@ -216,6 +218,8 @@ multithread = false
             config.subframe_coding.qlpc.use_direct_mse = false;
             config.subframe_coding.qlpc.mae_optimization_steps = 0;
         }
+
+        let config = config.into_verified().expect("config value error");
 
         let source =
             source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
