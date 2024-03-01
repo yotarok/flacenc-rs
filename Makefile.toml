@@ -35,6 +35,8 @@ BENCH_RESULTS_TEXT = "report/bench_results.txt"
 CLIPPY_FEATURES_NIGHTLY = "experimental,par,serde,simd-nightly"
 CLIPPY_FEATURES_STABLE = "experimental,par,serde"
 CLIPPY_FEATURES_BIN_NIGHTLY = "simd-nightly"
+CLIPPY_FEATURES_DECBIN_NIGHTLY = ""
+CLIPPY_FEATURES_FUZZ_NIGHTLY = ""
 FLAC_VERSION = "1.4.3"
 FLAC_RELEASE_DIR = "https://ftp.osuosl.org/pub/xiph/releases/flac"
 INTEGRATION_REPORT_NIGHTLY = "report/report.nightly.md"
@@ -103,7 +105,13 @@ dependencies = [
 #
 
 [tasks.clippy]
-dependencies = ["clippy-lib-nightly", "clippy-bin-nightly", "clippy-lib-stable"]
+dependencies = [
+  "clippy-lib-nightly",
+  "clippy-bin-nightly",
+  "clippy-dec-bin-nightly",
+  "clippy-lib-stable",
+  "clippy-fuzz-nightly",
+]
 
 [tasks.clippy-lib-nightly]
 command = "cargo"
@@ -132,6 +140,34 @@ args = [
   "warnings",
 ]
 
+[tasks.clippy-dec-bin-nightly]
+cwd = "flacdec-bin"
+command = "cargo"
+toolchain = "nightly"
+args = [
+  "clippy",
+  "--tests",
+  "--features",
+  "${CLIPPY_FEATURES_DECBIN_NIGHTLY}",
+  "--",
+  "-D",
+  "warnings",
+]
+
+[tasks.clippy-fuzz-nightly]
+cwd = "fuzz"
+command = "cargo"
+toolchain = "nightly"
+args = [
+  "clippy",
+  "--tests",
+  "--features",
+  "${CLIPPY_FEATURES_FUZZ_NIGHTLY}",
+  "--",
+  "-D",
+  "warnings",
+]
+
 [tasks.clippy-lib-stable]
 command = "cargo"
 toolchain = "stable"
@@ -146,7 +182,7 @@ args = [
 ]
 
 [tasks.fmtcheck]
-dependencies = ["fmtcheck-lib", "fmtcheck-bin"]
+dependencies = ["fmtcheck-lib", "fmtcheck-bin", "fmtcheck-dec-bin", "fmtcheck-fuzz"]
 
 [tasks.fmtcheck-bin]
 cwd = "flacenc-bin"
@@ -154,6 +190,16 @@ command = "cargo"
 args = ["fmt", "--check", "--all"]
 
 [tasks.fmtcheck-lib]
+command = "cargo"
+args = ["fmt", "--check", "--all"]
+
+[tasks.fmtcheck-dec-bin]
+cwd = "flacdec-bin"
+command = "cargo"
+args = ["fmt", "--check", "--all"]
+
+[tasks.fmtcheck-fuzz]
+cwd = "fuzz"
 command = "cargo"
 args = ["fmt", "--check", "--all"]
 

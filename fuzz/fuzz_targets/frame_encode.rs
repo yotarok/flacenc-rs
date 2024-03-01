@@ -157,7 +157,8 @@ impl Input {
     }
 
     pub fn stream_info(&self) -> component::StreamInfo {
-        component::StreamInfo::new(self.sample_rate, self.channel_count, self.bits_per_sample).unwrap()
+        component::StreamInfo::new(self.sample_rate, self.channel_count, self.bits_per_sample)
+            .unwrap()
     }
 }
 
