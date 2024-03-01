@@ -20,6 +20,11 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
+#[cfg(feature = "serde")]
+use serde::Deserialize;
+#[cfg(feature = "serde")]
+use serde::Serialize;
+
 use super::bitsink::BitSink;
 
 /// Enum of errors that can be returned in the encoder.
@@ -249,14 +254,50 @@ impl fmt::Display for VerifyError {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+pub struct Verified<T>(T);
+
+impl<T> std::ops::Deref for Verified<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
 /// Trait for verifiable structs.
-pub trait Verify {
+pub trait Verify: Sized {
     /// Verifies there's no internal data inconsistency.
     ///
     /// # Errors
     ///
     /// Returns `VerifyError` if there's an invalid variable.
     fn verify(&self) -> Result<(), VerifyError>;
+
+    /// Wraps into `Verified` to indicate that the data is already verified.
+    ///
+    /// # Errors
+    ///
+    /// Returns the original input and `VerifyError` if `verify` failed.
+    fn into_verified(self) -> Result<Verified<Self>, (Self, VerifyError)> {
+        let result = self.verify();
+        if let Err(e) = result {
+            Err((self, e))
+        } else {
+            Ok(Verified(self))
+        }
+    }
+
+    /// Wraps into `Verified` without actual verification.
+    ///
+    /// # Safety
+    ///
+    /// The use of `Verified` data obtained this way may cause an unexpected
+    /// behavior. It should be okay if the data are previously verified with
+    /// `verify` function and have not been changed after that.
+    unsafe fn assume_verified(self) -> Verified<Self> {
+        Verified(self)
+    }
 }
 
 /// A wrapping function to make it compatible with "?" operator.

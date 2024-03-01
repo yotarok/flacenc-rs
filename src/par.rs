@@ -30,6 +30,8 @@ use super::constant::envvar_key;
 use super::constant::panic_msg;
 use super::error::EncodeError;
 use super::error::SourceError;
+use super::error::Verified;
+use super::error::VerifyError;
 use super::source::Context;
 use super::source::Fill;
 use super::source::FrameBuf;
@@ -111,11 +113,11 @@ struct ParFrameBuf {
 
 impl ParFrameBuf {
     /// Creates new parallel frame buffers.
-    pub fn new(replicas: usize, channels: usize, block_size: usize) -> Self {
+    pub fn new(replicas: usize, channels: usize, block_size: usize) -> Result<Self, VerifyError> {
         let mut buffers = Vec::with_capacity(replicas);
         for _t in 0..replicas {
             let buf = Mutex::new(NumberedFrameBuf {
-                framebuf: FrameBuf::with_size(channels, block_size),
+                framebuf: FrameBuf::with_size(channels, block_size)?,
                 frame_number: None,
             });
             buffers.push(buf);
@@ -125,11 +127,11 @@ impl ParFrameBuf {
         (0..replicas).for_each(|t| {
             refill_sender.send(t).expect(panic_msg::MPMC_SEND_FAILED);
         });
-        Self {
+        Ok(Self {
             buffers,
             encode_queue: crossbeam_channel::bounded(replicas + 1),
             refill_queue: (refill_sender, refill_receiver),
-        }
+        })
     }
 
     /// Gets the id for `FrameBuf` to be encoded first.
@@ -350,18 +352,18 @@ fn determine_worker_count(config: &config::Encoder) -> Result<usize, SourceError
 /// This function panics when an internal error regarding inter-thread
 /// communication.
 pub fn encode_with_fixed_block_size<T: Source>(
-    config: &config::Encoder,
+    config: &Verified<config::Encoder>,
     src: T,
     block_size: usize,
 ) -> Result<Stream, EncodeError> {
-    let config = Arc::new(config.clone());
+    let config: Arc<Verified<config::Encoder>> = Arc::new(config.clone());
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
     let worker_count = determine_worker_count(&config)?;
     let parbuf = Arc::new(ParFrameBuf::new(
         worker_count * constant::par::FRAMEBUF_MULTIPLICITY,
         src.channels(),
         block_size,
-    ));
+    )?);
     let parsink: Arc<ParSink<Frame>> = Arc::new(ParSink::new());
 
     let join_handles: Vec<_> = (0..worker_count)
@@ -469,7 +471,7 @@ mod tests {
         let block_size = 100;
         let replicas = 3;
         let workers = 4;
-        let pfb = Arc::new(ParFrameBuf::new(replicas, channels, block_size));
+        let pfb = Arc::new(ParFrameBuf::new(replicas, channels, block_size).unwrap());
         // nothing is ready
         assert!(pfb.encode_queue.1.is_empty());
 
