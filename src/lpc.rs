@@ -34,6 +34,9 @@ use super::repeat::repeat;
 
 import_simd!(as simd);
 
+#[cfg(feature = "simd-nightly")]
+use simd::StdFloat;
+
 /// This trait is introduced for avoiding abstract type spaghetti.
 ///
 /// This module is designed so that either f32 and f64 can be used as an
@@ -93,7 +96,7 @@ impl LpcFloat for f32 {
     ) where
         simd::LaneCount<N>: simd::SupportedLaneCount,
     {
-        *acc += simd::Simd::splat(weight) * signal;
+        *acc = simd::Simd::splat(weight).mul_add(signal, *acc);
     }
 }
 
@@ -107,7 +110,7 @@ impl LpcFloat for f64 {
     ) where
         simd::LaneCount<N>: simd::SupportedLaneCount,
     {
-        *acc += simd::Simd::splat(weight) * signal.cast();
+        *acc = simd::Simd::splat(weight).mul_add(signal.cast(), *acc);
     }
 }
 
@@ -453,9 +456,9 @@ where
         }
         for t in (order - 1)..signal.len() {
             let wy: T = (weight_fn(t) * signal[t]).into();
-            for tau in 0..order {
-                dest[tau] += Into::<T>::into(signal[t - tau]) * wy;
-            }
+            repeat!(tau to { MAX_LPC_ORDER + 1 } ; while tau < order => {
+                dest[tau] = Float::mul_add(Into::<T>::into(signal[t - tau]), wy, dest[tau]);
+            });
         }
     }
 }
