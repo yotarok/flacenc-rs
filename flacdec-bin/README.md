@@ -1,7 +1,7 @@
 # Example decoder based on flacenc-rs
 
-A CLI tool for decoding a FLAC stream into a wave file.
-This tool is currently only for testing/ demonstration purpose.
+A CLI tool for decoding a FLAC stream into a wave file. This tool is currently
+only for testing/ demonstration purpose.
 
 ## Usage
 

@@ -164,7 +164,9 @@ impl Verify for StereoCoding {
 #[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct SubFrameCoding {
-    // Disabling verbatim coding is intentionally prohibited.
+    // NOTE: Disabling verbatim coding is intentionally prohibited as we want
+    //  to ensure that there's at least one possible FLAC representation for
+    //  each different integer sequence.
     /// If set to false, constant mode will not be used. (default: `true`)
     pub use_constant: bool,
     /// If set to false, fixed-LPC mode will not be used. (default: `true`)
@@ -349,7 +351,10 @@ pub enum Window {
     /// `alpha == 0.0` is equivalent with using a rectangular window.
     ///
     /// [Tukey]: https://en.wikipedia.org/wiki/Window_function#Tukey_window
-    Tukey { alpha: f32 },
+    Tukey {
+        /// `alpha` parameter of Tukey window.
+        alpha: f32,
+    },
 }
 
 impl Eq for Window {}

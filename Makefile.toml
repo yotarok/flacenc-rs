@@ -71,7 +71,7 @@ dependencies = ["toml-format", "md-format", "rs-format", "py-format"]
 
 [tasks.integration]
 description = "Generates integration reports (aka performance comparison reports) with stableand nightly toolchains."
-dependencies = ["integration-stable", "integration-nightly"]
+dependencies = ["integration-stable", "integration-nightly", "build-dec-bin"]
 
 [tasks.profile]
 description = "Runs binary with pprof mode and updates `report/profile.st.pdf`."
@@ -381,3 +381,21 @@ args = [
   "report/mt1.config.toml",
   "report/st.config.toml",
 ]
+
+[tasks.build-dec-bin]
+command = "cargo"
+toolchain = "stable"
+args = [
+  "build",
+]
+
+[tasks.refresh-lock]
+script = """
+rm -f flacdec-bin/Cargo.lock
+rm -f flacenc-bin/Cargo.lock
+cd flacdec-bin
+cargo build --all-features
+cd ../flacenc-bin
+cargo build --all-features
+"""
+
