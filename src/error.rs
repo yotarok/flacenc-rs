@@ -27,7 +27,7 @@ use serde::Serialize;
 
 use super::bitsink::BitSink;
 
-/// Enum of errors that can be returned in the encoder.
+/// Enum of errors that can be returned while making an output bitstream.
 #[derive(Clone, Eq, Hash, PartialEq)]
 #[allow(clippy::module_name_repetitions)]
 #[non_exhaustive]
@@ -254,6 +254,10 @@ impl fmt::Display for VerifyError {
     }
 }
 
+/// A wrapper that ensures that the inner `T` is verified and unchanged.
+///
+/// `Verified<T>` can be obtained via [`Verify::into_verified`] or
+/// [`Verify::assume_verified`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Verified<T>(T);
@@ -272,6 +276,23 @@ pub trait Verify: Sized + seal_verify::Sealed {
     /// # Errors
     ///
     /// Returns `VerifyError` if there's an invalid variable.
+    ///
+    /// # Examples
+    ///
+    /// [`config::Prc`] imlpements `Verify`.
+    ///
+    /// [`config::Prc`]: crate::config::Prc
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// # use flacenc::config::Prc;
+    /// let mut prc = Prc::default();
+    /// prc.max_parameter = 256;  // invalid setting
+    /// assert!(prc.verify().is_err());
+    ///
+    /// prc.max_parameter = 10; // valid setting
+    /// assert!(prc.verify().is_ok());
+    /// ```
     fn verify(&self) -> Result<(), VerifyError>;
 
     /// Wraps into `Verified` to indicate that the data is already verified.
@@ -279,6 +300,42 @@ pub trait Verify: Sized + seal_verify::Sealed {
     /// # Errors
     ///
     /// Returns the original input and `VerifyError` if `verify` failed.
+    ///
+    /// # Examples
+    ///
+    /// [`config::Prc`] imlpements `Verify`.
+    ///
+    /// [`config::Prc`]: crate::config::Prc
+    ///
+    /// ```
+    /// # use flacenc::error::*;
+    /// # use flacenc::config::Prc;
+    /// # use flacenc::constant::rice::MAX_RICE_PARAMETER;
+    /// let mut prc = Prc::default();
+    /// fn do_something_with_prc_config(config: &Verified<Prc>) -> usize {
+    ///     if config.max_parameter > MAX_RICE_PARAMETER {
+    ///         panic!();
+    ///     }
+    ///     // do something
+    ///     config.max_parameter * 2
+    /// }
+    ///
+    /// prc.max_parameter = 256;  // invalid setting
+    /// assert!(
+    ///     prc.clone()
+    ///        .into_verified()
+    ///        .map(|x| do_something_with_prc_config(&x))
+    ///        .is_err()
+    /// );  // at least this does not panic
+    ///
+    /// prc.max_parameter = 7;
+    /// assert_eq!(
+    ///     prc.into_verified()
+    ///        .map(|x| do_something_with_prc_config(&x))
+    ///        .unwrap(),
+    ///     14,
+    /// );
+    /// ```
     fn into_verified(self) -> Result<Verified<Self>, (Self, VerifyError)> {
         let result = self.verify();
         if let Err(e) = result {
@@ -295,6 +352,31 @@ pub trait Verify: Sized + seal_verify::Sealed {
     /// The use of `Verified` data obtained this way may cause an unexpected
     /// behavior. It should be okay if the data are previously verified with
     /// `verify` function and have not been changed after that.
+    ///
+    /// # Examples
+    ///
+    /// [`config::Prc`] imlpements `Verify`.
+    ///
+    /// [`config::Prc`]: crate::config::Prc
+    ///
+    /// ```should_panic
+    /// # use flacenc::error::*;
+    /// # use flacenc::config::Prc;
+    /// # use flacenc::constant::rice::MAX_RICE_PARAMETER;
+    /// fn do_something_with_prc_config(config: &Verified<Prc>) -> usize {
+    ///     if config.max_parameter > MAX_RICE_PARAMETER {
+    ///         panic!();
+    ///     }
+    ///     // do something
+    ///     config.max_parameter * 2
+    /// }
+    /// let mut prc = Prc::default();
+    /// prc.max_parameter = 256;
+    /// // Should compile but panic.
+    /// unsafe {
+    ///     do_something_with_prc_config(&prc.assume_verified());
+    /// }
+    /// ```
     unsafe fn assume_verified(self) -> Verified<Self> {
         Verified(self)
     }
@@ -371,6 +453,7 @@ pub(crate) use verify_range;
 pub enum EncodeError {
     /// Encoder errors due to input sources.
     Source(SourceError),
+    /// Encoder errors due to invalid configuration.
     Config(VerifyError),
 }
 

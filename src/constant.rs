@@ -15,7 +15,8 @@
 //! Configuration constants
 //!
 //! All boundary (prefixed with `MIN_` or `MAX_`) values defined in this module
-//! are inclusive.
+//! are inclusive, e.g. in a case of `{MIN|MAX}_BLOCK_SIZE`, a block size `b` is
+//! valid when `MIN_BLOCK_SIZE <= b` and `b <= MAX_BLOCK_SIZE`.
 
 #![allow(dead_code)] // it's okay if some FLAC-spec constants are not used.
 

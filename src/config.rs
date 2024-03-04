@@ -32,15 +32,22 @@
 //! use_fixed = true
 //! use_lpc = true
 //!
+//! [subframe_coding.fixed]
+//! max_order = 4
+//!
+//! [subframe_coding.fixed.order_sel]
+//! type = "ApproxEnt"
+//! partitions = 32
+//!
 //! [subframe_coding.qlpc]
 //! lpc_order = 10
-//! quant_precision = 12
+//! quant_precision = 15
 //! use_direct_mse = false
 //! mae_optimization_steps = 0
 //!
 //! [subframe_coding.qlpc.window]
 //! type = "Tukey"
-//! alpha = 0.1
+//! alpha = 0.4
 //!
 //! [subframe_coding.prc]
 //! max_parameter = 14
