@@ -57,7 +57,7 @@ const CRC_16_FLAC: crc::Algorithm<u16> = crc::CRC_16_UMTS;
 #[cfg(feature = "serde")]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[cfg_attr(feature = "serde", serde(remote = "simd::Simd"))]
-pub struct SimdDef<T, const N: usize>(#[serde(getter = "simd::Simd::as_array")] [T; N])
+struct SimdDef<T, const N: usize>(#[serde(getter = "simd::Simd::as_array")] [T; N])
 where
     T: simd::SimdElement,
     simd::LaneCount<N>: simd::SupportedLaneCount,
