@@ -580,21 +580,43 @@ impl Verify for MetadataBlock {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "type", content = "data"))]
-/// Enum that covers all variants of `METADATA_BLOCK`.
+/// Enum that covers variants of `METADATA_BLOCK`.
 ///
 /// Currently only [`StreamInfo`] is covered in this enum.
 #[non_exhaustive]
 pub enum MetadataBlockData {
+    /// Variant that contains [`StreamInfo`].
+    ///
+    /// This variant can be obtained via [`From<StreamInfo>::from`].
     StreamInfo(StreamInfo),
+    /// Variant that contains unknown data.
+    ///
+    /// This variant can be obtained via [`MetadataBlockData::new_unknown`].
     Unknown { typetag: u8, data: Vec<u8> },
 }
 
 impl MetadataBlockData {
-    /// Constructs new `MetadataBlockData::Unknown` from the content (in byte vec).
+    /// Constructs new `MetadataBlockData::Unknown` from the content (in `[u8]`).
     ///
     /// # Errors
     ///
     /// Emits errors when `tag` is out of range.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// use flacenc::bitsink::MemSink;
+    /// let metadata: MetadataBlockData = MetadataBlockData::new_unknown(
+    ///     0x12, &[0x34, 0x56]
+    /// ).expect("failed to construct unknown metadata.");
+    /// let mut sink = MemSink::<u8>::new();
+    /// metadata.write(&mut sink).unwrap();
+    ///
+    /// // Note that typetag will be written only after it is wrapped in
+    /// // `MetadataBlock`.
+    /// assert_eq!(&[0x34, 0x56], sink.as_slice());
+    /// ```
     pub fn new_unknown(tag: u8, data: &[u8]) -> Result<Self, VerifyError> {
         verify_range!("tag", tag, 0..=126)?;
         Ok(Self::Unknown {
@@ -1805,7 +1827,7 @@ impl FrameHeader {
     ///
     /// # Errors
     ///
-    /// Returns error when `block_size` or `start_sample_number` is invalid.
+    /// Returns error when `block_size` or `frame_number` is invalid.
     ///
     /// # Examples
     ///

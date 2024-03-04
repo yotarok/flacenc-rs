@@ -541,9 +541,8 @@ fn encode_frame(
 ///
 /// # Errors
 ///
-/// This function currently doesn't return error. However, in future this can
-/// emit an error when `config` is not verified and in inconsistent state.
-/// Currently, behavior when `config` is errorneous is undefined.
+/// Returns an error when an argument is invalid, e.g. when `frame_number` is
+/// out of 31-bit range, or `framebuf` contains a sample that is out of range.
 ///
 /// # Examples
 ///
