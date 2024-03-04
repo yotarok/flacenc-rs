@@ -8,26 +8,27 @@ This crate provides some basic modules for building application-customized FLAC
 (Free Lossless Audio Codec) encoder in your rust programs. The API provided by
 this crate currently supports the following use cases:
 
-1. Performing FLAC encoding of custom input sources.
-1. Inspecting the encoded streams so you can analyze/ serialize parts of the
+1. Performing FLAC encoding from custom input sources.
+1. Inspecting the encoded streams, enabling analysis and serialization of
    encoder results.
 
-It should also be noted that it is easy to hack and enhance this crate to adapt
-to your use cases as this encoder is written in portable and (relatively) clean
-codes.
+Importantly, this encoder is designed for hackability. Its portable and
+(relatively) clean code make it easy to modify and adapt to your specific use
+cases.
 
-If you are interested in a stand-alone FLAC encoder rather than a library for
-embedding it, check out the CLI for this module, [`flacenc-bin`].
+If you need a stand-alone FLAC encoder, rather than an embeddable library,
+try our companion CLI tool, [`flacenc-bin`].
 
-See the [auto-generated report] for the characteristics of the encoder compared
-to [FLAC reference implementation](https://xiph.org/flac/download.html).
+For a detailed comparison of this encoder's characteristics against the
+[FLAC reference implementation](https://xiph.org/flac/download.html), please
+refer to the [auto-generated report].
 
 ## Usage
 
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = "0.3.1"
+flacenc = "0.4.0"
 ```
 
 This crate is intended to be, and primarily developed with
@@ -37,15 +38,15 @@ possible to build within a stable toolchain. If you are okay with using a
 nightly toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = { version = "0.3.1", features = ["simd-nightly"] }
+flacenc = { version = "0.4.0", features = ["simd-nightly"] }
 ```
 
 ## Examples
 
 See also the source code of `flacenc-bin` sub-crate as an example implementation
-of FLAC encoder.
+of a FLAC encoder.
 
-The simplest way to implement FLAC encoder given the recorded samples in
+The simplest way to implement a FLAC encoder given the recorded samples in
 `&[i32]` is as follows:
 
 ```rust
@@ -140,12 +141,6 @@ Apache 2.0; see [`LICENSE`] for details.
 This project is not an official Google project. It is not supported by Google
 and Google specifically disclaims all warranties as to its quality,
 merchantability, or fitness for a particular purpose.
-
-This encoder is still unstable and sometimes the encoded file may contain
-distortion, i.e. the encoder very rarely outputs broken signals. You can check
-whether you encountered an encoder bug by running, e.g., the reference decoder.
-The FLAC format contains MD5 digest of the input signal, and the reference
-decoder checks if the digest of the decoded signal matches with the stored one.
 
 [auto-generated report]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
 [`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html

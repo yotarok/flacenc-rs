@@ -1,11 +1,83 @@
 # ChangeLog
 
-## Prerelease
+## 0.4.0 (flacenc-bin: 0.2.4) - 2024-03-05
+
+### Breaking Changes
+
+- `serde` traits are now an opt-out feature (enabled by default; #131)
+- Some inaccurate constant definitions are fixed (#134)
+  - All `MAX_` constants are now unified to represent inclusive ranges
+- Renamed some constant names to be consistent with other names (#145)
+  - `{MIN|MAX}_BLOCKSIZE` is now `{MIN|MAX}_BLOCK_SIZE`.
+- Some constructors now return `Result<Self, VerifyError>` instead of `Self`
+  - `component::Stream` (#157)
+  - `source::FrameBuf` (#182)
+- `component::MetadataBlockType` is now merged into `MetadataBlockData` (#162)
+- `config::Encoder::block_sizes` is deprecated, use a scalar version
+  `config::Encoder::block_size` instead (#186)
+
+### Added
+
+- API for constructing/ modifying components. Those changes are mainly for
+  implementing decoding feature.
+  - Constructor for `component::SubFrame`s (#156)
+  - Constructor for `component::FrameHeader` (#160)
+  - Field setters for `component::StreamInfo` (#159)
+  - Accessors for `component::ChannelAssignment` (#163)
+  - Constructor for `component::Frame` (#164)
+  - Make `component::Stream::with_stream_info` visible (#165)
+  - Add `component::MetadataBlockData::as_stream_info` (#166)
+  - Change to derive Serialize/ Deserialize for `component::*` (#167)
+- Decoder CLI (#139, #169)
+  - This is currently only for a demonstration purpose. We do not publish a
+    binary crate for this, and we don't try to maintain compatibility of this
+    program at this moment.
+- `MetadataBlock` can now handle opaque data. (#161)
+- Input verification mechanism for software robustness:
+  - Macros for data verification (#133)
+  - Components are now verifiable (#135, #155)
+  - Input verification (#136, #182)
+  - `Verified` type for static checking of verification (#182)
+- Configuration struct for FixedLPC coding (#140)
 
 ### Fixed
 
-- \[bin\] fix `Cargo.toml` depepndency specification.
-  - This requires reupload of the bin crate to crates.io, and an increment of
+- Breakage due to toolchain change
+  - API change of `std::simd` in nightly (#152)
+  - Old `ahash` no longer builds with nightly (#179)
+  - Lint rule changes (#154, #168, #170)
+- Breakage due to dev-dependency change (#153)
+  - This is fixed by just skipping tests in MSRV check, and by just checking it
+    builds. This is not ideal, so we may change it again later.
+
+### Refactored
+
+- `quantize_parameter` is now not an associated item of `QuantizedParameter`
+  (#126)
+- `repeat` macro for cleaner loop-unrolling (#127)
+- Bitcount for `Residual` is now pre-computed when it is constructed (#129)
+- Introduced bitcount-estimator for FixedLPC (#143)
+- Optimization of bitstream dump (#149)
+- LPC
+  - Recovery method when Levinson recursion failed is improved (#172)
+  - Implemented generic precision LPC and use `f64` as a hard-coded default
+    (where `f32` was used before; #174, #176)
+  - Performance optimization (#175, #177, #178, #183)
+- New signal generator for testing is introduced (#137)
+- Code documentations (#150, #158, #171, #185)
+- Special functions for 2-channel 16-bit inputs
+  - upcasting (#146)
+  - deinterleaving (#147)
+- Development infrastructure improvements
+  - Some benchmarks (#128)
+  - Fuzz test (#138, #139, #141, #144, #180)
+  - `Makefile.toml` instead of shell scripts (#130, #132)
+  - CI for `flacdec-bin` and `fuzz` directories (#181)
+
+## Hotfix (flacenc-bin: 0.2.3) - 2023-11-01
+
+- flacenc-bin: fix `Cargo.toml` dependency specification.
+  - This requires upload of the bin crate to crates.io, and an increment of
     the bin crate version.
 
 ## 0.3.1 - 2023-10-30
@@ -41,7 +113,7 @@
   - Components for fixed LPC is only constructed after optimizing the order
     (#109)
   - Performance optimization of LPC (#110, #114, #117)
-  - Performance optimizatoin of PRC (#111, #119)
+  - Performance optimization of PRC (#111, #119)
   - Performance optimization of bitstream formatter (#113)
 
 ## 0.3.0 - 2023-10-20

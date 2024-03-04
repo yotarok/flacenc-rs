@@ -35,10 +35,10 @@ impl<T: seal_signed_bits::Sealed> SignedBits for T {}
 /// Storage-agnostic interface trait for bit-based output.
 ///
 /// The encoder repeatedly generates arrays of code bits that are typically
-/// smaller than a byte (8 bits).  Type implementing `BitSink` is used to
+/// smaller than a byte (8 bits).  A type implementing `BitSink` is used to
 /// arrange those bits typically in bytes, and transfer them to the backend
-/// storage. [`ByteSink`] is a standard implementation of `BitSink` that stores
-/// code bits to a `Vec` of [`u8`]s.
+/// storage. [`ByteSink`] (alias to [`MemSink<u8>`]) is a standard
+/// implementation of `BitSink` that stores code bits to a `Vec` of [`u8`]s.
 pub trait BitSink: Sized {
     /// Error type that may happen while writing bits to `BitSink`.
     type Error: std::error::Error;
@@ -80,8 +80,8 @@ pub trait BitSink: Sized {
     ///
     /// ```
     /// # fn main() -> Result<(), std::convert::Infallible> {
-    /// # use flacenc::bitsink::{MemSink, BitSink};
-    /// let mut sink = MemSink::<u8>::new();
+    /// # use flacenc::bitsink::{ByteSink, BitSink};
+    /// let mut sink = ByteSink::new();
     ///
     /// sink.write_lsbs(0xFFu8, 3);
     /// assert_eq!(sink.len(), 3);
@@ -91,6 +91,9 @@ pub trait BitSink: Sized {
     /// assert_eq!(sink.to_bitstring(), "11100000_10110111_01111101");
     /// # Ok(())}
     /// ```
+    ///
+    /// Even when we use `u64` as a backend storage, this function should move
+    /// the cursor on the eight-bit boundary.
     ///
     /// ```
     /// # fn main() -> Result<(), std::convert::Infallible> {

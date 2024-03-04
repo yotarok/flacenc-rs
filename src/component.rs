@@ -592,7 +592,12 @@ pub enum MetadataBlockData {
     /// Variant that contains unknown data.
     ///
     /// This variant can be obtained via [`MetadataBlockData::new_unknown`].
-    Unknown { typetag: u8, data: Vec<u8> },
+    Unknown {
+        /// 7-bit metadata type tag.
+        typetag: u8,
+        /// Metadata content represented in `Vec<u8>`.
+        data: Vec<u8>,
+    },
 }
 
 impl MetadataBlockData {
@@ -1924,6 +1929,24 @@ impl FrameHeader {
         self.block_size as usize
     }
 
+    /// Returns bits-per-sample.
+    ///
+    /// This function returns `None` when bits-per-sample specification is
+    /// given in the `FrameHeader`.  Otherwise, it returns `None` and bits-per-sample
+    /// should be retrieved from [`StreamInfo`] instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let chs = ChannelAssignment::Independent(1);
+    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::Unspecified, 0).unwrap();
+    /// assert!(header.bits_per_sample().is_none());
+    ///
+    /// let chs = ChannelAssignment::Independent(1);
+    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::B12, 0).unwrap();
+    /// assert_eq!(header.bits_per_sample().unwrap(), 12);
+    /// ```
     pub fn bits_per_sample(&self) -> Option<usize> {
         self.sample_size_spec.into_bits().map(|x| x as usize)
     }
