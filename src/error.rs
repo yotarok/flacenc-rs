@@ -266,7 +266,7 @@ impl<T> std::ops::Deref for Verified<T> {
 }
 
 /// Trait for verifiable structs.
-pub trait Verify: Sized {
+pub trait Verify: Sized + seal_verify::Sealed {
     /// Verifies there's no internal data inconsistency.
     ///
     /// # Errors
@@ -547,9 +547,37 @@ impl fmt::Display for SourceErrorReason {
 
 /// Enum for possible decoder errors.
 #[non_exhaustive]
+#[cfg(any(test, feature = "__export_decode"))]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug)]
 pub enum DecodeError {
     /// Decode error due to invalid parameter value.
     Range(RangeError),
+}
+
+mod seal_verify {
+    pub trait Sealed {}
+
+    impl Sealed for crate::component::ChannelAssignment {}
+    impl Sealed for crate::component::MetadataBlockData {}
+    impl Sealed for crate::component::SubFrame {}
+    impl Sealed for crate::component::Constant {}
+    impl Sealed for crate::component::FixedLpc {}
+    impl Sealed for crate::component::Frame {}
+    impl Sealed for crate::component::FrameHeader {}
+    impl Sealed for crate::component::Lpc {}
+    impl Sealed for crate::component::MetadataBlock {}
+    impl Sealed for crate::component::QuantizedParameters {}
+    impl Sealed for crate::component::Residual {}
+    impl Sealed for crate::component::Stream {}
+    impl Sealed for crate::component::StreamInfo {}
+    impl Sealed for crate::component::Verbatim {}
+    impl Sealed for crate::config::Encoder {}
+    impl Sealed for crate::config::Fixed {}
+    impl Sealed for crate::config::Prc {}
+    impl Sealed for crate::config::Qlpc {}
+    impl Sealed for crate::config::StereoCoding {}
+    impl Sealed for crate::config::SubFrameCoding {}
+    impl Sealed for crate::config::OrderSel {}
+    impl Sealed for crate::config::Window {}
 }
