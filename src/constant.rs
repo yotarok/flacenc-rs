@@ -28,6 +28,9 @@ mod built {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
+/// Default block size.
+pub const DEFAULT_BLOCK_SIZE: usize = 4096;
+
 /// Minimum length of a block supported.
 pub const MIN_BLOCK_SIZE: usize = 64;
 

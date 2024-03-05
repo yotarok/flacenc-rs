@@ -49,7 +49,7 @@ fn arbitrary_config(
     block_size: usize,
 ) -> Result<Verified<config::Encoder>, arbitrary::Error> {
     let mut config = config::Encoder::default();
-    config.block_sizes = vec![block_size];
+    config.block_size = block_size;
     config.stereo_coding.use_leftside = bool::arbitrary(u)?;
     config.stereo_coding.use_rightside = bool::arbitrary(u)?;
     config.stereo_coding.use_midside = bool::arbitrary(u)?;
