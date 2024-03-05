@@ -115,8 +115,7 @@ fn run_encoder<S: Source>(
     encoder_config: &Verified<config::Encoder>,
     source: S,
 ) -> Result<Stream, EncodeError> {
-    let block_size = encoder_config.block_sizes[0];
-    flacenc::encode_with_fixed_block_size(encoder_config, source, block_size)
+    flacenc::encode_with_fixed_block_size(encoder_config, source, encoder_config.block_size)
 }
 
 fn log_build_constants() {

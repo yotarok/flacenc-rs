@@ -226,7 +226,7 @@ multithread = false
 
         test_helper::integrity_test(
             |s| {
-                coding::encode_with_fixed_block_size(&config, s, config.block_sizes[0])
+                coding::encode_with_fixed_block_size(&config, s, config.block_size)
                     .expect("source error")
             },
             &source,

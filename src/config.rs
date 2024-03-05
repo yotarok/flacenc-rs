@@ -19,7 +19,7 @@
 //! a toml file like below:
 //!
 //! ```toml
-//! block_sizes = [4096]
+//! block_size = 4096
 //! multithread = true
 //!
 //! [stereo_coding]
@@ -82,11 +82,9 @@ use super::error::VerifyError;
 #[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Encoder {
-    /// The possible block sizes encoder can use. (default: `[4096]`)
-    ///
-    /// Currently no encoder function support multiple block sizes.
-    pub block_sizes: Vec<usize>,
-    /// Whether encoder runs on multi-thread mode. (default: `true`)
+    /// Encoder block size (default: [`constant::DEFAULT_BLOCK_SIZE`])
+    pub block_size: usize,
+    /// Whether encoder runs on multi-thread mode. (default: `true` when `"par"` feature is used)
     pub multithread: bool,
     /// The number of threads used in multithread mode. (default: `None`)
     ///
@@ -105,7 +103,7 @@ impl Default for Encoder {
         Self {
             stereo_coding: StereoCoding::default(),
             subframe_coding: SubFrameCoding::default(),
-            block_sizes: vec![4096usize],
+            block_size: constant::DEFAULT_BLOCK_SIZE,
             multithread: cfg!(feature = "par"),
             workers: None,
         }
@@ -114,20 +112,11 @@ impl Default for Encoder {
 
 impl Verify for Encoder {
     fn verify(&self) -> Result<(), VerifyError> {
-        verify_true!(
-            "block_sizes",
-            !self.block_sizes.is_empty(),
-            "must have at least one block size specified",
+        verify_range!(
+            "block_size",
+            self.block_size,
+            MIN_BLOCK_SIZE..=MAX_BLOCK_SIZE
         )?;
-        verify_true!(
-            "block_sizes",
-            self.block_sizes.len() == 1,
-            "must be 1 (multiple block sizes are not supported currently)",
-        )?;
-
-        for (i, &bs) in self.block_sizes.iter().enumerate() {
-            verify_range!("block_sizes[{i}]", bs, MIN_BLOCK_SIZE..=MAX_BLOCK_SIZE)?;
-        }
 
         self.stereo_coding
             .verify()
@@ -340,7 +329,7 @@ impl Verify for Qlpc {
 ///
 /// ```toml
 /// type = "Tukey"
-/// alpha = 0.1
+/// alpha = 0.4
 /// ```
 ///
 /// The current default value for [`Window`] is "Tukey" with alpha =
@@ -448,21 +437,21 @@ mod tests {
         }
         {
             let config = Encoder {
-                block_sizes: vec![1234, 2345],
+                block_size: 1234,
+                ..Default::default()
+            };
+            config.verify().unwrap();
+        }
+        {
+            let config = Encoder {
+                block_size: 1,
                 ..Default::default()
             };
             config.verify().unwrap_err();
         }
         {
             let config = Encoder {
-                block_sizes: vec![1],
-                ..Default::default()
-            };
-            config.verify().unwrap_err();
-        }
-        {
-            let config = Encoder {
-                block_sizes: vec![123_456],
+                block_size: 123_456,
                 ..Default::default()
             };
             config.verify().unwrap_err();
@@ -575,7 +564,7 @@ lpc_order = 7
             config.subframe_coding.qlpc.quant_precision,
             QLPC_DEFAULT_PRECISION
         );
-        assert_eq!(config.block_sizes, &[4096]);
+        assert_eq!(config.block_size, constant::DEFAULT_BLOCK_SIZE);
         assert!(config.subframe_coding.use_lpc);
     }
 

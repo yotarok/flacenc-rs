@@ -61,7 +61,7 @@ let config = flacenc::config::Encoder::default().into_verified().expect(
 let source = flacenc::source::MemSource::from_samples(
     samples, channels, bits_per_sample, sample_rate);
 let flac_stream = flacenc::encode_with_fixed_block_size(
-    &config, source, config.block_sizes[0]
+    &config, source, config.block_size
 ).expect("Encode failed.");
 
 // `Stream` imlpements `BitRepr` so you can obtain the encoded stream via
