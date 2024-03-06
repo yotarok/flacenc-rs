@@ -182,7 +182,7 @@ pub trait BitSink: Sized {
     /// ```
     fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error>;
 
-    /// Writes `val` in two's coplement format.
+    /// Writes `val` in two's complement format.
     ///
     /// # Errors
     ///
@@ -373,7 +373,7 @@ impl<S: Bits> MemSink<S> {
         self.bitlength == 0
     }
 
-    /// Reseerves capacity for at least `additional_in_bits` more bits.
+    /// Reserves capacity for at least `additional_in_bits` more bits.
     ///
     /// This function reserves the 'Vec's capacity so that the allocated size is
     /// sufficient for storing `self.len() + additional_in_bits` bits.
