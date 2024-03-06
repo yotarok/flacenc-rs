@@ -65,7 +65,7 @@ let flac_stream = flacenc::encode_with_fixed_block_size(
     &config, source, config.block_size
 ).expect("Encode failed.");
 
-// `Stream` imlpements `BitRepr` so you can obtain the encoded stream via
+// `Stream` implements `BitRepr` so you can obtain the encoded stream via
 // `ByteSink` struct that implements `BitSink`.
 let mut sink = flacenc::bitsink::ByteSink::new();
 flac_stream.write(&mut sink);
@@ -120,7 +120,7 @@ possible customization can be categorized into three groups:
   `encode_with_fixed_block_size` function if `config` argument is properly
   configured (when `par` is enabled the default configuration enables
   multi-thread mode.). If you want to disable multi-thread mode and make the
-  dependency tree smaller, you may do that by `default-featuers = false`. `par`
+  dependency tree smaller, you may do that by `default-features = false`. `par`
   adds dependency to
   [`crossbeam-channel`](https://crates.io/crates/crossbeam-channel) crate.
 

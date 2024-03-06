@@ -773,7 +773,7 @@ impl StreamInfo {
     /// assert_eq!(info.min_block_size(), 160);
     ///
     /// // `Frame` doesn't hold the original signal length, so `total_samples`
-    /// // becomes a multuple of block_size == 160.
+    /// // becomes a multiple of block_size == 160.
     /// assert_eq!(info.total_samples(), 31360);
     /// ```
     pub fn update_frame_info(&mut self, frame: &Frame) {
@@ -914,7 +914,7 @@ impl StreamInfo {
     /// }
     ///
     /// // `Frame` doesn't hold the original signal length, so `total_samples`
-    /// // becomes a multuple of block_size == 160.
+    /// // becomes a multiple of block_size == 160.
     /// assert_eq!(info.total_samples(), 31360);
     /// ```
     pub fn total_samples(&self) -> usize {
@@ -2907,7 +2907,7 @@ impl BitRepr for Residual {
     /// Writes `Residual` to the [`BitSink`].
     ///
     /// This is the most inner-loop of the output part of the encoder, so
-    /// computational efficiecy is prioritized more than readability.
+    /// computational efficiency is prioritized more than readability.
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
         // The number of partitions with 00 (indicating 4-bit mode) prepended.
         dest.write_lsbs(self.partition_order, 6)

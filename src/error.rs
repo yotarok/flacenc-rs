@@ -154,7 +154,7 @@ impl fmt::Display for RangeError {
 
 /// Error object returned when config integrity verification failed.
 ///
-/// This error maintains a path to the component that is actually errorneous
+/// This error maintains a path to the component that is actually erroneous
 /// in the nested components.
 ///
 /// # Design Notes
@@ -279,7 +279,7 @@ pub trait Verify: Sized + seal_verify::Sealed {
     ///
     /// # Examples
     ///
-    /// [`config::Prc`] imlpements `Verify`.
+    /// [`config::Prc`] implements `Verify`.
     ///
     /// [`config::Prc`]: crate::config::Prc
     ///
@@ -303,7 +303,7 @@ pub trait Verify: Sized + seal_verify::Sealed {
     ///
     /// # Examples
     ///
-    /// [`config::Prc`] imlpements `Verify`.
+    /// [`config::Prc`] implements `Verify`.
     ///
     /// [`config::Prc`]: crate::config::Prc
     ///
@@ -355,7 +355,7 @@ pub trait Verify: Sized + seal_verify::Sealed {
     ///
     /// # Examples
     ///
-    /// [`config::Prc`] imlpements `Verify`.
+    /// [`config::Prc`] implements `Verify`.
     ///
     /// [`config::Prc`]: crate::config::Prc
     ///
@@ -489,7 +489,7 @@ impl SourceError {
     /// let err = SourceError::by_reason(SourceErrorReason::Open);
     /// assert_eq!(
     ///     format!("{}", err),
-    ///     "error occured while reading <unknown>. reason: cannot open file."
+    ///     "error occurred while reading <unknown>. reason: cannot open file."
     /// );
     /// ```
     pub const fn by_reason(reason: SourceErrorReason) -> Self {
@@ -508,7 +508,7 @@ impl SourceError {
     /// let err = SourceError::from_unknown();
     /// assert_eq!(
     ///     format!("{}", err),
-    ///     "error occured while reading <unknown>. reason: unknown I/O error."
+    ///     "error occurred while reading <unknown>. reason: unknown I/O error."
     /// );
     /// ```
     pub const fn from_unknown() -> Self {
@@ -530,7 +530,7 @@ impl SourceError {
     /// let err = SourceError::from_io_error(io::Error::new(io::ErrorKind::Other, "oh no!"));
     /// assert_eq!(
     ///     format!("{}", err),
-    ///     "error occured while reading <unknown>. reason: I/O error: oh no!."
+    ///     "error occurred while reading <unknown>. reason: I/O error: oh no!."
     /// );
     /// ```
     pub fn from_io_error<E: Error + 'static>(e: E) -> Self {
@@ -552,7 +552,7 @@ impl SourceError {
     /// let err = err.set_path("missing.wav");
     /// assert_eq!(
     ///     format!("{}", err),
-    ///     "error occured while reading missing.wav. reason: cannot open file."
+    ///     "error occurred while reading missing.wav. reason: cannot open file."
     /// );
     /// ```
     #[must_use]
@@ -594,7 +594,7 @@ impl fmt::Display for SourceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "error occured while reading {}. reason: {}.",
+            "error occurred while reading {}. reason: {}.",
             self.source_name
                 .as_ref()
                 .map_or("<unknown>", String::as_str),

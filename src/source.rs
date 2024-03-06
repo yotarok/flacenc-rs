@@ -43,7 +43,7 @@ pub trait Fill {
     ///
     /// # Errors
     ///
-    /// This may fail when configuration of `Fill` is not consistent withto the
+    /// This may fail when configuration of `Fill` is not consistent with the
     /// input `interleaved` values.
     ///
     /// # Examples
