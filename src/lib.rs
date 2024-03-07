@@ -64,6 +64,9 @@ macro_rules! import_simd {
 
         #[allow(unused_imports)]
         use simd::prelude::*;
+
+        #[allow(unused_imports)]
+        use simd::StdFloat;
     };
 }
 
