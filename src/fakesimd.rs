@@ -167,8 +167,14 @@ pub trait SimdInt {
 
 pub trait SimdFloat {
     type Scalar;
+    type Cast<T: SimdElement>;
     fn reduce_sum(self) -> Self::Scalar;
+    #[allow(dead_code)]
+    fn cast<T: SimdCast>(self) -> Self::Cast<T>;
 }
+
+#[allow(dead_code)]
+pub trait StdFloat {}
 
 #[allow(dead_code)]
 pub trait SimdPartialEq {
@@ -176,9 +182,11 @@ pub trait SimdPartialEq {
     fn simd_eq(self, other: Self) -> Self::Mask;
 }
 
+#[allow(dead_code)]
 pub trait SimdPartialOrd {
     type Mask;
     fn simd_le(self, other: Self) -> Self::Mask;
+    fn simd_lt(self, other: Self) -> Self::Mask;
 }
 
 pub trait SimdOrd {
@@ -254,6 +262,12 @@ where
     #[inline]
     pub fn rotate_elements_right<const OFFSET: usize>(self) -> Self {
         Self(array::from_fn(|i| self.0[(i + N - OFFSET) % N]))
+    }
+
+    #[allow(clippy::return_self_not_must_use)]
+    #[inline]
+    pub fn rotate_elements_left<const OFFSET: usize>(self) -> Self {
+        Self(array::from_fn(|i| self.0[(i + OFFSET) % N]))
     }
 }
 
@@ -337,9 +351,14 @@ where
     T: SimdElement + num_traits::Float + std::iter::Sum,
 {
     type Scalar = T;
+    type Cast<U: SimdElement> = Simd<U, N>;
     #[inline]
     fn reduce_sum(self) -> T {
         self.0.into_iter().sum()
+    }
+    #[inline]
+    fn cast<U: SimdCast>(self) -> Simd<U, N> {
+        Simd::<U, N>(array::from_fn(|i| U::from(self.0[i]).unwrap()))
     }
 }
 
@@ -369,6 +388,13 @@ where
             phantom_data: std::marker::PhantomData,
         }
     }
+
+    fn simd_lt(self, other: Self) -> Self::Mask {
+        Mask {
+            mask: array::from_fn(|i| self.0[i] < other.0[i]),
+            phantom_data: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<T, const N: usize> SimdOrd for Simd<T, N>
@@ -385,6 +411,8 @@ where
         Self(array::from_fn(|i| self.0[i].max(other.0[i])))
     }
 }
+
+impl<T, const N: usize> StdFloat for Simd<T, N> where T: SimdElement + num_traits::Float {}
 
 // ===
 // IMPLEMENTATION OF OPERATOR OVERRIDES

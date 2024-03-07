@@ -34,30 +34,6 @@ use super::repeat::repeat;
 
 import_simd!(as simd);
 
-#[cfg(feature = "simd-nightly")]
-use simd::StdFloat;
-
-/// This trait is introduced for avoiding abstract type spaghetti.
-///
-/// This module is designed so that either f32 and f64 can be used as an
-/// internal statistics representation for quantized LPC and this is represented
-/// as a trait bound [`LpcFloat`]. However, it becomes a bit complicated when it
-/// comes with `"experimental"` feature and `nalgebra`. This `LpcFloatExp` is used
-/// as a marker that `LpcFloat` is actually implementing `nalgebra::ComplexField`
-/// when `"experimental"` feature is enabled. Otherwise, this is a dummy marker
-/// that marks all types.
-#[cfg(not(feature = "experimental"))]
-#[allow(clippy::module_name_repetitions)]
-pub trait LpcFloatExp {}
-#[cfg(feature = "experimental")]
-#[allow(clippy::module_name_repetitions)]
-pub trait LpcFloatExp: nalgebra::ComplexField {}
-
-#[cfg(not(feature = "experimental"))]
-impl<T> LpcFloatExp for T {}
-#[cfg(feature = "experimental")]
-impl<T: nalgebra::ComplexField> LpcFloatExp for T {}
-
 /// Trait for a type that can be used for storing LPC statistics/ parameters.
 ///
 /// Currently, it is only implemented for f32/ f64.
@@ -70,49 +46,53 @@ pub trait LpcFloat:
     + std::fmt::Debug
     + std::fmt::Display
     + simd::SimdElement
+    + simd::SimdCast
     + From<f32>
     + From<i16>
     + AsPrimitive<f32>
     + AsPrimitive<i16>
-    + LpcFloatExp
 {
-    /// Computes `acc += weight * signal` with casting `f32`s in `signal` to `T`s.
-    #[cfg(feature = "simd-nightly")]
-    fn accumulate_signal<const N: usize>(
-        acc: &mut simd::Simd<Self, N>,
-        weight: Self,
-        signal: simd::Simd<f32, N>,
-    ) where
+    #[allow(dead_code)]
+    type Simd<const N: usize>: SimdFloat<Scalar = Self>
+        + StdFloat
+        + Copy
+        + From<simd::Simd<Self, N>>
+    where
         simd::LaneCount<N>: simd::SupportedLaneCount;
+
+    /// Solves symetric positive-definite linear equation in-place.
+    ///
+    /// This computes `v = matmul(inverse(mat), v)` where `mat` is assumed to be
+    /// symmetric positive-definite (SPD), and if not it returns `false`.
+    /// Otherwise, it returns `true` and `v` is overwritten by the solution.
+    #[allow(dead_code)]
+    #[cfg(feature = "experimental")]
+    fn solve_sym_mut(mat: &nalgebra::DMatrix<Self>, v: &mut nalgebra::DVector<Self>) -> bool;
 }
 
-impl LpcFloat for f32 {
-    #[inline]
-    #[cfg(feature = "simd-nightly")]
-    fn accumulate_signal<const N: usize>(
-        acc: &mut simd::Simd<Self, N>,
-        weight: Self,
-        signal: simd::Simd<f32, N>,
-    ) where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
-        *acc = simd::Simd::splat(weight).mul_add(signal, *acc);
-    }
-}
+macro_rules! def_lpc_float {
+    ($ty:ty) => {
+        impl self::LpcFloat for $ty {
+            type Simd<const N: usize> = simd::Simd<$ty, N>
+                                            where
+                                                simd::LaneCount<N>: simd::SupportedLaneCount;
 
-impl LpcFloat for f64 {
-    #[inline]
-    #[cfg(feature = "simd-nightly")]
-    fn accumulate_signal<const N: usize>(
-        acc: &mut simd::Simd<Self, N>,
-        weight: Self,
-        signal: simd::Simd<f32, N>,
-    ) where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
-        *acc = simd::Simd::splat(weight).mul_add(signal.cast(), *acc);
-    }
+            #[cfg(feature = "experimental")]
+            #[inline]
+            fn solve_sym_mut(
+                mat: &nalgebra::DMatrix<Self>,
+                v: &mut nalgebra::DVector<Self>,
+            ) -> bool {
+                mat.clone().cholesky().map_or(false, |decompose| {
+                    decompose.solve_mut(v);
+                    true
+                })
+            }
+        }
+    };
 }
+def_lpc_float!(f32);
+def_lpc_float!(f64);
 
 /// Precomputes window function given the window config `win`.
 #[inline]
@@ -364,18 +344,18 @@ pub fn auto_correlation<T: LpcFloat>(order: usize, signal: &[f32], dest: &mut [T
     );
 }
 
-/// Compute delay sum.
+/// Computes the sum of outer products of lagged vectors.
 ///
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
 #[allow(dead_code)]
-pub fn delay_sum<T>(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<T>)
+pub fn lagged_outer_prod_sum<T>(order: usize, signal: &[f32], dest: &mut nalgebra::DMatrix<T>)
 where
     T: LpcFloat,
 {
-    weighted_delay_sum(
+    weighted_lagged_outer_prod_sum(
         order,
         signal,
         dest,
@@ -384,37 +364,91 @@ where
     );
 }
 
-#[cfg(feature = "simd-nightly")]
+/// Computes sum of `x[t] * y[t] * weight_fn(t_offset + t)`s.
 #[inline]
-#[allow(clippy::needless_range_loop)] // for readability
-fn weighted_auto_correlation_simd<T, F, const N: usize>(
-    order: usize,
-    signal: &[f32],
-    dest: &mut [T],
-    weight_fn: F,
-) where
+#[cfg(feature = "simd-nightly")]
+fn weighted_prod_sum<T, F>(t_offset: usize, x: &[f32], y: &[f32], weight_fn: F) -> T
+where
     T: LpcFloat,
     F: Fn(usize) -> f32,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
-    assert!(dest.len() >= order);
-    assert!(order <= N);
+    let mut acc = T::zero();
+    for (tau, (x, delayed_x)) in x.iter().copied().zip(y.iter().copied()).enumerate() {
+        let wx = Into::<T>::into(weight_fn(t_offset + tau) * x);
+        acc = Float::mul_add(delayed_x.into(), wx, acc);
+    }
+    acc
+}
 
-    let mut lagged = simd::Simd::<f32, N>::splat(0f32);
-    let mut acc = simd::Simd::<T, N>::splat(T::zero());
-    for tau in 0..(order - 1) {
-        lagged[tau] = signal[order - 2 - tau];
+/// Internal function that computes the sum of `signal[t] * signal[t-DELAY] * weight_fn(t)`s.
+///
+/// This function takes arguments as const generics, and this necessitates us to have a
+/// redundant parameter `LANES_MINUS_DELAY` which is assumed to be always `LANES - DELAY`.
+/// This is due to a current limitation of constant computation in Rust.
+#[cfg(feature = "simd-nightly")]
+#[inline]
+fn weighted_delay_prod_sum_impl<
+    T,
+    F,
+    const LANES: usize,
+    const DELAY: usize,
+    const LANES_MINUS_DELAY: usize,
+>(
+    warm_up: usize,
+    signal: &[f32],
+    weight_fn: F,
+) -> T
+where
+    T: LpcFloat,
+    simd::LaneCount<LANES>: simd::SupportedLaneCount,
+    F: Fn(usize) -> f32,
+{
+    assert!(DELAY <= LANES);
+    assert!(LANES_MINUS_DELAY == LANES - DELAY);
+    let mut acc = T::zero();
+
+    let delayed_signal = &signal[warm_up - DELAY..];
+    let (head, body, foot) = signal[warm_up..].as_simd();
+    let mut t_offset = warm_up;
+
+    acc += weighted_prod_sum(t_offset, head, delayed_signal, &weight_fn);
+    t_offset += head.len();
+
+    // this is a bit awkward to use f32 for `indices`, but this can reduce some complexity of
+    // implementing `fakesimd::Mask::cast`. this is required for compilation even though this
+    // loop is not actually used. We can resort conditional compilation as well, but conditional
+    // compilation is also not very clean.
+    let indices = simd::Simd::from_array(std::array::from_fn(|n| n as f32));
+    let mask = indices.simd_lt(simd::Simd::splat(DELAY as f32));
+    // ^ first `DELAY` lanes are true.
+
+    let mut prev_v = simd::Simd::from_array(std::array::from_fn(|n| {
+        if warm_up + n < LANES {
+            0.0
+        } else {
+            signal.get(t_offset + n - LANES).copied().unwrap_or(0.0)
+        }
+    }));
+    let mut acc_v: T::Simd<LANES> = simd::Simd::splat(T::zero()).into();
+    for v in body.iter().copied::<simd::Simd<f32, LANES>>() {
+        prev_v = mask.select(
+            prev_v.rotate_elements_left::<LANES_MINUS_DELAY>(),
+            v.rotate_elements_right::<DELAY>(),
+        );
+        let weight_v = simd::Simd::from_array(std::array::from_fn(|n| weight_fn(t_offset + n)));
+
+        acc_v = T::Simd::mul_add((weight_v * v).cast().into(), prev_v.cast().into(), acc_v);
+        prev_v = v;
+        t_offset += LANES; // this needs to be updated in each iteration since weight_fn refers it.
     }
-    for t in (order - 1)..signal.len() {
-        let w = weight_fn(t);
-        let y = signal[t];
-        lagged = lagged.rotate_elements_right::<1>();
-        lagged[0] = y;
-        T::accumulate_signal(&mut acc, (w * y).into(), lagged);
-    }
-    for (tau, mut_p) in dest.iter_mut().enumerate() {
-        *mut_p = if tau < order { acc[tau] } else { T::zero() };
-    }
+
+    acc += weighted_prod_sum(
+        t_offset,
+        foot,
+        &delayed_signal[t_offset - warm_up..],
+        &weight_fn,
+    );
+    acc + acc_v.reduce_sum()
 }
 
 /// Compute weighted auto-correlation coefficients.
@@ -422,45 +456,66 @@ fn weighted_auto_correlation_simd<T, F, const N: usize>(
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
+#[cfg(feature = "simd-nightly")]
 #[inline]
+#[allow(clippy::cognitive_complexity)] // so far complexity is hidden by seq macros.
+pub fn weighted_auto_correlation_simd<T, F>(
+    order: usize,
+    signal: &[f32],
+    dest: &mut [T],
+    weight_fn: F,
+) where
+    T: LpcFloat,
+    F: Fn(usize) -> f32,
+{
+    let warmup = order - 1;
+    let weight_fn = &weight_fn;
+    seq_macro::seq!(DELAY in 0..=32 {
+        if DELAY < order {
+            // `LANES` is starting from 8.
+            #[allow(clippy::identity_op)] // delay may be zero.
+            #[allow(clippy::eq_op)] // delay may be 0x07.
+            const LANES: usize = usize::next_power_of_two((DELAY | 0x07) - 1);
+            #[allow(clippy::identity_op)] // delay may be zero.
+            const LANES_MINUS_DELAY: usize = LANES - DELAY;
+            dest[DELAY] = weighted_delay_prod_sum_impl::<
+                T, _, LANES, DELAY, LANES_MINUS_DELAY
+            >(warmup, signal, weight_fn);
+        }
+    });
+}
+
+pub fn weighted_auto_correlation_nosimd<T, F>(
+    order: usize,
+    signal: &[f32],
+    dest: &mut [T],
+    weight_fn: F,
+) where
+    T: LpcFloat,
+    F: Fn(usize) -> f32,
+{
+    for t in (order - 1)..signal.len() {
+        let wy: T = (weight_fn(t) * signal[t]).into();
+        repeat!(tau to { MAX_LPC_ORDER + 1 } ; while tau < order => {
+            dest[tau] = Float::mul_add(Into::<T>::into(signal[t - tau]), wy, dest[tau]);
+        });
+    }
+}
+
+/// Computes auto-correlation function up to `order`.
 pub fn weighted_auto_correlation<T, F>(order: usize, signal: &[f32], dest: &mut [T], weight_fn: F)
 where
     T: LpcFloat,
     F: Fn(usize) -> f32,
 {
+    assert!(dest.len() >= order);
+    for p in &mut *dest {
+        *p = T::zero();
+    }
     #[cfg(feature = "simd-nightly")]
-    {
-        // The current implementation is inefficient with fakesimd when order
-        // is low. So, here we still have a scalar version of it.
-        if order <= 4 {
-            weighted_auto_correlation_simd::<T, _, 4>(order, signal, dest, weight_fn);
-        } else if order <= 8 {
-            weighted_auto_correlation_simd::<T, _, 8>(order, signal, dest, weight_fn);
-        } else if order <= 16 {
-            weighted_auto_correlation_simd::<T, _, 16>(order, signal, dest, weight_fn);
-        } else if order <= 32 {
-            weighted_auto_correlation_simd::<T, _, 32>(order, signal, dest, weight_fn);
-        } else {
-            assert!(order == 33);
-            // this is inefficient because there's only 1 element that doesn't fit
-            // to Simd with LANE==32. However, this is so far okay as it is rather
-            // rare to use order == 33 (i.e. lpc_order == 32).
-            weighted_auto_correlation_simd::<T, _, 64>(order, signal, dest, weight_fn);
-        }
-    }
+    weighted_auto_correlation_simd(order, signal, dest, weight_fn);
     #[cfg(not(feature = "simd-nightly"))]
-    {
-        assert!(dest.len() >= order);
-        for p in &mut *dest {
-            *p = T::zero();
-        }
-        for t in (order - 1)..signal.len() {
-            let wy: T = (weight_fn(t) * signal[t]).into();
-            repeat!(tau to { MAX_LPC_ORDER + 1 } ; while tau < order => {
-                dest[tau] = Float::mul_add(Into::<T>::into(signal[t - tau]), wy, dest[tau]);
-            });
-        }
-    }
+    weighted_auto_correlation_nosimd(order, signal, dest, weight_fn);
 }
 
 /// Compute weighted delay-sum statistics.
@@ -470,7 +525,7 @@ where
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
 #[inline]
-pub fn weighted_delay_sum<T, F>(
+pub fn weighted_lagged_outer_prod_sum<T, F>(
     order: usize,
     signal: &[f32],
     dest: &mut nalgebra::DMatrix<T>,
@@ -488,8 +543,8 @@ pub fn weighted_delay_sum<T, F>(
         let w = weight_fn(t);
         for i in 0..order {
             for j in i..order {
-                let v = signal[t - i] * signal[t - j] * w;
-                dest[(i, j)] += v.into();
+                let wx = Into::<T>::into(signal[t - j] * w);
+                dest[(i, j)] = Float::mul_add(signal[t - i].into(), wx, dest[(i, j)]);
             }
         }
     }
@@ -605,23 +660,6 @@ where
     }
 }
 
-/// Solves symetric positive-definite linear equation in-place.
-///
-/// This computes `v = matmul(inverse(mat), v)` where `mat` is assumed to be
-/// symmetric positive-definite (SPD), and if not it returns `false`.
-/// Otherwise, it returns `true` and `v` is overwritten by the solution.
-#[cfg(feature = "experimental")]
-#[inline]
-fn solve_sym_mut<T>(mat: &nalgebra::DMatrix<T>, v: &mut nalgebra::DVector<T>) -> bool
-where
-    T: nalgebra::ComplexField,
-{
-    mat.clone().cholesky().map_or(false, |decompose| {
-        decompose.solve_mut(v);
-        true
-    })
-}
-
 /// Working buffer for (unquantized) LPC estimation.
 struct LpcEstimator<T> {
     /// Buffer for storing windowed signal.
@@ -630,7 +668,7 @@ struct LpcEstimator<T> {
     corr_coefs: Vec<T>,
     /// Buffer for delay-sum matrix and it's inverse. (not used in auto-correlation mode.)
     #[cfg(feature = "experimental")]
-    delay_sum: nalgebra::DMatrix<T>,
+    lagged_outer_prod_sum: nalgebra::DMatrix<T>,
     /// Weights for IRLS.
     #[cfg(feature = "experimental")]
     weights: Vec<f32>,
@@ -647,7 +685,7 @@ where
             windowed_signal: SimdVec::new(),
             corr_coefs: vec![],
             #[cfg(feature = "experimental")]
-            delay_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
+            lagged_outer_prod_sum: nalgebra::DMatrix::zeros(MAX_LPC_ORDER, MAX_LPC_ORDER),
             #[cfg(feature = "experimental")]
             weights: vec![],
         }
@@ -787,29 +825,31 @@ where
 
         self.fill_windowed_signal(signal, get_window(window, signal.len()).as_ref_simd());
 
-        self.delay_sum.fill(T::zero());
-        self.delay_sum.resize_mut(lpc_order, lpc_order, T::zero());
-        weighted_auto_correlation(
+        self.lagged_outer_prod_sum.fill(T::zero());
+        self.lagged_outer_prod_sum
+            .resize_mut(lpc_order, lpc_order, T::zero());
+
+        weighted_auto_correlation_nosimd(
             lpc_order + 1,
             self.windowed_signal.as_ref(),
             &mut self.corr_coefs,
             &weight_fn,
         );
-        weighted_delay_sum(
+        weighted_lagged_outer_prod_sum(
             lpc_order,
             &self.windowed_signal.as_ref()[0..self.windowed_signal.len() - 1],
-            &mut self.delay_sum,
+            &mut self.lagged_outer_prod_sum,
             |t| weight_fn(t + 1),
         );
 
         let mut xy = nalgebra::DVector::<T>::from(self.corr_coefs[1..].to_vec());
 
         let mut regularizer = T::zero();
-        while !solve_sym_mut(&self.delay_sum, &mut xy) {
+        while !T::solve_sym_mut(&self.lagged_outer_prod_sum, &mut xy) {
             let old_regularizer = regularizer;
             regularizer = T::one().max(regularizer + regularizer);
             for i in 0..lpc_order {
-                self.delay_sum[(i, i)] += regularizer - old_regularizer;
+                self.lagged_outer_prod_sum[(i, i)] += regularizer - old_regularizer;
             }
         }
 
@@ -945,6 +985,25 @@ mod tests {
         }
         assert_eq!(argmax_corr, 0);
         assert_eq!(argmin_corr, 16);
+    }
+
+    #[test]
+    fn auto_correlation_computation_with_known_samples() {
+        let signal: [f32; 64] = [
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0,
+            1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+            -1.0, // warmup ends
+            1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, -1.0,
+            1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        ];
+
+        let mut corr = [0f64; 33];
+        weighted_auto_correlation(33, &signal, &mut corr, |_t| 1.0);
+
+        assert_eq!(corr[0], 24.0);
+        assert_eq!(corr[1], -4.0);
+        assert_eq!(corr[2], 2.0);
+        assert_eq!(corr[32], 0.0);
     }
 
     #[test]
@@ -1246,24 +1305,77 @@ mod tests {
     #[test]
     #[allow(clippy::identity_op, clippy::neg_multiply)]
     #[cfg(feature = "experimental")]
-    fn delay_sum_computation() {
+    fn lagged_outer_prod_sum_computation() {
         let signal = vec![4.0, -4.0, 3.0, -3.0, 2.0, -2.0, 1.0, -1.0];
         let mut result = nalgebra::DMatrix::zeros(2, 2);
-        delay_sum::<f32>(2, &signal, &mut result);
+        lagged_outer_prod_sum::<f64>(2, &signal, &mut result);
         eprintln!("{result:?}");
         assert_eq!(
             result[(0, 0)],
-            (-4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1 + -1 * -1) as f32
+            (-4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1 + -1 * -1) as f64
         );
         assert_eq!(
             result[(0, 1)],
-            (4 * -4 + -4 * 3 + 3 * -3 + -3 * 2 + 2 * -2 + -2 * 1 + 1 * -1) as f32
+            (4 * -4 + -4 * 3 + 3 * -3 + -3 * 2 + 2 * -2 + -2 * 1 + 1 * -1) as f64
         );
         assert_eq!(
             result[(1, 1)],
-            (4 * 4 + -4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1) as f32
+            (4 * 4 + -4 * -4 + 3 * 3 + -3 * -3 + 2 * 2 + -2 * -2 + 1 * 1) as f64
         );
         assert_eq!(result[(1, 0)], result[(0, 1)])
+    }
+
+    #[test]
+    #[cfg(feature = "experimental")]
+    fn solve_mut_sym() {
+        let signal: Vec<f32> = sigen::Sine::new(32, 0.8)
+            .noise(0.01)
+            .to_vec_quantized(16, 1024)
+            .into_iter()
+            .map(|x| x as f32)
+            .collect();
+
+        let order = 12;
+        let mut autocorr = vec![0.0f64; order + 1];
+
+        auto_correlation(order + 1, &signal, &mut autocorr);
+        let mut covar = nalgebra::DMatrix::zeros(order, order);
+        lagged_outer_prod_sum(order, &signal, &mut covar);
+
+        let mut x =
+            nalgebra::DVector::<f64>::from(autocorr.iter().copied().skip(1).collect::<Vec<_>>());
+        f64::solve_sym_mut(&covar, &mut x);
+
+        eprintln!("x = {x:?}");
+        let y = covar * x;
+
+        for (dim, (y, y_expected)) in y.iter().zip(autocorr.iter().skip(1)).enumerate() {
+            eprintln!("{} == {} @ {dim}", y, y_expected);
+            assert_close!(y, y_expected);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "simd-nightly")]
+    fn parity_of_auto_correlation_functions_for_simd_and_nosimd() {
+        let signal: Vec<f32> = sigen::Sine::new(32, 0.8)
+            .noise(0.01)
+            .to_vec_quantized(16, 1024)
+            .into_iter()
+            .map(|x| x as f32)
+            .collect();
+        let order: usize = 25;
+
+        let mut dest_simd = vec![0.0f64; MAX_LPC_ORDER + 1];
+        let mut dest_nosimd = vec![0.0f64; MAX_LPC_ORDER + 1];
+
+        weighted_auto_correlation_simd(order, &signal, &mut dest_simd, |_t| 1.0f32);
+        weighted_auto_correlation_nosimd(order, &signal, &mut dest_nosimd, |_t| 1.0f32);
+
+        for (d, (x_simd, x_nosimd)) in dest_simd.iter().zip(dest_nosimd.iter()).enumerate() {
+            eprintln!("dim={d}, x_simd={x_simd}, x_nosimd={x_nosimd}, {order}");
+            assert_close!(x_simd, x_nosimd);
+        }
     }
 
     #[test]
