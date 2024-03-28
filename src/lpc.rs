@@ -153,6 +153,83 @@ impl WindowKey {
     }
 }
 
+/// Trait for a weighting function when collecting the second order statistics.
+///
+/// It is only interesting in "experimental" build, so far, only `NoWeight` is used
+/// in non-experimental build.
+pub trait Weight {
+    /// Apply weight to a sample `x` at time-offset `t`.
+    fn apply(&self, t: usize, x: f32) -> f32;
+    /// Apply weights to a vector of samples `x` starting at time-offset `t0`.
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
+    where
+        simd::LaneCount<N>: simd::SupportedLaneCount;
+}
+
+struct NoWeight;
+#[cfg(feature = "experimental")]
+struct VecWeight(Vec<f32>);
+#[cfg(feature = "experimental")]
+struct ShiftedWeight<const M: usize, W: Weight>(W);
+
+impl<W: Weight> Weight for &W {
+    #[inline]
+    fn apply(&self, t: usize, x: f32) -> f32 {
+        (*self).apply(t, x)
+    }
+    #[inline]
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
+    where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        (*self).apply_simd(t0, x)
+    }
+}
+
+impl Weight for NoWeight {
+    #[inline]
+    fn apply(&self, _t: usize, x: f32) -> f32 {
+        x
+    }
+    #[inline]
+    fn apply_simd<const N: usize>(&self, _t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
+    where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        x
+    }
+}
+
+#[cfg(feature = "experimental")]
+impl Weight for VecWeight {
+    #[inline]
+    fn apply(&self, t: usize, x: f32) -> f32 {
+        self.0[t] * x
+    }
+    #[inline]
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
+    where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        x * simd::Simd::<f32, N>::from_slice(&self.0[t0..(t0 + N)])
+    }
+}
+
+#[cfg(feature = "experimental")]
+impl<W: Weight, const M: usize> Weight for ShiftedWeight<M, W> {
+    #[inline]
+    fn apply(&self, t: usize, x: f32) -> f32 {
+        self.0.apply(t + M, x)
+    }
+    #[inline]
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
+    where
+        simd::LaneCount<N>: simd::SupportedLaneCount,
+    {
+        self.0.apply_simd(t0 + M, x)
+    }
+}
+
 const QLPC_WIN_SIMD_N: usize = 16;
 type WindowMap = BTreeMap<WindowKey, Rc<SimdVec<f32, QLPC_WIN_SIMD_N>>>;
 reusable!(WINDOW_CACHE: WindowMap);
@@ -335,13 +412,7 @@ pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i3
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[allow(dead_code)]
 pub fn auto_correlation<T: LpcFloat>(order: usize, signal: &[f32], dest: &mut [T]) {
-    weighted_auto_correlation(
-        order,
-        signal,
-        dest,
-        #[inline]
-        |_t| 1.0,
-    );
+    weighted_auto_correlation(order, signal, dest, NoWeight);
 }
 
 /// Computes the sum of outer products of lagged vectors.
@@ -355,32 +426,26 @@ pub fn lagged_outer_prod_sum<T>(order: usize, signal: &[f32], dest: &mut nalgebr
 where
     T: LpcFloat,
 {
-    weighted_lagged_outer_prod_sum(
-        order,
-        signal,
-        dest,
-        #[inline]
-        |_t| 1.0f32,
-    );
+    weighted_lagged_outer_prod_sum(order, signal, dest, NoWeight);
 }
 
-/// Computes sum of `x[t] * y[t] * weight_fn(t_offset + t)`s.
+/// Computes sum of `x[t] * y[t] * weight(t_offset + t)`s.
 #[inline]
 #[cfg(feature = "simd-nightly")]
-fn weighted_prod_sum<T, F>(t_offset: usize, x: &[f32], y: &[f32], weight_fn: F) -> T
+fn weighted_prod_sum<T, W>(t_offset: usize, x: &[f32], y: &[f32], weight: W) -> T
 where
     T: LpcFloat,
-    F: Fn(usize) -> f32,
+    W: Weight,
 {
     let mut acc = T::zero();
     for (tau, (x, delayed_x)) in x.iter().copied().zip(y.iter().copied()).enumerate() {
-        let wx = Into::<T>::into(weight_fn(t_offset + tau) * x);
+        let wx = Into::<T>::into(weight.apply(t_offset + tau, x));
         acc = Float::mul_add(delayed_x.into(), wx, acc);
     }
     acc
 }
 
-/// Internal function that computes the sum of `signal[t] * signal[t-DELAY] * weight_fn(t)`s.
+/// Internal function that computes the sum of `signal[t] * signal[t-DELAY] * weight(t)`s.
 ///
 /// This function takes arguments as const generics, and this necessitates us to have a
 /// redundant parameter `LANES_MINUS_DELAY` which is assumed to be always `LANES - DELAY`.
@@ -389,19 +454,19 @@ where
 #[inline]
 fn weighted_delay_prod_sum_impl<
     T,
-    F,
+    W,
     const LANES: usize,
     const DELAY: usize,
     const LANES_MINUS_DELAY: usize,
 >(
     warm_up: usize,
     signal: &[f32],
-    weight_fn: F,
+    weight: W,
 ) -> T
 where
     T: LpcFloat,
     simd::LaneCount<LANES>: simd::SupportedLaneCount,
-    F: Fn(usize) -> f32,
+    W: Weight,
 {
     assert!(DELAY <= LANES);
     assert!(LANES_MINUS_DELAY == LANES - DELAY);
@@ -411,7 +476,7 @@ where
     let (head, body, foot) = signal[warm_up..].as_simd();
     let mut t_offset = warm_up;
 
-    acc += weighted_prod_sum(t_offset, head, delayed_signal, &weight_fn);
+    acc += weighted_prod_sum(t_offset, head, delayed_signal, &weight);
     t_offset += head.len();
 
     // this is a bit awkward to use f32 for `indices`, but this can reduce some complexity of
@@ -435,18 +500,18 @@ where
             prev_v.rotate_elements_left::<LANES_MINUS_DELAY>(),
             v.rotate_elements_right::<DELAY>(),
         );
-        let weight_v = simd::Simd::from_array(std::array::from_fn(|n| weight_fn(t_offset + n)));
+        let wv = weight.apply_simd(t_offset, v);
 
-        acc_v = T::Simd::mul_add((weight_v * v).cast().into(), prev_v.cast().into(), acc_v);
+        acc_v = T::Simd::mul_add(wv.cast().into(), prev_v.cast().into(), acc_v);
         prev_v = v;
-        t_offset += LANES; // this needs to be updated in each iteration since weight_fn refers it.
+        t_offset += LANES; // this needs to be updated in each iteration since weight refers it.
     }
 
     acc += weighted_prod_sum(
         t_offset,
         foot,
         &delayed_signal[t_offset - warm_up..],
-        &weight_fn,
+        &weight,
     );
     acc + acc_v.reduce_sum()
 }
@@ -459,17 +524,13 @@ where
 #[cfg(feature = "simd-nightly")]
 #[inline]
 #[allow(clippy::cognitive_complexity)] // so far complexity is hidden by seq macros.
-pub fn weighted_auto_correlation_simd<T, F>(
-    order: usize,
-    signal: &[f32],
-    dest: &mut [T],
-    weight_fn: F,
-) where
+pub fn weighted_auto_correlation_simd<T, W>(order: usize, signal: &[f32], dest: &mut [T], weight: W)
+where
     T: LpcFloat,
-    F: Fn(usize) -> f32,
+    W: Weight,
 {
     let warmup = order - 1;
-    let weight_fn = &weight_fn;
+    let weight = &weight;
     seq_macro::seq!(DELAY in 0..=32 {
         if DELAY < order {
             // `LANES` is starting from 8.
@@ -480,22 +541,22 @@ pub fn weighted_auto_correlation_simd<T, F>(
             const LANES_MINUS_DELAY: usize = LANES - DELAY;
             dest[DELAY] = weighted_delay_prod_sum_impl::<
                 T, _, LANES, DELAY, LANES_MINUS_DELAY
-            >(warmup, signal, weight_fn);
+            >(warmup, signal, weight);
         }
     });
 }
 
-pub fn weighted_auto_correlation_nosimd<T, F>(
+pub fn weighted_auto_correlation_nosimd<T, W>(
     order: usize,
     signal: &[f32],
     dest: &mut [T],
-    weight_fn: F,
+    weight: W,
 ) where
     T: LpcFloat,
-    F: Fn(usize) -> f32,
+    W: Weight,
 {
     for t in (order - 1)..signal.len() {
-        let wy: T = (weight_fn(t) * signal[t]).into();
+        let wy: T = weight.apply(t, signal[t]).into();
         repeat!(tau to { MAX_LPC_ORDER + 1 } ; while tau < order => {
             dest[tau] = Float::mul_add(Into::<T>::into(signal[t - tau]), wy, dest[tau]);
         });
@@ -503,35 +564,35 @@ pub fn weighted_auto_correlation_nosimd<T, F>(
 }
 
 /// Computes auto-correlation function up to `order`.
-pub fn weighted_auto_correlation<T, F>(order: usize, signal: &[f32], dest: &mut [T], weight_fn: F)
+pub fn weighted_auto_correlation<T, W>(order: usize, signal: &[f32], dest: &mut [T], weight: W)
 where
     T: LpcFloat,
-    F: Fn(usize) -> f32,
+    W: Weight,
 {
     assert!(dest.len() >= order);
     for p in &mut *dest {
         *p = T::zero();
     }
     #[cfg(feature = "simd-nightly")]
-    weighted_auto_correlation_simd(order, signal, dest, weight_fn);
+    weighted_auto_correlation_simd(order, signal, dest, weight);
     #[cfg(not(feature = "simd-nightly"))]
-    weighted_auto_correlation_nosimd(order, signal, dest, weight_fn);
+    weighted_auto_correlation_nosimd(order, signal, dest, weight);
 }
 
-/// Compute weighted delay-sum statistics.
+/// Compute weighted lagged-outer-prod-sum statistics.
 ///
 /// # Panics
 ///
 /// Panics if the number of samples in `signal` is smaller than `order`.
 #[cfg(feature = "experimental")]
 #[inline]
-pub fn weighted_lagged_outer_prod_sum<T, F>(
+pub fn weighted_lagged_outer_prod_sum<T, W>(
     order: usize,
     signal: &[f32],
     dest: &mut nalgebra::DMatrix<T>,
-    weight_fn: F,
+    weight: W,
 ) where
-    F: Fn(usize) -> f32,
+    W: Weight,
     T: LpcFloat,
 {
     assert!(dest.ncols() >= order);
@@ -540,10 +601,9 @@ pub fn weighted_lagged_outer_prod_sum<T, F>(
     dest.fill(T::zero());
 
     for t in (order - 1)..signal.len() {
-        let w = weight_fn(t);
         for i in 0..order {
             for j in i..order {
-                let wx = Into::<T>::into(signal[t - j] * w);
+                let wx = Into::<T>::into(weight.apply(t, signal[t - j]));
                 dest[(i, j)] = Float::mul_add(signal[t - i].into(), wx, dest[(i, j)]);
             }
         }
@@ -713,15 +773,15 @@ where
 
     /// Performs weighted LPC via auto-correlation coefficients.
     #[allow(clippy::range_plus_one)]
-    pub fn weighted_lpc_from_auto_corr<F>(
+    pub fn weighted_lpc_from_auto_corr<W>(
         &mut self,
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
-        weight_fn: F,
+        weight: W,
     ) -> heapless::Vec<T, MAX_LPC_ORDER>
     where
-        F: Fn(usize) -> f32,
+        W: Weight,
     {
         let mut ret = heapless::Vec::new();
         if lpc_order == 0 {
@@ -737,7 +797,7 @@ where
             lpc_order + 1,
             self.windowed_signal.as_ref(),
             &mut self.corr_coefs,
-            weight_fn,
+            weight,
         );
         for &v in &self.corr_coefs {
             assert!(
@@ -762,13 +822,7 @@ where
         window: &Window,
         lpc_order: usize,
     ) -> heapless::Vec<T, MAX_LPC_ORDER> {
-        self.weighted_lpc_from_auto_corr(
-            signal,
-            window,
-            lpc_order,
-            #[inline]
-            |_t| 1.0f32,
-        )
+        self.weighted_lpc_from_auto_corr(signal, window, lpc_order, NoWeight)
     }
 
     /// Optimizes LPC with Mean-Absolute-Error criterion.
@@ -790,10 +844,12 @@ where
         let weight_fn = |err: f32| (err.abs().max(1.0) / normalizer).max(0.01).powf(-1.2);
 
         for _t in 0..=steps {
-            let ws = self.weights.clone();
-            let coefs = self.weighted_lpc_with_direct_mse(signal, window, lpc_order, |t| {
-                ws.get(t).copied().unwrap_or(0.0)
-            });
+            let coefs = self.weighted_lpc_with_direct_mse(
+                signal,
+                window,
+                lpc_order,
+                VecWeight(self.weights.clone()),
+            );
             compute_raw_errors(signal, &coefs, &mut raw_errors);
 
             let sum_abs_err: f32 = raw_errors.iter().copied().map(f32::abs).sum::<f32>();
@@ -810,15 +866,15 @@ where
     }
 
     #[cfg(feature = "experimental")]
-    fn weighted_lpc_with_direct_mse<F>(
+    fn weighted_lpc_with_direct_mse<W>(
         &mut self,
         signal: &[i32],
         window: &Window,
         lpc_order: usize,
-        weight_fn: F,
+        weight: W,
     ) -> heapless::Vec<T, MAX_LPC_ORDER>
     where
-        F: Fn(usize) -> f32,
+        W: Weight,
     {
         self.corr_coefs.resize(lpc_order + 1, T::zero());
         self.corr_coefs.fill(T::zero());
@@ -833,13 +889,13 @@ where
             lpc_order + 1,
             self.windowed_signal.as_ref(),
             &mut self.corr_coefs,
-            &weight_fn,
+            &weight,
         );
         weighted_lagged_outer_prod_sum(
             lpc_order,
             &self.windowed_signal.as_ref()[0..self.windowed_signal.len() - 1],
             &mut self.lagged_outer_prod_sum,
-            |t| weight_fn(t + 1),
+            ShiftedWeight::<1, _>(weight),
         );
 
         let mut xy = nalgebra::DVector::<T>::from(self.corr_coefs[1..].to_vec());
@@ -869,13 +925,7 @@ where
         window: &Window,
         lpc_order: usize,
     ) -> heapless::Vec<T, MAX_LPC_ORDER> {
-        self.weighted_lpc_with_direct_mse(
-            signal,
-            window,
-            lpc_order,
-            #[inline]
-            |_t| 1.0f32,
-        )
+        self.weighted_lpc_with_direct_mse(signal, window, lpc_order, NoWeight)
     }
 }
 
@@ -998,7 +1048,7 @@ mod tests {
         ];
 
         let mut corr = [0f64; 33];
-        weighted_auto_correlation(33, &signal, &mut corr, |_t| 1.0);
+        weighted_auto_correlation(33, &signal, &mut corr, NoWeight);
 
         assert_eq!(corr[0], 24.0);
         assert_eq!(corr[1], -4.0);
@@ -1369,8 +1419,8 @@ mod tests {
         let mut dest_simd = vec![0.0f64; MAX_LPC_ORDER + 1];
         let mut dest_nosimd = vec![0.0f64; MAX_LPC_ORDER + 1];
 
-        weighted_auto_correlation_simd(order, &signal, &mut dest_simd, |_t| 1.0f32);
-        weighted_auto_correlation_nosimd(order, &signal, &mut dest_nosimd, |_t| 1.0f32);
+        weighted_auto_correlation_simd(order, &signal, &mut dest_simd, NoWeight);
+        weighted_auto_correlation_nosimd(order, &signal, &mut dest_nosimd, NoWeight);
 
         for (d, (x_simd, x_nosimd)) in dest_simd.iter().zip(dest_nosimd.iter()).enumerate() {
             eprintln!("dim={d}, x_simd={x_simd}, x_nosimd={x_nosimd}, {order}");
