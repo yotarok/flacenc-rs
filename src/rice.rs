@@ -14,6 +14,7 @@
 
 //! Functions for partitioned rice coding (PRC).
 
+use super::arrayutils::find_max;
 use super::arrayutils::unaligned_map_and_update;
 use super::constant::rice::MAX_PARTITIONS as MAX_RICE_PARTITIONS;
 use super::constant::rice::MAX_PARTITION_ORDER as MAX_RICE_PARTITION_ORDER;
@@ -42,7 +43,54 @@ static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
 static MAX_P_TO_BITS_VEC: simd::u32x16 = simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
 
-const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
+#[inline]
+fn accumulate_shifted_sum_no_sat(errors: &[u32]) -> simd::u32x16 {
+    let mut ret = ZEROS;
+    for v in errors {
+        ret += simd::Simd::splat(*v) >> INDEX;
+    }
+    ret = ret.simd_min(MAX_P_TO_BITS_VEC);
+    ret
+}
+
+#[inline]
+fn accumulate_shifted_sum_with_sat_add(errors: &[u32]) -> simd::u32x16 {
+    let mut ret = ZEROS;
+    for v in errors {
+        ret = ret.saturating_add(simd::Simd::splat(*v) >> INDEX);
+    }
+    ret = ret.simd_min(MAX_P_TO_BITS_VEC);
+    ret
+}
+
+#[inline]
+fn accumulate_shifted_sum(errors: &[u32]) -> simd::u32x16 {
+    const UNROLL_N: usize = 16; // must be up to 16.
+    let mut ret = ZEROS;
+    let max_error = find_max::<16>(errors);
+    if u64::from(max_error) * (errors.len() as u64) <= u64::from(u32::MAX) {
+        return accumulate_shifted_sum_no_sat(errors);
+    }
+    if cfg!(any(target_arch = "arm", target_arch = "aarch64")) {
+        return accumulate_shifted_sum_with_sat_add(errors);
+    }
+    for chunk in errors.chunks(UNROLL_N) {
+        if chunk.len() == UNROLL_N {
+            repeat!(n to UNROLL_N => {
+                ret += simd::Simd::splat(chunk[n]) >> INDEX;
+            });
+        } else {
+            repeat!(
+                n to UNROLL_N;
+                while n < chunk.len() => {
+                    ret += simd::Simd::splat(chunk[n]) >> INDEX;
+                }
+            );
+        }
+        ret = ret.simd_min(MAX_P_TO_BITS_VEC);
+    }
+    ret
+}
 
 impl PrcBitTable {
     #[cfg(test)]
@@ -55,34 +103,8 @@ impl PrcBitTable {
         debug_assert!(offset < (1 << 31));
         let offset =
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
-        let mut p_to_bits = ZEROS;
-
-        // MAX_P_TO_BITS is designed not to overflow after 16 times of addition.
-        //
-        // TODO: there's still a risk of overflow when there's a consecutive 16
-        // elements in `error` where all are larger than `1 << 28`. Since it's
-        // very low probability and clamping inputs may degrade the performance,
-        // this issue is ignored currently.
-        //
-        // In most of SIMD-capable CPUs, saturating ops can be done with a
-        // single instruction. However, strangely the use of `saturating_add`
-        // and removing `simd_min` from the loop actually slowed down the
-        // computation by almost twice.
-        for chunk in errors.chunks(PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N) {
-            if chunk.len() == PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N {
-                repeat!(n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N => {
-                    p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
-                });
-            } else {
-                repeat!(
-                    n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N;
-                    while n < chunk.len() => {
-                        p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
-                    }
-                );
-            }
-            p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
-        }
+        let mut p_to_bits = accumulate_shifted_sum(errors);
+        p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
         p_to_bits += offset;
         p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
         Self { p_to_bits }

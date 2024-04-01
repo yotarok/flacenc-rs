@@ -279,6 +279,13 @@ where
     T: SimdElement,
 {
     #[inline]
+    pub fn splat(b: bool) -> Self {
+        Self {
+            mask: [b; N],
+            phantom_data: std::marker::PhantomData,
+        }
+    }
+    #[inline]
     pub fn select(self, true_values: Simd<T, N>, false_values: Simd<T, N>) -> Simd<T, N> {
         Simd(array::from_fn(|i| {
             if self.mask[i] {
@@ -289,6 +296,16 @@ where
         }))
     }
 }
+
+impl<T, const N: usize> std::ops::BitOrAssign for Mask<T, N>
+where
+    T: SimdElement,
+{
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.mask = array::from_fn(|i| self.mask[i] | rhs.mask[i]);
+    }
+}
+
 
 // ===
 // IMPLEMENTATION OF SIMD-SPECIFIC OPS
