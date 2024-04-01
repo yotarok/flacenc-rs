@@ -414,10 +414,18 @@ mod bench {
     }
 
     #[bench]
-    fn bit_table_creation(b: &mut Bencher) {
+    fn bit_table_creation_short(b: &mut Bencher) {
+        let mut errors = vec![];
+        errors.extend(128u32..(128u32 + 16u32));
+
+        b.iter(|| PrcBitTable::from_errors(black_box(&errors), 123usize));
+    }
+
+    #[bench]
+    fn bit_table_creation_long(b: &mut Bencher) {
         let mut errors = vec![];
         errors.extend(0u32..4096u32);
 
-        b.iter(|| PrcBitTable::from_errors(&errors, 123usize));
+        b.iter(|| PrcBitTable::from_errors(black_box(&errors), 123usize));
     }
 }
