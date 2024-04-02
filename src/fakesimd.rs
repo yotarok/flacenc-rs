@@ -64,6 +64,17 @@ impl SimdElement for i16 {
     }
 }
 
+impl SimdElement for u16 {
+    type Mask = Self;
+
+    fn simd_element_add(self, rhs: Self) -> Self {
+        self.wrapping_add(rhs)
+    }
+    fn simd_element_sub(self, rhs: Self) -> Self {
+        self.wrapping_sub(rhs)
+    }
+}
+
 impl SimdElement for i32 {
     type Mask = Self;
 
@@ -151,6 +162,7 @@ pub trait SimdUint {
     fn reduce_max(self) -> Self::Scalar;
     fn reduce_min(self) -> Self::Scalar;
     fn reduce_sum(self) -> Self::Scalar;
+    fn swap_bytes(self) -> Self;
 }
 
 #[allow(dead_code)]
@@ -343,6 +355,11 @@ where
     #[inline]
     fn reduce_sum(self) -> T {
         self.0.into_iter().sum()
+    }
+
+    #[inline]
+    fn swap_bytes(self) -> Self {
+        Self(array::from_fn(|i| self.0[i].swap_bytes()))
     }
 }
 

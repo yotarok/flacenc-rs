@@ -644,6 +644,57 @@ pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
     }
 }
 
+#[inline]
+pub fn transmute_into_be_bytes<T, const LANES: usize>(src: &[T], dest: &mut [u8])
+where
+    T: simd::SimdElement + num_traits::PrimInt + num_traits::ToBytes,
+    simd::LaneCount<LANES>: simd::SupportedLaneCount,
+    simd::Simd<T, LANES>: SimdUint,
+{
+    let bytes_per_elem = std::mem::size_of::<T>();
+
+    let copy_len = std::cmp::min(dest.len(), std::mem::size_of_val(src));
+
+    // then do LE -> BE conversion if needed
+    if cfg!(target_endian = "little") {
+        // for example, when dest.len() == 14, src.len() == 128, and T: u32,
+        // `last_idx` is the index for the last element in `src` to be written with
+        // a special handling, `last_idx = 3`, and `tail_idx` is the number of bytes
+        // written from that last element, and `tail_bytes == 2` in this example.
+        let last_idx = copy_len / bytes_per_elem;
+        let tail_bytes = copy_len - last_idx * bytes_per_elem;
+
+        // first transmute a part of `dest: &mut [u8]` to `dest_body: &mut [T]`.
+        let dest_body = &mut dest[0..last_idx * bytes_per_elem];
+        let dest_body: &mut [T] = unsafe {
+            std::slice::from_raw_parts_mut(dest_body.as_mut_ptr().cast(), copy_len / bytes_per_elem)
+        };
+
+        // then, populate `dest_body` with applying `swap_bytes`.
+        unaligned_map_and_update(
+            &src[..last_idx],
+            dest_body,
+            #[inline]
+            |p, x| *p = x.swap_bytes(),
+            #[inline]
+            |p, v| *p = v.swap_bytes(),
+        );
+
+        // finally, handle the last element.
+        if tail_bytes != 0 {
+            let tail_off = last_idx * bytes_per_elem;
+            dest[tail_off..(tail_off + tail_bytes)]
+                .copy_from_slice(&src[last_idx].to_be_bytes().as_ref()[0..tail_bytes]);
+        }
+    } else {
+        // if it's BE, we transmute src to u8, and just do byte copy.
+        // WARNING: This branch is not sufficiently tested.
+        let src: &[u8] =
+            unsafe { std::slice::from_raw_parts(src.as_ptr().cast(), std::mem::size_of_val(src)) };
+        dest[..copy_len].copy_from_slice(&src[..copy_len]);
+    }
+}
+
 /// Transmutes a slice of `[Simd]`s into a slice of scalars.
 ///
 /// This hides an unsafe block. The operation is basically safe as rust ensures
@@ -935,6 +986,52 @@ mod tests {
 
         let vs = [123, 234, 345, 234, i32::MIN, 3, 3, 4, i32::MIN, 2, 2];
         assert_eq!(find_min_and_max::<4>(&vs, 456i32), (i32::MIN, 456));
+    }
+
+    #[test]
+    fn unsafe_transmute_into_be_bytes() {
+        let src: Vec<u64> = vec![
+            0x1234_5678_9ABC_DEF0,
+            0x0246_8ACE_1357_9BDF,
+            0xC0FE_EEEE_C0FE_EEEE,
+            0xF00D_F00D_F00D_F00D,
+        ];
+
+        let mut dest = vec![0u8; 32];
+        transmute_into_be_bytes::<u64, 4>(&src, &mut dest);
+        assert_eq!(
+            dest,
+            [
+                0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x02, 0x46, 0x8A, 0xCE, 0x13, 0x57,
+                0x9B, 0xDF, 0xC0, 0xFE, 0xEE, 0xEE, 0xC0, 0xFE, 0xEE, 0xEE, 0xF0, 0x0D, 0xF0, 0x0D,
+                0xF0, 0x0D, 0xF0, 0x0D
+            ]
+        );
+
+        // when `dest` is shorted than `src`, and `dest.len()` is not multiple of the element
+        // width.
+        dest.fill(0xFFu8);
+        transmute_into_be_bytes::<u64, 4>(&src, &mut dest[0..18]);
+        assert_eq!(
+            dest,
+            [
+                0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x02, 0x46, 0x8A, 0xCE, 0x13, 0x57,
+                0x9B, 0xDF, 0xC0, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF
+            ]
+        );
+
+        // when `src` is shorted than `dest`
+        dest.fill(0xFFu8);
+        transmute_into_be_bytes::<u64, 4>(&src[..2], &mut dest);
+        assert_eq!(
+            dest,
+            [
+                0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0, 0x02, 0x46, 0x8A, 0xCE, 0x13, 0x57,
+                0x9B, 0xDF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF
+            ]
+        );
     }
 }
 

@@ -16,13 +16,39 @@
 
 use std::convert::Infallible;
 
+use crate::arrayutils::transmute_into_be_bytes;
+
+import_simd!(as simd);
+
 /// Trait for the bit-addressible unsigned integers.
 ///
 /// This trait is sealed so a user cannot implement it. Currently, this trait
 /// covers: [`u8`], [`u16`], [`u32`], and [`u64`].
-pub trait Bits: seal_bits::Sealed {}
+pub trait Bits: seal_bits::Sealed {
+    fn flatten_slice_to_be_bytes(src: &[Self], dest: &mut [u8]);
+}
 
-impl<T: seal_bits::Sealed> Bits for T {}
+impl Bits for u8 {
+    fn flatten_slice_to_be_bytes(src: &[Self], dest: &mut [u8]) {
+        let len = std::cmp::min(src.len(), dest.len());
+        dest[..len].copy_from_slice(&src[..len]);
+    }
+}
+impl Bits for u16 {
+    fn flatten_slice_to_be_bytes(src: &[Self], dest: &mut [u8]) {
+        transmute_into_be_bytes::<Self, 16>(src, dest);
+    }
+}
+impl Bits for u32 {
+    fn flatten_slice_to_be_bytes(src: &[Self], dest: &mut [u8]) {
+        transmute_into_be_bytes::<Self, 8>(src, dest);
+    }
+}
+impl Bits for u64 {
+    fn flatten_slice_to_be_bytes(src: &[Self], dest: &mut [u8]) {
+        transmute_into_be_bytes::<Self, 4>(src, dest);
+    }
+}
 
 /// Trait for the signed integers that can be provided to bitsink.
 ///
@@ -492,18 +518,7 @@ impl<S: Bits> MemSink<S> {
     ///            [0xCA, 0xFE, 0xFE, 0xED, 0xBE, 0xEE]);
     /// ```
     pub fn write_to_byte_slice(&self, dest: &mut [u8]) {
-        let destlen = dest.len();
-        let bytes_per_elem = std::mem::size_of::<S>();
-        let mut head = 0;
-        for v in &self.storage {
-            if head + bytes_per_elem <= destlen {
-                dest[head..head + bytes_per_elem].copy_from_slice(v.to_be_bytes().as_ref());
-            } else {
-                let rem = destlen - head;
-                dest[head..].copy_from_slice(&v.to_be_bytes().as_ref()[..rem]);
-            }
-            head += bytes_per_elem;
-        }
+        S::flatten_slice_to_be_bytes(&self.storage, dest);
     }
 }
 
