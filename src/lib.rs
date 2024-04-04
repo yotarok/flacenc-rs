@@ -135,6 +135,9 @@ pub mod sigen;
 pub mod source;
 
 #[cfg(test)]
+pub mod mem;
+
+#[cfg(test)]
 pub mod test_helper;
 
 // this is for including "doctest_helper.rs" in lintting and auto-formating.
