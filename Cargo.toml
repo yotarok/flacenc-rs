@@ -28,7 +28,7 @@ serde = ["dep:serde", "heapless/serde"]
 simd-nightly = []
 
 [dependencies]
-crc = "2.1"
+crc = "3.2"
 crossbeam-channel = { version = "0.5.12", optional = true }
 heapless = "0.8.0"
 md-5 = "0.10.6"
