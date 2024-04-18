@@ -3059,10 +3059,6 @@ mod tests {
     use crate::sigen;
     use crate::sigen::Signal;
 
-    use bitvec::bits;
-    use bitvec::prelude::BitVec;
-    use bitvec::prelude::Lsb0;
-
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
 
@@ -3085,9 +3081,9 @@ mod tests {
     }
 
     #[test]
-    fn write_empty_stream() -> Result<(), OutputError<BitVec<u8>>> {
+    fn write_empty_stream() -> Result<(), OutputError<MemSink<u8>>> {
         let stream = Stream::new(44100, 2, 16).unwrap();
-        let mut bv: BitVec<u8> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         stream.write(&mut bv)?;
         assert_eq!(
             bv.len(),
@@ -3100,9 +3096,9 @@ mod tests {
     }
 
     #[test]
-    fn write_stream_info() -> Result<(), OutputError<BitVec<u8>>> {
+    fn write_stream_info() -> Result<(), OutputError<MemSink<u8>>> {
         let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
-        let mut bv: BitVec<u8> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         stream_info.write(&mut bv)?;
         assert_eq!(bv.len(), 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128);
         assert_eq!(stream_info.count_bits(), bv.len());
@@ -3110,26 +3106,26 @@ mod tests {
     }
 
     #[test]
-    fn write_frame_header() -> Result<(), OutputError<BitVec<usize>>> {
+    fn write_frame_header() -> Result<(), OutputError<MemSink<u8>>> {
         let header = FrameHeader::new(2304, ChannelAssignment::Independent(2), 192);
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         header.write(&mut bv)?;
 
         // test with canonical frame
         let header = FrameHeader::new(192, ChannelAssignment::Independent(2), 0);
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         header.write(&mut bv)?;
 
         assert_eq!(
-            bv,
-            bits![
-                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, // sync
-                0, 1, // reserved/ blocking strategy (const in this impl)
-                0, 0, 0, 1, 0, 0, 0, 0, // block size/ sample_rate (0=header)
-                0, 0, 0, 1, 0, 0, 0, 0, // channel/ bps (0=header)/ reserved
-                0, 0, 0, 0, 0, 0, 0, 0, // sample number
-                0, 1, 1, 0, 1, 0, 0, 1, // crc-8
-            ]
+            bv.to_bitstring(),
+            concat!(
+                "11111111_111110", // sync
+                "01_",             // reserved/ blocking strategy (const in this impl)
+                "00010000_",       // block size/ sample_rate (0=header)
+                "00010000_",       // channel/ bps (0=header)/ reserved
+                "00000000_",       // sample number
+                "01101001",        // crc8
+            )
         );
 
         assert_eq!(header.count_bits(), bv.len());
@@ -3138,14 +3134,14 @@ mod tests {
     }
 
     #[test]
-    fn write_verbatim_frame() -> Result<(), OutputError<BitVec>> {
+    fn write_verbatim_frame() -> Result<(), OutputError<MemSink<u64>>> {
         let nchannels: usize = 3;
         let nsamples: usize = 17;
         let bits_per_sample: usize = 16;
         let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample).unwrap();
         let framebuf = vec![-1i32; nsamples * nchannels];
         let frame = make_frame(&stream_info, &framebuf, 0);
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u64> = MemSink::new();
 
         frame.header().write(&mut bv)?;
         assert_eq!(frame.header().count_bits(), bv.len());
@@ -3208,15 +3204,15 @@ mod tests {
     }
 
     #[test]
-    fn channel_assignment_encoding() -> Result<(), OutputError<BitVec<usize>>> {
+    fn channel_assignment_encoding() -> Result<(), OutputError<MemSink<u8>>> {
         let ch = ChannelAssignment::Independent(8);
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         ch.write(&mut bv)?;
-        assert_eq!(bv, bits![0, 1, 1, 1]);
+        assert_eq!(bv.to_bitstring(), "0111****");
         let ch = ChannelAssignment::RightSide;
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u8> = MemSink::new();
         ch.write(&mut bv)?;
-        assert_eq!(bv, bits![1, 0, 0, 1]);
+        assert_eq!(bv.to_bitstring(), "1001****");
         assert_eq!(ch.count_bits(), bv.len());
         Ok(())
     }
@@ -3254,7 +3250,7 @@ mod tests {
 
     #[test]
     #[allow(clippy::cast_lossless)]
-    fn bit_count_residual() -> Result<(), OutputError<BitVec<usize>>> {
+    fn bit_count_residual() -> Result<(), OutputError<MemSink<u64>>> {
         let mut rng = rand::thread_rng();
         let block_size = 4 * Uniform::from(16..=1024).sample(&mut rng);
         let partition_order: usize = 2;
@@ -3285,7 +3281,7 @@ mod tests {
             .verify()
             .expect("should construct a valid Residual");
 
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u64> = MemSink::new();
         residual.write(&mut bv)?;
 
         assert_eq!(residual.count_bits(), bv.len());
@@ -3293,13 +3289,13 @@ mod tests {
     }
 
     #[test]
-    fn frame_bitstream_precomputataion() -> Result<(), OutputError<BitVec<usize>>> {
+    fn frame_bitstream_precomputataion() -> Result<(), OutputError<MemSink<u64>>> {
         let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let samples = sigen::Sine::new(128, 0.2)
             .noise(0.1)
             .to_vec_quantized(12, 512);
         let mut frame = make_frame(&stream_info, &samples, 0);
-        let mut bv_ref: BitVec<usize> = BitVec::new();
+        let mut bv_ref: MemSink<u64> = MemSink::new();
         let frame_cloned = frame.clone();
         frame_cloned.write(&mut bv_ref)?;
         assert!(bv_ref.len() % 8 == 0); // frame must be byte-aligned.
@@ -3308,9 +3304,9 @@ mod tests {
         assert!(frame.is_bitstream_precomputed());
         assert!(!frame_cloned.is_bitstream_precomputed());
 
-        let mut bv: BitVec<usize> = BitVec::new();
+        let mut bv: MemSink<u64> = MemSink::new();
         frame.write(&mut bv)?;
-        assert_eq!(bv, bv_ref);
+        assert_eq!(bv.to_bitstring(), bv_ref.to_bitstring());
 
         // this makes `Frame` broken as the header says it has two channels.
         frame.add_subframe(frame.subframe(0).unwrap().clone());

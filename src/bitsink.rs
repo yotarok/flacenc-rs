@@ -746,52 +746,9 @@ mod seal_signed_bits {
 mod tests {
     use super::*;
 
-    use bitvec::prelude::bits;
-    use bitvec::prelude::BitOrder;
-    use bitvec::prelude::BitStore;
-    use bitvec::prelude::BitVec;
-    use bitvec::prelude::Lsb0;
-    use bitvec::prelude::Msb0;
-    use bitvec::view::BitView;
-
-    impl<T2, O2> BitSink for BitVec<T2, O2>
-    where
-        T2: BitStore,
-        O2: BitOrder,
-    {
-        type Error = Infallible;
-
-        #[inline]
-        fn align_to_byte(&mut self) -> Result<usize, Self::Error> {
-            let npad = 8 - self.len() % 8;
-            if npad == 8 {
-                return Ok(0);
-            }
-            self.write_lsbs(0u8, npad)?;
-            Ok(npad)
-        }
-
-        fn write_lsbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
-            let val: u64 = val.into();
-            self.extend_from_bitslice(&val.view_bits::<Msb0>()[64 - n..]);
-            Ok(())
-        }
-
-        fn write_msbs<T: Bits>(&mut self, val: T, n: usize) -> Result<(), Self::Error> {
-            let val: u64 = val.into();
-            self.extend_from_bitslice(&val.view_bits::<Msb0>()[0..n]);
-            Ok(())
-        }
-
-        fn write<T: Bits>(&mut self, val: T) -> Result<(), Self::Error> {
-            self.write_lsbs(val, std::mem::size_of::<T>() << 3)?;
-            Ok(())
-        }
-    }
-
     #[test]
     fn align_to_byte_with_bitvec() -> Result<(), Infallible> {
-        let mut sink: BitVec<u8> = BitVec::new();
+        let mut sink: MemSink<u8> = MemSink::new();
         sink.write_lsbs(0x01u8, 1)?;
         sink.align_to_byte()?;
         assert_eq!(sink.len(), 8);
@@ -806,9 +763,9 @@ mod tests {
 
     #[test]
     fn twoc_writing() -> Result<(), Infallible> {
-        let mut sink: BitVec<u8> = BitVec::new();
+        let mut sink: MemSink<u8> = MemSink::new();
         sink.write_twoc(-7, 4)?;
-        assert_eq!(sink, bits![1, 0, 0, 1]);
+        assert_eq!(sink.to_bitstring(), "1001****");
         Ok(())
     }
 
