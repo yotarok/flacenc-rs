@@ -138,7 +138,7 @@ pub mod source;
 pub mod test_helper;
 
 // this is for including "doctest_helper.rs" in lintting and auto-formating.
-#[cfg(feature = "clippy")]
+#[cfg(clippy)]
 mod doctest_helper;
 
 #[cfg(feature = "mimalloc")]
