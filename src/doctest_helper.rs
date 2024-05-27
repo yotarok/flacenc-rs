@@ -16,14 +16,13 @@
 
 // mimic clippy. This file acts as a part of the crate when checked by clippy.
 // but it is outside of the crate when it is actually used by doctests.
-#[cfg(feature = "clippy")]
+#[cfg(clippy)]
 use crate as flacenc;
 
 use flacenc::component::Frame;
 use flacenc::component::FrameHeader;
 use flacenc::component::Stream;
 use flacenc::config;
-use flacenc::error::Verified;
 use flacenc::error::Verify;
 use flacenc::source::MemSource;
 

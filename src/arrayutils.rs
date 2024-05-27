@@ -653,6 +653,7 @@ pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
 ///   2. `Simd` is bit-equivalent with array, i.e.
 ///      `size_of::<Simd<T, N>>() == size_of::<T>() * N`.
 ///      <https://github.com/rust-lang/portable-simd/blob/master/beginners-guide.md#size-alignment-and-unsafe-code>
+///
 /// Still, there's a possibility that some architecture uses a different
 /// element (or bit) order inside since the above conditions only for there
 /// will be no memory violations. For the orders, we only rely on unittests.
