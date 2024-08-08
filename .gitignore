@@ -2,6 +2,8 @@
 /flacenc-bin/target
 /flacdec-bin/target
 /Cargo.lock
+# debug workspaces
+/debug
 # Test materials
 /report/out
 /testwav
