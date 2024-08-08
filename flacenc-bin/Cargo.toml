@@ -28,7 +28,6 @@ clap = { version = "4.5.1", features = ["derive"] }
 env_logger = "0.11.2"
 flacenc = { version = "0.4.0", path = "..", features = [
   "experimental",
-  "mimalloc",
   "par",
 ] }
 hound = "3.5.1"
@@ -37,6 +36,7 @@ pprof = { version = "0.13", features = [
   "flamegraph",
   "protobuf-codec",
 ], optional = true }
+sndfile = { version = "0.1.1", optional = true }
 termcolor = "1.4"
 toml = "0.8.10"
 
@@ -44,3 +44,4 @@ toml = "0.8.10"
 default = []
 pprof = ["dep:pprof"]
 simd-nightly = ["flacenc/simd-nightly"]
+sndfile = ["dep:sndfile"]

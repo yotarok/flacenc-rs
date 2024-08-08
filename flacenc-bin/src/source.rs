@@ -32,10 +32,10 @@ use flacenc::source::Source;
 /// via `WavReader::into_inner` and it is used to retrieve blocks of samples.
 #[allow(clippy::module_name_repetitions)]
 pub struct HoundSource {
-    spec: hound::WavSpec,
-    duration: usize,
+    pub(crate) spec: hound::WavSpec,
+    pub(crate) duration: usize,
     reader: BufReader<File>,
-    bytes_per_sample: usize,
+    pub(crate) bytes_per_sample: usize,
     bytebuf: Vec<u8>,
     current_offset: usize,
     file_size: Option<usize>,
@@ -124,3 +124,92 @@ impl Source for HoundSource {
         Some(self.duration)
     }
 }
+
+#[cfg(feature = "sndfile")]
+/// An example of `flacenc::source::Source` based on libsndfile.
+#[allow(clippy::module_name_repetitions)]
+pub struct SndSource {
+    snd: sndfile::SndFile,
+    len: usize,
+    bits_per_sample: usize,
+    readbuf: Vec<i32>,
+}
+
+#[cfg(feature = "sndfile")]
+impl SndSource {
+    /// Constructs `SndSource` from `path`.
+    ///
+    /// # Errors
+    ///
+    /// The function fails when file is not found or has invalid format. This
+    /// function currently do not support WAVs with IEEE float samples, and it
+    /// returns `SourceError` with `SourceErrorReason::InvalidFormat` if the
+    /// samples are floats.
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut snd = sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto).from_path(path).map_err(|_|
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, "read failed"))
+        )?;
+        let len = snd.len().map_err(|_|
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, "read length failed"))
+        )? as usize;
+        snd.seek(std::io::SeekFrom::Start(0));
+        let bits_per_sample = match snd.get_subtype_format() {
+            sndfile::SubtypeFormat::PCM_S8 => 8,
+            sndfile::SubtypeFormat::PCM_16 => 16,
+            sndfile::SubtypeFormat::PCM_24 => 24,
+            _ => {
+                return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "unsupported datatype")));
+            },
+        };
+
+        Ok(Self {
+            snd,
+            len,
+            bits_per_sample,
+            readbuf: Vec::new(),
+        })
+    }
+}
+
+#[cfg(feature = "sndfile")]
+impl Source for SndSource {
+    #[inline]
+    fn channels(&self) -> usize {
+        self.snd.get_channels()
+    }
+
+    #[inline]
+    fn bits_per_sample(&self) -> usize {
+        self.bits_per_sample
+    }
+
+    #[inline]
+    fn sample_rate(&self) -> usize {
+        self.snd.get_samplerate()
+    }
+
+    #[inline]
+    fn read_samples<F: Fill>(
+        &mut self,
+        block_size: usize,
+        dest: &mut F,
+    ) -> Result<usize, SourceError> {
+        use sndfile::SndFileIO;
+        let read_size = block_size * self.channels();
+        self.readbuf.resize(read_size, 0i32);
+        let read_count = self.snd.read_to_slice(&mut self.readbuf).map_err(|_| SourceError::from_unknown())?;
+        eprintln!("ch = {}, len = {}, block_size = {}, read_count = {}", self.channels(), self.len, block_size, read_count);
+        let shift_size = 32 - self.bits_per_sample();
+        for v in &mut self.readbuf {
+            *v <<= shift_size;
+        }
+        dest.fill_interleaved(&self.readbuf[0..read_size]);
+
+        Ok(read_count)
+    }
+
+    fn len_hint(&self) -> Option<usize> {
+        None // Some(self.len)
+    }
+}
+

@@ -71,6 +71,8 @@ mod source;
 
 use display::Progress;
 use source::HoundSource;
+#[cfg(feature = "sndfile")]
+use source::SndSource;
 
 /// FLAC encoder.
 #[derive(Parser, Debug)]
@@ -129,6 +131,14 @@ fn log_build_constants() {
     );
 }
 
+fn log_hound_source_information(src: &HoundSource) {
+    info!(
+        target: "flacenc-bin::source_info::jsonl",
+        "{{ duration: {} }}",
+        src.duration,
+    );
+}
+
 #[allow(clippy::let_underscore_must_use)]
 fn main_body(args: Args) -> Result<(), i32> {
     let io_info = display::IoArgs::new(&args.config, &args.source, &args.output);
@@ -146,11 +156,13 @@ fn main_body(args: Args) -> Result<(), i32> {
         return Err(ExitCode::InvalidConfig as i32);
     }
 
+    //let source = SndSource::from_path(&args.source).expect("Failed to load input source.");
+    let source = HoundSource::from_path(&args.source).expect("Failed to load input source.");
+    log_hound_source_information(&source);
     let _ = display::show_progress(&io_info, &Progress::Started);
 
-    let source = HoundSource::from_path(&args.source).expect("Failed to load input source.");
-    let source_bytes = source.file_size();
-    let source_duration_secs = Some(source.duration_as_secs());
+    let source_bytes = None; // source.file_size();
+    let source_duration_secs = None; // source.duration_as_secs());
     let encoder_start = Instant::now();
 
     let stream = run_encoder(&encoder_config, source).expect("Encoder error.");
