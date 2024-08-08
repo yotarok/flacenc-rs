@@ -81,11 +81,13 @@ pub trait Fill {
 }
 
 impl<T: Fill, U: Fill> Fill for (T, U) {
+    #[inline]
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
         self.0.fill_interleaved(interleaved)?;
         self.1.fill_interleaved(interleaved)
     }
 
+    #[inline]
     fn fill_le_bytes(&mut self, bytes: &[u8], bytes_per_sample: usize) -> Result<(), SourceError> {
         self.0.fill_le_bytes(bytes, bytes_per_sample)?;
         self.1.fill_le_bytes(bytes, bytes_per_sample)
@@ -96,10 +98,12 @@ impl<'a, T> Fill for &'a mut T
 where
     T: Fill,
 {
+    #[inline]
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
         T::fill_interleaved(self, interleaved)
     }
 
+    #[inline]
     fn fill_le_bytes(&mut self, bytes: &[u8], bytes_per_sample: usize) -> Result<(), SourceError> {
         T::fill_le_bytes(self, bytes, bytes_per_sample)
     }
@@ -240,6 +244,7 @@ impl Fill for FrameBuf {
         Ok(())
     }
 
+    #[inline]
     fn fill_le_bytes(&mut self, bytes: &[u8], bytes_per_sample: usize) -> Result<(), SourceError> {
         self.readbuf.resize(bytes.len() / bytes_per_sample, 0);
         le_bytes_to_i32s(bytes, &mut self.readbuf, bytes_per_sample);
@@ -389,6 +394,7 @@ impl Fill for Context {
         Ok(())
     }
 
+    #[inline]
     fn fill_le_bytes(&mut self, bytes: &[u8], bytes_per_sample: usize) -> Result<(), SourceError> {
         if bytes.is_empty() {
             return Ok(());
