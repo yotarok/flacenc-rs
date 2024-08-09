@@ -434,6 +434,8 @@ fn encode_frame_impl(
 
     // for Claxon compatibility.
     frame.header_mut().reset_sample_size_spec(stream_info);
+    // for QuickTime compatibility.
+    frame.header_mut().reset_sample_rate_spec(stream_info);
 
     frame
 }
