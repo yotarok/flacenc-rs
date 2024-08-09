@@ -25,6 +25,7 @@ use super::component::Frame;
 use super::component::FrameHeader;
 use super::component::Lpc;
 use super::component::Residual;
+use super::component::SeekTable;
 use super::component::Stream;
 use super::component::StreamInfo;
 use super::component::SubFrame;
@@ -672,6 +673,8 @@ pub fn encode_with_fixed_block_size<T: Source>(
     stream
         .stream_info_mut()
         .set_total_samples(src.len_hint().unwrap_or_else(|| context.total_samples()));
+    stream.add_metadata_block(SeekTable::default_for_block_size(block_size).into());
+
     Ok(stream)
 }
 

@@ -656,6 +656,7 @@ mod seal_verify {
     impl Sealed for crate::component::MetadataBlock {}
     impl Sealed for crate::component::QuantizedParameters {}
     impl Sealed for crate::component::Residual {}
+    impl Sealed for crate::component::SeekTable {}
     impl Sealed for crate::component::Stream {}
     impl Sealed for crate::component::StreamInfo {}
     impl Sealed for crate::component::Verbatim {}

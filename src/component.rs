@@ -589,6 +589,8 @@ pub enum MetadataBlockData {
     ///
     /// This variant can be obtained via [`From<StreamInfo>::from`].
     StreamInfo(StreamInfo),
+    /// Variant that contains [`SeekTable`].
+    SeekTable(SeekTable),
     /// Variant that contains unknown data.
     ///
     /// This variant can be obtained via [`MetadataBlockData::new_unknown`].
@@ -633,6 +635,7 @@ impl MetadataBlockData {
     pub(crate) fn typetag(&self) -> u8 {
         match self {
             Self::StreamInfo(_) => 0,
+            Self::SeekTable(_) => 3,
             Self::Unknown { typetag, .. } => *typetag,
         }
     }
@@ -654,6 +657,15 @@ impl MetadataBlockData {
             None
         }
     }
+
+    /// Obtain inner [`SeekPoint`]s if `self` is `SeekTable`.
+    pub fn as_seek_table(&self) -> Option<&SeekTable> {
+        if let Self::SeekTable(ref v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<StreamInfo> for MetadataBlockData {
@@ -662,11 +674,18 @@ impl From<StreamInfo> for MetadataBlockData {
     }
 }
 
+impl From<SeekTable> for MetadataBlockData {
+    fn from(value: SeekTable) -> Self {
+        Self::SeekTable(value)
+    }
+}
+
 impl BitRepr for MetadataBlockData {
     #[inline]
     fn count_bits(&self) -> usize {
         match self {
             Self::StreamInfo(info) => info.count_bits(),
+            Self::SeekTable(table) => table.count_bits(),
             Self::Unknown { data, .. } => data.len() * 8,
         }
     }
@@ -674,6 +693,7 @@ impl BitRepr for MetadataBlockData {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
         match self {
             Self::StreamInfo(info) => info.write(dest)?,
+            Self::SeekTable(table) => table.write(dest)?,
             Self::Unknown { data, .. } => {
                 dest.write_bytes_aligned(data)
                     .map_err(OutputError::<S>::from_sink)?;
@@ -687,6 +707,7 @@ impl Verify for MetadataBlockData {
     fn verify(&self) -> Result<(), VerifyError> {
         match self {
             Self::StreamInfo(info) => info.verify(),
+            Self::SeekTable(table) => table.verify(),
             Self::Unknown { .. } => Ok(()),
         }
     }
@@ -1122,6 +1143,98 @@ impl Verify for StreamInfo {
         verify_range!("sample_rate", self.sample_rate as usize, ..=96_000)?;
         verify_range!("channels", self.channels as usize, 1..=8)?;
         verify_bps!("bits_per_sample", self.bits_per_sample as usize)
+    }
+}
+
+const SEEK_TABLE_PLACE_HOLDER: (u64, u64, u16) = (0xFFFF_FFFF_FFFF_FFFFu64, 0, 0);
+
+/// [`SEEKTABLE`](https://xiph.org/flac/format.html#metadata_block_seektable) component.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SeekTable {
+    data: Vec<(u64, u64, u16)>,
+}
+
+impl SeekTable {
+    pub fn new() -> Self {
+        Self { data: vec![] }
+    }
+
+    pub fn default_for_block_size(block_size: usize) -> Self {
+        Self {
+            data: vec![(0, 0, block_size as u16)],
+        }
+    }
+
+    pub fn sort(&mut self) {
+        self.data.sort_unstable();
+    }
+
+    pub fn add_placeholder(&mut self) {
+        self.data.push(SEEK_TABLE_PLACE_HOLDER);
+        self.sort();
+    }
+
+    pub fn add_seek_point(
+        &mut self,
+        sample_count: usize,
+        byte_offset: usize,
+        target_block_size: usize,
+    ) {
+        self.data.push((
+            sample_count as u64,
+            byte_offset as u64,
+            target_block_size as u16,
+        ));
+        self.sort();
+    }
+}
+
+impl BitRepr for SeekTable {
+    #[inline]
+    fn count_bits(&self) -> usize {
+        self.data.len() * 144
+    }
+
+    fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
+        for (sample_count, byte_count, target_frame_size) in &self.data {
+            dest.write::<u64>(*sample_count)
+                .map_err(OutputError::<S>::from_sink)?;
+            dest.write::<u64>(*byte_count)
+                .map_err(OutputError::<S>::from_sink)?;
+            dest.write::<u16>(*target_frame_size)
+                .map_err(OutputError::<S>::from_sink)?;
+        }
+        Ok(())
+    }
+}
+
+impl Verify for SeekTable {
+    fn verify(&self) -> Result<(), VerifyError> {
+        verify_true!(
+            "seek_point.len",
+            !self.data.is_empty(),
+            "must have at least one seek point."
+        )?;
+        let mut cur_sample_count = 0;
+        let mut cur_byte_offset = 0;
+        for (i, (sample_count, byte_offset, _target_frame_size)) in self.data.iter().enumerate() {
+            let sample_count = *sample_count;
+            let byte_offset = *byte_offset;
+            verify_true!(
+                "seek_point[{i}].sample_count",
+                cur_sample_count <= sample_count,
+                "must be sorted.",
+            )?;
+            verify_true!(
+                "seek_point[{i}].byte_offset",
+                cur_byte_offset <= byte_offset,
+                "must be sorted.",
+            )?;
+            cur_sample_count = sample_count;
+            cur_byte_offset = byte_offset;
+        }
+        Ok(())
     }
 }
 
@@ -3209,6 +3322,7 @@ mod seal_bit_repr {
     impl Sealed for super::MetadataBlock {}
     impl Sealed for super::MetadataBlockData {}
     impl Sealed for super::StreamInfo {}
+    impl Sealed for super::SeekTable {}
     impl Sealed for super::Frame {}
     impl Sealed for super::FrameHeader {}
     impl Sealed for super::ChannelAssignment {}

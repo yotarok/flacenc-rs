@@ -38,6 +38,22 @@ pub fn parse_stream_info<S: BitSource>(src: &mut S) -> Result<component::StreamI
     Ok(ret)
 }
 
+/// Reads `component::SeekTable` from the bit source.
+pub fn parse_seek_table<S: BitSource>(src: &mut S, block_size: usize) -> Result<component::SeekTable, Error> {
+    if block_size % 18 != 0 {
+        return Err(FormatError::new(src.current_bit_offset(), &format!("block_size for SEEKTABLE must be multiple of 18.")).into());
+    }
+    let seek_point_count = block_size / 18;
+    let mut ret = component::SeekTable::new();
+    for _ in 0..seek_point_count {
+        let sample_count = src.read_u64(64)? as usize;
+        let byte_offset = src.read_u64(64)? as usize;
+        let target_frame_size = src.read_u64(16)? as usize;
+        ret.add_seek_point(sample_count, byte_offset, target_frame_size);
+    }
+    Ok(ret)
+}
+
 /// Reads `component::MetadataBlockData` from the bit source.
 fn parse_metadata_block<S: BitSource>(
     src: &mut S,
@@ -59,6 +75,7 @@ fn parse_metadata_block<S: BitSource>(
         is_last,
         match block_type {
             0 => component::MetadataBlockData::from(parse_stream_info(src)?),
+            3 => component::MetadataBlockData::from(parse_seek_table(src, block_size)?),
             _ => component::MetadataBlockData::new_unknown(
                 block_type,
                 &src.read_bytevec_aligned(block_size)?,
