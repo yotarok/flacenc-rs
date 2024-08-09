@@ -1661,6 +1661,8 @@ impl Verify for ChannelAssignment {
 ///
 /// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
 /// specification for details.
+///
+/// TODO: Hide this from public API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]
@@ -1762,6 +1764,155 @@ impl SampleSizeSpec {
     }
 }
 
+/// Enum for supported sampling rates.
+///
+/// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
+/// specification for details.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
+pub enum SampleRateSpec {
+    /// `Unspecified` can be used in `FrameHeader` to instruct decoders to get
+    /// sample rate information from `StreamInfo`.
+    Unspecified,
+    /// 88.2kHz.
+    R88_2kHz,
+    /// 176.4kHz.
+    R176_4kHz,
+    /// 192kHz.
+    R192kHz,
+    /// 8kHz.
+    R8kHz,
+    /// 16kHZ.
+    R16kHz,
+    /// 22.05kHz.
+    R22_05kHz,
+    /// 24kHz.
+    R24kHz,
+    /// 32kHz.
+    R32kHz,
+    /// 44.1kHz.
+    R44_1kHz,
+    /// 48kHz.
+    R48kHz,
+    /// 96kHz.
+    R96kHz,
+    /// An immediate value specifying kHz up to 255kHz.
+    KHz(u8),
+    /// An immediate value specifying Hz up to 65535Hz.
+    Hz(u16),
+    /// An immediate value specifying deca-Hz up to 655.35kHz.
+    DaHz(u16),
+}
+
+impl SampleRateSpec {
+    /// Constructs `SampleRateSpec` from frequency in Hz.
+    ///
+    /// This method returns None if the specified `freq` is higher than the maximum representable
+    /// value. When this function is called with a non-typical frequency (that is representable in
+    /// `SampleRateSpec::R*` variants), this function tries to use `KHz`, `DaHz`, and `Hz` in this
+    /// order. This function never returns `Self::Unspecified`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// assert_eq!(SampleRateSpec::from_freq(44100), Some(SampleRateSpec::R44_1kHz));
+    /// assert_eq!(SampleRateSpec::from_freq(44084), Some(SampleRateSpec::Hz(44084u16)));
+    /// assert_eq!(SampleRateSpec::from_freq(44080), Some(SampleRateSpec::DaHz(4408u16)));
+    /// assert_eq!(SampleRateSpec::from_freq(44000), Some(SampleRateSpec::KHz(44u8)));
+    /// assert_eq!(SampleRateSpec::from_freq(65537), None);
+    /// ```
+    pub fn from_freq(freq: u32) -> Option<Self> {
+        match freq {
+            88_200 => Some(Self::R88_2kHz),
+            176_400 => Some(Self::R176_4kHz),
+            192_000 => Some(Self::R192kHz),
+            8_000 => Some(Self::R8kHz),
+            16_000 => Some(Self::R16kHz),
+            22_050 => Some(Self::R22_05kHz),
+            24_000 => Some(Self::R24kHz),
+            32_000 => Some(Self::R32kHz),
+            44_100 => Some(Self::R44_1kHz),
+            48_000 => Some(Self::R48kHz),
+            96_000 => Some(Self::R96kHz),
+            _ => None,
+        }
+        .or_else(|| {
+            (0 == freq % 1000)
+                .then(|| (freq / 1000).try_into().ok().map(Self::KHz))
+                .flatten()
+        })
+        .or_else(|| {
+            (0 == freq % 10)
+                .then(|| (freq / 10).try_into().ok().map(Self::DaHz))
+                .flatten()
+        })
+        .or_else(|| freq.try_into().ok().map(Self::Hz))
+    }
+
+    /// Returns the number of extra bits required to store the specification.
+    fn count_extra_bits(self) -> usize {
+        match self {
+            Self::KHz(_) => 8,
+            Self::DaHz(_) | Self::Hz(_) => 16,
+            Self::Unspecified
+            | Self::R88_2kHz
+            | Self::R176_4kHz
+            | Self::R192kHz
+            | Self::R8kHz
+            | Self::R16kHz
+            | Self::R22_05kHz
+            | Self::R24kHz
+            | Self::R32kHz
+            | Self::R44_1kHz
+            | Self::R48kHz
+            | Self::R96kHz => 0,
+        }
+    }
+
+    /// Returns 4-bit indicator for the sample-rate specifier.
+    fn tag(self) -> u8 {
+        match self {
+            Self::Unspecified => 0,
+            Self::R88_2kHz => 1,
+            Self::R176_4kHz => 2,
+            Self::R192kHz => 3,
+            Self::R8kHz => 4,
+            Self::R16kHz => 5,
+            Self::R22_05kHz => 6,
+            Self::R24kHz => 7,
+            Self::R32kHz => 8,
+            Self::R44_1kHz => 9,
+            Self::R48kHz => 10,
+            Self::R96kHz => 11,
+            Self::KHz(_) => 12,
+            Self::Hz(_) => 13,
+            Self::DaHz(_) => 14,
+        }
+    }
+
+    /// Writes
+    fn write_extra_bits<S: BitSink>(self, dest: &mut S) -> Result<(), S::Error> {
+        match self {
+            Self::KHz(v) => dest.write_lsbs(v, 8),
+            Self::DaHz(v) | Self::Hz(v) => dest.write_lsbs(v, 16),
+            Self::Unspecified
+            | Self::R88_2kHz
+            | Self::R176_4kHz
+            | Self::R192kHz
+            | Self::R8kHz
+            | Self::R16kHz
+            | Self::R22_05kHz
+            | Self::R24kHz
+            | Self::R32kHz
+            | Self::R44_1kHz
+            | Self::R48kHz
+            | Self::R96kHz => Ok(()),
+        }
+    }
+}
+
 /// [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header) component.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -1770,6 +1921,7 @@ pub struct FrameHeader {
     block_size: u16,           // encoded with special function
     channel_assignment: ChannelAssignment,
     sample_size_spec: SampleSizeSpec,
+    sample_rate_spec: SampleRateSpec,
     frame_number: u32,        // written when variable_block_size == false
     start_sample_number: u64, // written when variable_block_size == true
 }
@@ -1785,6 +1937,7 @@ impl FrameHeader {
             block_size: block_size as u16,
             channel_assignment,
             sample_size_spec: SampleSizeSpec::Unspecified,
+            sample_rate_spec: SampleRateSpec::Unspecified,
             frame_number: 0,
             start_sample_number: start_sample_number as u64,
         }
@@ -1911,6 +2064,14 @@ impl FrameHeader {
             .unwrap_or(SampleSizeSpec::Unspecified);
     }
 
+    /// Resets `sample_rate_spec` field using [`StreamInfo`].
+    ///
+    /// This field must be specified for Claxon compatibility.
+    pub(crate) fn reset_sample_rate_spec(&mut self, stream_info: &StreamInfo) {
+        self.sample_rate_spec = SampleRateSpec::from_freq(stream_info.sample_rate)
+            .unwrap_or(SampleRateSpec::Unspecified);
+    }
+
     /// Returns block size.
     ///
     /// # Examples
@@ -1988,6 +2149,7 @@ impl BitRepr for FrameHeader {
         }
         let (_head, _foot, footsize) = block_size_spec(self.block_size);
         ret += footsize;
+        ret += self.sample_rate_spec.count_extra_bits();
         ret
     }
 
@@ -2003,7 +2165,9 @@ impl BitRepr for FrameHeader {
 
             let (head, foot, footsize) = block_size_spec(self.block_size);
             // head + 4-bit sample rate specifier.
-            header_buffer.write_lsbs(head << 4, 8).unwrap();
+            header_buffer
+                .write_lsbs(head << 4 | self.sample_rate_spec.tag(), 8)
+                .unwrap();
             self.channel_assignment
                 .write(header_buffer)
                 .map_err(OutputError::<S>::ignore_sink_error)?;
@@ -2021,6 +2185,9 @@ impl BitRepr for FrameHeader {
                 header_buffer.write_bytes_aligned(&v).unwrap();
             }
             header_buffer.write_lsbs(foot, footsize).unwrap();
+            self.sample_rate_spec
+                .write_extra_bits(header_buffer)
+                .unwrap();
 
             dest.write_bytes_aligned(header_buffer.as_slice())
                 .map_err(OutputError::<S>::from_sink)?;

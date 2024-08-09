@@ -184,10 +184,16 @@ multithread = false
         ",
     ];
 
+    /// E2E testing involving integrity check with `claxon` decoder.
+    ///
+    /// The test signals used in this test are just sinusoids mixed with small white noise. All
+    /// possible combinations of the selected numbers of channels, sampling rates, and config
+    /// strings are evaluated.
     #[cfg(feature = "serde")]
     #[rstest]
     fn e2e_with_generated_sinusoids(
         #[values(1, 2, 3, 5, 8)] channels: usize,
+        #[values(16000, 16001, 95800)] sample_rate: usize,
         #[values(FIXED_BLOCK_CONFIGS[0],
                  FIXED_BLOCK_CONFIGS[1],
                  FIXED_BLOCK_CONFIGS[2],
@@ -197,7 +203,6 @@ multithread = false
     ) {
         let signal_len = 16123;
         let bits_per_sample = 16;
-        let sample_rate = 16000;
 
         let mut channel_signals = vec![];
         for _ch in 0..channels {
