@@ -58,6 +58,10 @@ where
     {
         match err {
             OutputError::Range(e) => Self::Range(e),
+            #[allow(unreachable_patterns)]
+            // There's a subtle incompatibility between stable `rustc` and nightly `clippy`
+            // (@2024-08-12), `rustc` doesn't allow incomplete match arms even if a enum variant
+            // is uninhabitated, whereas `clippy` warns if a match arm is unreachable.
             OutputError::Sink(_) => unreachable!(),
         }
     }
