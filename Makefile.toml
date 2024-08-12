@@ -45,8 +45,8 @@ PROFILE_ENCODER_CONFIG = "report/st.config.toml"
 PROFILE_ENCODER_FEATURES = "pprof,simd-nightly"
 PROFILE_INPUT = "wikimedia.winter_kiss.wav"
 PROFILE_PPROF_OUTPUT_PDF = "report/profile.st.pdf"
-TEST_FEATURES_NIGHTLY = "experimental,par,simd-nightly"
-TEST_FEATURES_STABLE = "experimental,par"
+TEST_FEATURES_NIGHTLY = "decode,experimental,par,simd-nightly"
+TEST_FEATURES_STABLE = "decode,experimental,par"
 TEST_FEATURES_BIN_NIGHTLY = "simd-nightly"
 
 #

@@ -18,9 +18,10 @@ debug = 1
 [features]
 default = ["log", "par", "serde"]
 
-__export_decode = []
+__export_decode = ["decode"]
 __export_sigen = ["dep:rand"]
 experimental = ["dep:nalgebra"]
+decode = ["dep:nom"]
 log = ["dep:log"]
 mimalloc = ["dep:mimalloc"]
 par = ["dep:crossbeam-channel"]
@@ -40,6 +41,7 @@ rand = { version = "0.8.5", optional = true }
 rustversion = "1.0"
 seq-macro = "0.3"
 serde = { version = "1.0", features = ["derive"], optional = true }
+nom = { version = "7", optional = true }
 
 [dev-dependencies]
 claxon = "0.4.3"

@@ -18,12 +18,20 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use once_cell::sync::Lazy;
+use rand::distributions::Distribution;
+use rand::distributions::Uniform;
+use rand::Rng;
 use tempfile::NamedTempFile;
 
 use super::arrayutils::le_bytes_to_i32s;
 use super::bitsink::ByteSink;
 use super::component::BitRepr;
+use super::component::ChannelAssignment;
+use super::component::Frame;
+use super::component::Residual;
 use super::component::Stream;
+use super::component::StreamInfo;
+use super::component::Verbatim;
 use super::error::Verify;
 use super::source::MemSource;
 use super::source::Seekable;
@@ -169,4 +177,58 @@ where
         }
     }
     stream
+}
+
+pub fn make_random_residual<R: Rng>(mut rng: R, warmup_length: usize) -> Residual {
+    // when blocksize is minimum (64), the partition length is 16, and warmup samples
+    // are not expected to go beyond the partition boundary.
+    assert!(warmup_length <= 16);
+    let block_size = 4 * Uniform::from(16..=1024).sample(&mut rng);
+    let partition_order: usize = 2;
+    let nparts = 2usize.pow(partition_order as u32);
+    let part_len = block_size / nparts;
+    let params = vec![7, 8, 6, 7];
+    let mut quotients: Vec<u32> = vec![];
+    let mut remainders: Vec<u32> = vec![];
+
+    for t in 0..block_size {
+        if t < warmup_length {
+            quotients.push(0u32);
+            remainders.push(0u32);
+        } else {
+            let part_id = t / part_len;
+            let p = params[part_id];
+            let denom = 1u32 << p;
+
+            quotients.push(255 / denom);
+            remainders.push(255 % denom);
+        }
+    }
+    Residual::new(
+        partition_order,
+        block_size,
+        warmup_length,
+        &params,
+        &quotients,
+        &remainders,
+    )
+    .expect("Error in random construction of Residual")
+}
+
+pub fn make_verbatim_frame(stream_info: &StreamInfo, samples: &[i32], offset: usize) -> Frame {
+    let channels = stream_info.channels();
+    let block_size = samples.len() / channels;
+    let bits_per_sample: u8 = stream_info.bits_per_sample() as u8;
+    let ch_info = ChannelAssignment::Independent(channels as u8);
+    let mut frame = Frame::new_empty(ch_info, offset, block_size);
+    for ch in 0..channels {
+        frame.add_subframe(
+            Verbatim::from_samples(
+                &samples[block_size * ch..block_size * (ch + 1)],
+                bits_per_sample,
+            )
+            .into(),
+        );
+    }
+    frame
 }
