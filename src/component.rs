@@ -27,7 +27,7 @@ use super::arrayutils::wrapping_sum;
 use super::bitsink::BitSink;
 use super::bitsink::ByteSink;
 use super::bitsink::MemSink;
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 use super::constant::fixed::MAX_LPC_ORDER as MAX_FIXED_LPC_ORDER;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
@@ -87,6 +87,14 @@ pub trait BitRepr: seal_bit_repr::Sealed {
     /// does not fit to FLAC's bitstream format, or if a `BitSink` method
     /// returned an error.
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>>;
+
+    /// Test utility for obtaining bits as a [`Vec`] of [`u8`].
+    #[cfg(test)]
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut sink = MemSink::<u8>::new();
+        self.write(&mut sink).expect("No error expected");
+        sink.into_inner()
+    }
 }
 
 /// Traits for FLAC components containing signals (represented in [`i32`]).
@@ -96,7 +104,7 @@ pub trait BitRepr: seal_bit_repr::Sealed {
 /// prediction error signal. For `SubFrame`, signal means a single-channel
 /// sequence of samples whereas for `Frame`, signal is an interleaved multi-
 /// channel samples.
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 pub trait Decode: seal_bit_repr::Sealed {
     /// Decodes and copies signal to the specified buffer.
     ///
@@ -122,7 +130,7 @@ const UTF8_HEADS: [u8; 7] = [0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE];
 
 /// Encodes the given integer into UTF-8-like byte sequence.
 #[inline]
-fn encode_to_utf8like(val: u64) -> Result<heapless::Vec<u8, 7>, RangeError> {
+pub(crate) fn encode_to_utf8like(val: u64) -> Result<heapless::Vec<u8, 7>, RangeError> {
     let val_size = u64::BITS as usize;
     let code_bits: usize = val_size - val.leading_zeros() as usize;
     let mut ret = heapless::Vec::new();
@@ -466,6 +474,12 @@ impl Stream {
         }
         Ok(())
     }
+
+    /// Returns [`Frame`]s as mutable Vec.
+    #[cfg(feature = "decode")]
+    pub(crate) fn frames_mut(&mut self) -> &mut Vec<Frame> {
+        &mut self.frames
+    }
 }
 
 impl BitRepr for Stream {
@@ -534,8 +548,8 @@ impl Verify for Stream {
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataBlock {
-    is_last: bool,
-    data: MetadataBlockData,
+    pub(crate) is_last: bool,
+    pub(crate) data: MetadataBlockData,
 }
 
 impl MetadataBlock {
@@ -1358,7 +1372,7 @@ impl Frame {
 }
 
 reusable!(FRAME_CRC_BUFFER: (MemSink<u64>, Vec<u8>) = (MemSink::new(), Vec::new()));
-static FRAME_CRC: crc::Crc<u16, crc::Table<16>> =
+pub(crate) static FRAME_CRC: crc::Crc<u16, crc::Table<16>> =
     crc::Crc::<u16, crc::Table<16>>::new(&CRC_16_FLAC);
 
 impl BitRepr for Frame {
@@ -1443,7 +1457,7 @@ impl Verify for Frame {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for Frame {
     fn signal_len(&self) -> usize {
         self.block_size() * self.subframe_count()
@@ -1843,6 +1857,31 @@ impl SampleRateSpec {
         .or_else(|| freq.try_into().ok().map(Self::Hz))
     }
 
+    #[cfg(feature = "decode")]
+    pub(crate) fn from_tag_and_data(tag: u8, value: Option<usize>) -> Option<Self> {
+        if tag > 0b1110 {
+            return None;
+        }
+        Some(match tag {
+            0b0000 => Self::Unspecified,
+            0b0001 => Self::R88_2kHz,
+            0b0010 => Self::R176_4kHz,
+            0b0011 => Self::R192kHz,
+            0b0100 => Self::R8kHz,
+            0b0101 => Self::R16kHz,
+            0b0110 => Self::R22_05kHz,
+            0b0111 => Self::R24kHz,
+            0b1000 => Self::R32kHz,
+            0b1001 => Self::R44_1kHz,
+            0b1010 => Self::R48kHz,
+            0b1011 => Self::R96kHz,
+            0b1100 => Self::KHz(value? as u8),
+            0b1101 => Self::Hz(value? as u16),
+            0b1110 => Self::DaHz(value? as u16),
+            _ => unreachable!(), // this arm is covered in the first if-stmt of this fn.
+        })
+    }
+
     /// Returns the number of extra bits required to store the specification.
     fn count_extra_bits(self) -> usize {
         match self {
@@ -2043,10 +2082,13 @@ impl FrameHeader {
         self.frame_number = frame_number;
     }
 
-    /// Hidden temporary function for resetting `sample_rate_spec`.
-    ///
-    /// TODO: Streamline how to specify SampleBlockSpec and SampleRateSpec and remove this hacky
-    /// shortcut.
+    /// Overwrites `sample_rate_spec`.
+    #[cfg(all(feature = "decode", not(feature = "__export_decode")))]
+    pub(crate) fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
+        self.sample_rate_spec = spec;
+    }
+
+    /// This function will be removed once `flacdec-bin` is deprecated.
     #[cfg(feature = "__export_decode")]
     pub fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
         self.sample_rate_spec = spec;
@@ -2137,7 +2179,8 @@ impl FrameHeader {
 }
 
 reusable!(HEADER_CRC_BUFFER: ByteSink = ByteSink::new());
-static HEADER_CRC: crc::Crc<u8, crc::Table<16>> = crc::Crc::<u8, crc::Table<16>>::new(&CRC_8_FLAC);
+pub(crate) static HEADER_CRC: crc::Crc<u8, crc::Table<16>> =
+    crc::Crc::<u8, crc::Table<16>>::new(&CRC_8_FLAC);
 
 impl BitRepr for FrameHeader {
     #[inline]
@@ -2281,7 +2324,7 @@ impl Verify for SubFrame {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for SubFrame {
     fn signal_len(&self) -> usize {
         match self {
@@ -2396,7 +2439,7 @@ impl Verify for Constant {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for Constant {
     fn signal_len(&self) -> usize {
         self.block_size
@@ -2504,7 +2547,7 @@ impl Verify for Verbatim {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for Verbatim {
     fn signal_len(&self) -> usize {
         self.data.len()
@@ -2629,7 +2672,7 @@ impl Verify for FixedLpc {
 }
 
 /// Common utility function for decoding of both `FixedLpc` and `Lpc`.
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 fn decode_lpc<T: Into<i64> + Copy>(
     warm_up: &[i32],
     coefs: &[T],
@@ -2650,7 +2693,7 @@ fn decode_lpc<T: Into<i64> + Copy>(
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 const FIXED_LPC_COEFS: [[i32; MAX_FIXED_LPC_ORDER]; MAX_FIXED_LPC_ORDER + 1] = [
     [0, 0, 0, 0],
     [1, 0, 0, 0],
@@ -2659,7 +2702,7 @@ const FIXED_LPC_COEFS: [[i32; MAX_FIXED_LPC_ORDER]; MAX_FIXED_LPC_ORDER + 1] = [
     [4, -6, 4, -1],
 ];
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for FixedLpc {
     fn signal_len(&self) -> usize {
         self.residual.signal_len()
@@ -2831,7 +2874,7 @@ impl Verify for Lpc {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for Lpc {
     fn signal_len(&self) -> usize {
         self.residual.signal_len()
@@ -3058,6 +3101,28 @@ impl Residual {
         let v = (quotient << shift) + remainder;
         rice::decode_signbit(v)
     }
+
+    /// Returns the block size of this `Residual`.
+    ///
+    /// In common use cases, this accessor is not necessary as `block_size` is normally known
+    /// before constructing `Residual`. However, in some use cases like tests, it's convenient to
+    /// have it here.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn block_size(&self) -> usize {
+        self.block_size
+    }
+
+    /// Returns the warmup length of this `Residual`.
+    ///
+    /// In common use cases, this accessor is not necessary as `warmup_length` is normally known
+    /// before constructing `Residual`. However, in some use cases like tests, it's convenient to
+    /// have it here.
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn warmup_length(&self) -> usize {
+        self.warmup_length
+    }
 }
 
 const RESIDUAL_WRITE_UNROLL_N: usize = 4;
@@ -3183,7 +3248,7 @@ impl Verify for Residual {
     }
 }
 
-#[cfg(any(test, feature = "__export_decode"))]
+#[cfg(any(test, feature = "decode"))]
 impl Decode for Residual {
     fn signal_len(&self) -> usize {
         self.block_size
@@ -3226,27 +3291,8 @@ mod tests {
     use super::*;
     use crate::sigen;
     use crate::sigen::Signal;
-
-    use rand::distributions::Distribution;
-    use rand::distributions::Uniform;
-
-    fn make_frame(stream_info: &StreamInfo, samples: &[i32], offset: usize) -> Frame {
-        let channels = stream_info.channels as usize;
-        let block_size = samples.len() / channels;
-        let bits_per_sample: u8 = stream_info.bits_per_sample;
-        let ch_info = ChannelAssignment::Independent(channels as u8);
-        let mut frame = Frame::new_empty(ch_info, offset, block_size);
-        for ch in 0..channels {
-            frame.add_subframe(
-                Verbatim::from_samples(
-                    &samples[block_size * ch..block_size * (ch + 1)],
-                    bits_per_sample,
-                )
-                .into(),
-            );
-        }
-        frame
-    }
+    use crate::test_helper::make_random_residual;
+    use crate::test_helper::make_verbatim_frame;
 
     #[test]
     fn write_empty_stream() -> Result<(), OutputError<MemSink<u8>>> {
@@ -3308,7 +3354,7 @@ mod tests {
         let bits_per_sample: usize = 16;
         let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample).unwrap();
         let framebuf = vec![-1i32; nsamples * nchannels];
-        let frame = make_frame(&stream_info, &framebuf, 0);
+        let frame = make_verbatim_frame(&stream_info, &framebuf, 0);
         let mut bv: MemSink<u64> = MemSink::new();
 
         frame.header().write(&mut bv)?;
@@ -3391,12 +3437,12 @@ mod tests {
         let framebuf = sigen::Dc::new(0.01)
             .noise(0.002)
             .to_vec_quantized(16, 256 * 2);
-        let frame1 = make_frame(&stream_info, &framebuf, 0);
+        let frame1 = make_verbatim_frame(&stream_info, &framebuf, 0);
         stream_info.update_frame_info(&frame1);
         let framebuf = sigen::Dc::new(0.02)
             .noise(0.1)
             .to_vec_quantized(16, 192 * 2);
-        let frame2 = make_frame(&stream_info, &framebuf, 256);
+        let frame2 = make_verbatim_frame(&stream_info, &framebuf, 256);
         stream_info.update_frame_info(&frame2);
 
         assert_eq!(stream_info.min_block_size, 192);
@@ -3419,32 +3465,7 @@ mod tests {
     #[test]
     #[allow(clippy::cast_lossless)]
     fn bit_count_residual() -> Result<(), OutputError<MemSink<u64>>> {
-        let mut rng = rand::thread_rng();
-        let block_size = 4 * Uniform::from(16..=1024).sample(&mut rng);
-        let partition_order: usize = 2;
-        let nparts = 2usize.pow(partition_order as u32);
-        let part_len = block_size / nparts;
-        let params = vec![7, 8, 6, 7];
-        let mut quotients: Vec<u32> = vec![];
-        let mut remainders: Vec<u32> = vec![];
-
-        for t in 0..block_size {
-            let part_id = t / part_len;
-            let p = params[part_id];
-            let denom = 1u32 << p;
-
-            quotients.push((255 / denom) as u32);
-            remainders.push((255 % denom) as u32);
-        }
-        let residual = Residual::new(
-            partition_order,
-            block_size,
-            0,
-            &params,
-            &quotients,
-            &remainders,
-        )
-        .expect("Residual construction failed.");
+        let residual = make_random_residual(rand::thread_rng(), 0);
         residual
             .verify()
             .expect("should construct a valid Residual");
@@ -3462,7 +3483,7 @@ mod tests {
         let samples = sigen::Sine::new(128, 0.2)
             .noise(0.1)
             .to_vec_quantized(12, 512);
-        let mut frame = make_frame(&stream_info, &samples, 0);
+        let mut frame = make_verbatim_frame(&stream_info, &samples, 0);
         let mut bv_ref: MemSink<u64> = MemSink::new();
         let frame_cloned = frame.clone();
         frame_cloned.write(&mut bv_ref)?;

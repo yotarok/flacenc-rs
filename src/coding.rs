@@ -169,7 +169,7 @@ fn encode_residual_with_prc_parameter(
 }
 
 /// Constructs `Residual` component given the error signal.
-fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
+pub fn encode_residual(config: &config::Prc, errors: &[i32], warmup_length: usize) -> Residual {
     let prc_p = rice::find_partitioned_rice_parameter(errors, warmup_length, config.max_parameter);
     encode_residual_with_prc_parameter(config, errors, warmup_length, prc_p)
 }
