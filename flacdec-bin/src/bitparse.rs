@@ -252,23 +252,23 @@ fn parse_and_decode_block_size<S: BitSource>(src: &mut S, spec: u8) -> Result<us
 fn parse_and_decode_sample_rate<S: BitSource>(
     src: &mut S,
     spec: u8,
-) -> Result<Option<usize>, Error> {
+) -> Result<component::SampleRateSpec, Error> {
     match spec {
-        0 => Ok(None),
-        1 => Ok(Some(88_200)),
-        2 => Ok(Some(176_400)),
-        3 => Ok(Some(192_000)),
-        4 => Ok(Some(8_000)),
-        5 => Ok(Some(16_000)),
-        6 => Ok(Some(22_050)),
-        7 => Ok(Some(24_000)),
-        8 => Ok(Some(32_000)),
-        9 => Ok(Some(44_100)),
-        10 => Ok(Some(48_000)),
-        11 => Ok(Some(96_000)),
-        12 => Ok(Some(1000 * src.read_u64(8)? as usize)),
-        13 => Ok(Some(src.read_u64(16)? as usize)),
-        14 => Ok(Some(10 * src.read_u64(16)? as usize)),
+        0 => Ok(component::SampleRateSpec::Unspecified),
+        1 => Ok(component::SampleRateSpec::R88_2kHz),
+        2 => Ok(component::SampleRateSpec::R176_4kHz),
+        3 => Ok(component::SampleRateSpec::R192kHz),
+        4 => Ok(component::SampleRateSpec::R8kHz),
+        5 => Ok(component::SampleRateSpec::R16kHz),
+        6 => Ok(component::SampleRateSpec::R22_05kHz),
+        7 => Ok(component::SampleRateSpec::R24kHz),
+        8 => Ok(component::SampleRateSpec::R32kHz),
+        9 => Ok(component::SampleRateSpec::R44_1kHz),
+        10 => Ok(component::SampleRateSpec::R48kHz),
+        11 => Ok(component::SampleRateSpec::R96kHz),
+        12 => Ok(component::SampleRateSpec::KHz(src.read_u64(8)? as u8)),
+        13 => Ok(component::SampleRateSpec::Hz(src.read_u64(16)? as u16)),
+        14 => Ok(component::SampleRateSpec::DaHz(src.read_u64(16)? as u16)),
         15 => Err(FormatError::new(src.current_bit_offset(), "invalid sample rate").into()),
         _ => unreachable!(),
     }
@@ -302,7 +302,7 @@ fn parse_frame_header<S: BitSource>(src: &mut S) -> Result<component::FrameHeade
     };
 
     let block_size = parse_and_decode_block_size(src, block_size_tag)?;
-    let _sample_rate = parse_and_decode_sample_rate(src, sample_rate_tag)?;
+    let sample_rate = parse_and_decode_sample_rate(src, sample_rate_tag)?;
     let bits_per_sample = component::SampleSizeSpec::from_tag(bits_per_sample_tag)
         .ok_or_else(|| FormatError::new(src.current_bit_offset(), "sample size out of range"))?;
     if bits_per_sample == component::SampleSizeSpec::Reserved {
@@ -311,7 +311,7 @@ fn parse_frame_header<S: BitSource>(src: &mut S) -> Result<component::FrameHeade
 
     let _crc = src.read_u64(8)?;
 
-    Ok(if variable_block_size {
+    let mut header = if variable_block_size {
         component::FrameHeader::new_variable_size(
             block_size,
             channel_assignment,
@@ -325,7 +325,9 @@ fn parse_frame_header<S: BitSource>(src: &mut S) -> Result<component::FrameHeade
             bits_per_sample,
             frame_number as usize,
         )?
-    })
+    };
+    header.set_sample_rate_spec(sample_rate);
+    Ok(header)
 }
 
 /// Reads `component::Frame` from the bit source.
