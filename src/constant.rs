@@ -21,8 +21,7 @@
 #![allow(dead_code)] // it's okay if some FLAC-spec constants are not used.
 
 // Constance sorted in an alphabetical-order.  Top-level constants first, and
-// then sub-modules. Constants that are used only in a specific sub-module or
-// its caller should be placed in the corresponding submodule.
+// then sub-modules.
 
 mod built {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
@@ -31,23 +30,23 @@ mod built {
 /// Default block size.
 pub const DEFAULT_BLOCK_SIZE: usize = 4096;
 
+/// The number of partitions used in entropy estimation algorithm.
+pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 32;
+
+/// Minimum bits-per-sample supported. (4 in the specification.)
+pub const MIN_BITS_PER_SAMPLE: usize = 8;
+
 /// Minimum length of a block supported.
 pub const MIN_BLOCK_SIZE: usize = 64;
+
+/// Maximum bits-per-sample supported. (32 in the specification.)
+pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
 /// Maximum length of a block supported (65535 in the specification.)
 pub const MAX_BLOCK_SIZE: usize = 32767;
 
 /// Maximum number of channels.
 pub const MAX_CHANNELS: usize = 8;
-
-/// Minimum bits-per-sample supported. (4 in the specification.)
-pub const MIN_BITS_PER_SAMPLE: usize = 8;
-
-/// Maximum bits-per-sample supported. (32 in the specification.)
-pub const MAX_BITS_PER_SAMPLE: usize = 24;
-
-/// The number of partitions used in entropy estimation algorithm.
-pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 32;
 
 /// The max number of partitions used in entropy estimation algorithm.
 pub(crate) const MAX_ENTROPY_ESTIMATOR_PARTITIONS: usize = 64;
@@ -60,14 +59,14 @@ pub(crate) const MAX_ENTROPY_ESTIMATOR_PARTITIONS: usize = 64;
 pub mod build_info {
     use super::built;
 
+    /// Build profile. "debug" or "release".
+    pub const BUILD_PROFILE: &str = built::PROFILE;
+
     /// Version of `flacenc` library from Cargo.toml.
     pub const CRATE_VERSION: &str = built::PKG_VERSION;
 
     /// Comma-separated strings of features activated.
     pub const FEATURES: &str = built::FEATURES_LOWERCASE_STR;
-
-    /// Build profile. "debug" or "release".
-    pub const BUILD_PROFILE: &str = built::PROFILE;
 
     /// `rustc` version used for building this crate.
     pub const RUSTC_VERSION: &str = built::RUSTC_VERSION;
@@ -95,8 +94,14 @@ pub mod par {
 
 /// Constants related to quantized linear predictive coding (QLPC).
 pub mod qlpc {
-    /// The number of bits used for encoding shift bits of QLPC.
-    pub const SHIFT_BITS: usize = 5;
+    /// Default LPC order for QLPC module.
+    pub const DEFAULT_ORDER: usize = 10;
+
+    /// Default precision for storing QLPC coefficients.
+    pub const DEFAULT_PRECISION: usize = 15;
+
+    /// Default alpha parameter for Tukey window.
+    pub const DEFAULT_TUKEY_ALPHA: f32 = 0.4;
 
     /// Maximum order of LPC supported. (32 in the specification.)
     pub const MAX_ORDER: usize = 24;
@@ -114,14 +119,8 @@ pub mod qlpc {
     /// negative shift case.
     pub const MIN_SHIFT: i8 = 0;
 
-    /// Default LPC order for QLPC module.
-    pub const DEFAULT_ORDER: usize = 10;
-
-    /// Default precision for storing QLPC coefficients.
-    pub const DEFAULT_PRECISION: usize = 15;
-
-    /// Default alpha parameter for Tukey window.
-    pub const DEFAULT_TUKEY_ALPHA: f32 = 0.4;
+    /// The number of bits used for encoding shift bits of QLPC.
+    pub const SHIFT_BITS: usize = 5;
 }
 
 /// Constants related to partitioned rice coding (PRC).
