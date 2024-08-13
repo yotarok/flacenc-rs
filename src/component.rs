@@ -2051,6 +2051,15 @@ impl FrameHeader {
         self.frame_number = frame_number;
     }
 
+    /// Hidden temporary function for resetting `sample_rate_spec`.
+    ///
+    /// TODO: Streamline how to specify SampleBlockSpec and SampleRateSpec and remove this hacky
+    /// shortcut.
+    #[cfg(feature = "__export_decode")]
+    pub fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
+        self.sample_rate_spec = spec;
+    }
+
     /// Overwrites channel assignment information of the frame.
     pub(crate) fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
