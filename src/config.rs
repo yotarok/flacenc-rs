@@ -82,7 +82,7 @@ use super::error::VerifyError;
 #[cfg_attr(feature = "serde", serde(default))]
 #[non_exhaustive]
 pub struct Encoder {
-    /// Encoder block size (default: [`constant::DEFAULT_BLOCK_SIZE`])
+    /// Encoder block size. (default: [`constant::DEFAULT_BLOCK_SIZE`])
     pub block_size: usize,
     /// Whether encoder runs on multi-thread mode. (default: `true` when `"par"` feature is used)
     pub multithread: bool,
@@ -166,7 +166,7 @@ impl Verify for StereoCoding {
 pub struct SubFrameCoding {
     // NOTE: Disabling verbatim coding is intentionally prohibited as we want
     //  to ensure that there's at least one possible FLAC representation for
-    //  each different integer sequence.
+    //  every possible input signal.
     /// If set to false, constant mode will not be used. (default: `true`)
     pub use_constant: bool,
     /// If set to false, fixed-LPC mode will not be used. (default: `true`)

@@ -33,6 +33,7 @@ use super::config;
 use super::constant::fixed::MAX_LPC_ORDER as MAX_FIXED_LPC_ORDER;
 use super::constant::panic_msg;
 use super::constant::qlpc::MAX_ORDER as MAX_LPC_ORDER;
+use super::constant::MIN_BLOCK_SIZE_FOR_PREDICTION;
 use super::error::verify_range;
 use super::error::verify_true;
 use super::error::EncodeError;
@@ -391,7 +392,8 @@ fn encode_subframe(
         let baseline_bits =
             Verbatim::count_bits_from_metadata(samples.len(), bits_per_sample as usize);
 
-        let fixed = if config.use_fixed {
+        let too_short = samples.len() < MIN_BLOCK_SIZE_FOR_PREDICTION;
+        let fixed = if !too_short && config.use_fixed {
             fixed_lpc(config, samples, bits_per_sample, baseline_bits)
         } else {
             None
@@ -400,7 +402,7 @@ fn encode_subframe(
         let baseline_bits = fixed.as_ref().map_or(baseline_bits, |x| {
             std::cmp::min(baseline_bits, x.count_bits())
         });
-        let est_lpc = if config.use_lpc {
+        let est_lpc = if !too_short && config.use_lpc {
             let candidate = estimated_qlpc(config, samples, bits_per_sample);
             (candidate.count_bits() < baseline_bits).then_some(candidate)
         } else {

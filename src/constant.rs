@@ -37,7 +37,17 @@ pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 32;
 pub const MIN_BITS_PER_SAMPLE: usize = 8;
 
 /// Minimum length of a block supported.
-pub const MIN_BLOCK_SIZE: usize = 64;
+///
+/// Note that a FLAC stream may have a block that is shorter than this value at the end of the
+/// stream, and decoders must be able to decode it. This value is for restricting the block sizes
+/// of the frames except for the last one, and only used in the config-file verification.
+pub const MIN_BLOCK_SIZE: usize = 32;
+
+/// Minimum length of a block supported in prediction modules.
+///
+/// Frames shorter than this constant will be encoded in `[component::Constant]` or
+/// `[component::Verbatim]`.
+pub(crate) const MIN_BLOCK_SIZE_FOR_PREDICTION: usize = 64;
 
 /// Maximum bits-per-sample supported. (32 in the specification.)
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
