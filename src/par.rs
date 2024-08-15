@@ -358,6 +358,15 @@ pub fn encode_with_fixed_block_size<T: Source>(
 ) -> Result<Stream, EncodeError> {
     let config: Arc<Verified<config::Encoder>> = Arc::new(config.clone());
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
+
+    // Probably not very important, but it follows the FLAC reference encoder's behavior
+    // that copies `block_size` to `max_block_size` field of `StreamInfo` when there's
+    // only one frame that is shorter than `block_size`.
+    stream
+        .stream_info_mut()
+        .set_block_sizes(block_size, block_size)
+        .unwrap();
+
     let worker_count = determine_worker_count(&config)?;
     let parbuf = Arc::new(ParFrameBuf::new(
         worker_count * constant::par::FRAMEBUF_MULTIPLICITY,
@@ -403,11 +412,7 @@ pub fn encode_with_fixed_block_size<T: Source>(
         .collect();
 
     let src_len_hint = src.len_hint();
-    let context = ParContext::new(Context::new(
-        src.bits_per_sample(),
-        src.channels(),
-        block_size,
-    ));
+    let context = ParContext::new(Context::new(src.bits_per_sample(), src.channels()));
     let (feed_stats, context) =
         feed_fixed_block_size(src, block_size, worker_count, &parbuf, context)?;
     let remaining_md5_blocks = context.request_stop();
@@ -487,7 +492,7 @@ mod tests {
                     }
                 }
                 let src = source::MemSource::from_samples(&signal, channels, 16, 16000);
-                let mut ctx = Context::new(16, channels, block_size);
+                let mut ctx = Context::new(16, channels);
                 feed_fixed_block_size(src, block_size, workers, &pfb, &mut ctx)
                     .expect("Feeding failed");
             });

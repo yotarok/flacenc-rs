@@ -34,10 +34,10 @@ use super::error::VerifyError;
 /// An implementation of [`Source::read_samples`] is expected to call one
 /// of the `fill_*` method declared in this trait.
 ///
-/// Note that arguments of `Fill` can be shorter than the actual block size
-/// (or `FrameBuf` size). An impl of `Fill` must accept the samples that is
-/// shorter than the pre-defined length. On the other hand, `Fill` is expected
-/// to return an error if the number of samples is larger than the block size.
+/// An impl of `Fill` must accept the samples that is shorter than the pre-
+/// defined length for e.g. the last frame handling. On the other hand,
+/// `Fill` is expected to return an error if the number of samples is larger
+/// than the block size.
 pub trait Fill {
     /// Fills the target variable with the given interleaved samples.
     ///
@@ -113,9 +113,16 @@ where
 #[derive(Clone, Debug)]
 pub struct FrameBuf {
     samples: Vec<i32>,
-    channels: usize,
     size: usize,
-    readbuf: Vec<i32>, // only used when `read_le_bytes` is called
+    /// The number of loaded inter-channel samples.
+    ///
+    /// this can be smaller than `self.samples.len() / self.channels` for the last block of the
+    /// stream.
+    filled_size: usize,
+    /// Working buffer.
+    ///
+    /// This is currently only used in `read_le_bytes` (for storing `i32`-upcasted samples).
+    readbuf: Vec<i32>,
 }
 
 impl FrameBuf {
@@ -127,8 +134,8 @@ impl FrameBuf {
     pub(crate) fn new_stereo_buffer() -> Self {
         Self {
             samples: vec![0i32; 256 * 2],
-            channels: 2,
             size: 256,
+            filled_size: 0,
             readbuf: vec![],
         }
     }
@@ -138,7 +145,8 @@ impl FrameBuf {
     /// # Errors
     ///
     /// Returns `VerifyError` if arguments are out of the ranges of FLAC
-    /// specifications.
+    /// specifications. Specifically `channels` must be in `1..=[MAX_CHANNELS]` and
+    /// size must be in `[MIN_BLOCK_SIZE]..=[MAX_BLOCK_SIZE]`.
     ///
     /// # Examples
     ///
@@ -156,8 +164,8 @@ impl FrameBuf {
         )?;
         Ok(Self {
             samples: vec![0i32; size * channels],
-            channels,
             size,
+            filled_size: 0,
             readbuf: vec![],
         })
     }
@@ -175,6 +183,39 @@ impl FrameBuf {
         self.size
     }
 
+    /// Returns the number of inter-channel samples written to this `FrameBuf`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::source::Fill;
+    /// # use flacenc::source::FrameBuf;
+    /// let mut fb = FrameBuf::with_size(1, 1024).unwrap();
+    /// fb.fill_interleaved(&[0, 1, 2, 3]);
+    /// assert_eq!(fb.filled_size(), 4);
+    /// ```
+    pub const fn filled_size(&self) -> usize {
+        self.filled_size
+    }
+
+    /// Fill stereo buffer with the stereo samples from the given iterator.
+    ///
+    /// This is currently only used for making M/S framebuffer from the L/R buffer.
+    pub(crate) fn fill_stereo_with_iter<I>(&mut self, iter: I)
+    where
+        I: Iterator<Item = (i32, i32)>,
+    {
+        assert_eq!(2, self.channels());
+        let (m_slice, s_slice) = self.samples.split_at_mut(self.size);
+        self.filled_size = 0;
+        let dest_iter = m_slice.iter_mut().zip(s_slice.iter_mut());
+        for ((m, s), (dest_m, dest_s)) in iter.take(self.size).zip(dest_iter) {
+            *dest_m = m;
+            *dest_s = s;
+            self.filled_size += 1;
+        }
+    }
+
     /// Resizes `FrameBuf`.
     ///
     /// # Examples
@@ -187,8 +228,9 @@ impl FrameBuf {
     /// assert_eq!(fb.size(), 2048);
     /// ```
     pub fn resize(&mut self, new_size: usize) {
+        let channels = self.channels();
         self.size = new_size;
-        self.samples.resize(self.size * self.channels, 0i32);
+        self.samples.resize(self.size * channels, 0i32);
     }
 
     /// Returns the number of channels
@@ -200,18 +242,13 @@ impl FrameBuf {
     /// let fb = FrameBuf::with_size(8, 1024).unwrap();
     /// assert_eq!(fb.channels(), 8);
     /// ```
-    pub const fn channels(&self) -> usize {
-        self.channels
+    pub fn channels(&self) -> usize {
+        self.samples.len() / self.size
     }
 
     /// Returns samples from the given channel.
     pub(crate) fn channel_slice(&self, ch: usize) -> &[i32] {
-        &self.samples[ch * self.size..(ch + 1) * self.size]
-    }
-
-    /// Returns mutable samples from the given channel.
-    pub(crate) fn channel_slice_mut(&mut self, ch: usize) -> &mut [i32] {
-        &mut self.samples[ch * self.size..(ch + 1) * self.size]
+        &self.samples[ch * self.size..(ch * self.size + self.filled_size)]
     }
 
     /// Returns the internal representation of multichannel signals.
@@ -240,17 +277,22 @@ impl FrameBuf {
 impl Fill for FrameBuf {
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
         let stride = self.size();
-        deinterleave(interleaved, self.channels, stride, &mut self.samples);
+        let channels = self.channels();
+        deinterleave(interleaved, channels, stride, &mut self.samples);
+        self.filled_size = interleaved.len() / channels;
         Ok(())
     }
 
     #[inline]
     fn fill_le_bytes(&mut self, bytes: &[u8], bytes_per_sample: usize) -> Result<(), SourceError> {
-        self.readbuf.resize(bytes.len() / bytes_per_sample, 0);
+        let sample_count = bytes.len() / bytes_per_sample;
+        self.readbuf.resize(sample_count, 0);
         le_bytes_to_i32s(bytes, &mut self.readbuf, bytes_per_sample);
 
         let stride = self.size();
-        deinterleave(&self.readbuf, self.channels, stride, &mut self.samples);
+        let channels = self.channels();
+        deinterleave(&self.readbuf, self.channels(), stride, &mut self.samples);
+        self.filled_size = sample_count / channels;
         Ok(())
     }
 }
@@ -267,7 +309,6 @@ pub struct Context {
     channels: usize,
     sample_count: usize,
     frame_count: usize,
-    current_block_size: usize,
 }
 
 impl Context {
@@ -281,11 +322,11 @@ impl Context {
     ///
     /// ```
     /// # use flacenc::source::Context;
-    /// let ctx = Context::new(16, 2, 4);
-    /// assert!(ctx.current_frame_number().is_none());;
+    /// let ctx = Context::new(16, 2);
+    /// assert!(ctx.current_frame_number().is_none());
     /// assert_eq!(ctx.total_samples(), 0);
     /// ```
-    pub fn new(bits_per_sample: usize, channels: usize, block_size: usize) -> Self {
+    pub fn new(bits_per_sample: usize, channels: usize) -> Self {
         let bytes_per_sample = (bits_per_sample + 7) / 8;
         assert!(
             bytes_per_sample <= 4,
@@ -297,7 +338,6 @@ impl Context {
             channels,
             sample_count: 0,
             frame_count: 0,
-            current_block_size: block_size,
         }
     }
 
@@ -307,22 +347,13 @@ impl Context {
         self.bytes_per_sample
     }
 
-    /// Sets the block size for this `Context`.
-    ///
-    /// Only for variable-block-size encoding and therefore it is not used
-    /// currently.
-    #[allow(dead_code)]
-    pub(crate) fn set_current_block_size(&mut self, size: usize) {
-        self.current_block_size = size;
-    }
-
     /// Returns the count of the last frame loaded.
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::source::{Context, Fill};
-    /// let mut ctx = Context::new(16, 2, 16);
+    /// let mut ctx = Context::new(16, 2);
     /// assert!(ctx.current_frame_number().is_none());
     ///
     /// ctx.fill_interleaved(&[0, -1, -2, 3]);
@@ -340,7 +371,7 @@ impl Context {
     ///
     /// ```
     /// # use flacenc::source::Context;
-    /// let ctx = Context::new(16, 2, 128);
+    /// let ctx = Context::new(16, 2);
     /// let zero_md5 = [
     ///     0xD4, 0x1D, 0x8C, 0xD9, 0x8F, 0x00, 0xB2, 0x04,
     ///     0xE9, 0x80, 0x09, 0x98, 0xEC, 0xF8, 0x42, 0x7E,
@@ -360,7 +391,7 @@ impl Context {
     ///
     /// ```
     /// # use flacenc::source::{Context, Fill};
-    /// let mut ctx = Context::new(16, 2, 30);
+    /// let mut ctx = Context::new(16, 2);
     ///
     /// ctx.fill_interleaved(&[0, -1, -2, 3]);
     /// assert_eq!(ctx.total_samples(), 2);
@@ -371,8 +402,6 @@ impl Context {
     }
 }
 
-const ZEROS: [u8; 2048] = [0u8; 2048];
-
 impl Fill for Context {
     fn fill_interleaved(&mut self, interleaved: &[i32]) -> Result<(), SourceError> {
         if interleaved.is_empty() {
@@ -380,14 +409,6 @@ impl Fill for Context {
         }
         for v in interleaved {
             self.md5.update(&v.to_le_bytes()[0..self.bytes_per_sample]);
-        }
-        let remain_samples = self.current_block_size * self.channels - interleaved.len();
-        let mut remain = remain_samples * self.bytes_per_sample;
-        while remain > 0 {
-            let bytes = std::cmp::min(ZEROS.len(), remain);
-            let slice = &ZEROS[0..bytes];
-            self.md5.update(slice);
-            remain -= bytes;
         }
         self.sample_count += interleaved.len() / self.channels;
         self.frame_count += 1;
@@ -400,14 +421,6 @@ impl Fill for Context {
             return Ok(());
         }
         self.md5.update(bytes);
-        let block_byte_count = self.current_block_size * self.channels * bytes_per_sample;
-        let mut remain = block_byte_count - bytes.len();
-        while remain > 0 {
-            let bytes = std::cmp::min(ZEROS.len(), remain);
-            let slice = &ZEROS[0..bytes];
-            self.md5.update(slice);
-            remain -= bytes;
-        }
         self.sample_count += bytes.len() / self.channels / bytes_per_sample;
         self.frame_count += 1;
         Ok(())
@@ -423,7 +436,6 @@ impl fmt::Debug for Context {
             .field("sample_count", &self.sample_count)
             .field("frame_count", &self.frame_count)
             .field("md5", &digest)
-            .field("current_block_size", &self.current_block_size)
             .finish()
     }
 }
@@ -644,7 +656,7 @@ mod tests {
         let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
         let mut framebuf_and_ctx = (
             FrameBuf::with_size(channels, block_size).unwrap(),
-            Context::new(16, channels, block_size),
+            Context::new(16, channels),
         );
         let read = src
             .read_samples_from(0, block_size, &mut framebuf_and_ctx)
@@ -674,7 +686,7 @@ mod tests {
 
         let block_size = 128;
         let mut src = MemSource::from_samples(&signal, channels, 16, 16000);
-        let ctx = Context::new(16, channels, block_size);
+        let ctx = Context::new(16, channels);
         let framebuf = FrameBuf::with_size(channels, block_size).unwrap();
         let mut framebuf_and_ctx = (framebuf, ctx);
 
@@ -708,7 +720,7 @@ mod tests {
 
     #[test]
     fn md5_computation() {
-        let mut ctx = Context::new(16, 2, 32);
+        let mut ctx = Context::new(16, 2);
         ctx.fill_interleaved(&[0i32; 32 * 2])
             .expect("update failed");
 
@@ -721,7 +733,7 @@ mod tests {
             ]
         );
 
-        let mut ctx = Context::new(16, 2, 32);
+        let mut ctx = Context::new(16, 2);
         ctx.fill_interleaved(&[0xABCDi32; 32 * 2])
             .expect("update failed");
         // Reference computed by a reliable version of this library.
@@ -747,7 +759,7 @@ mod bench {
     #[bench]
     fn feeding_bytes_to_context(b: &mut Bencher) {
         let (bytes_per_sample, channels, block_size) = (2, 2, 4096);
-        let mut ctx = Context::new(bytes_per_sample, channels, block_size);
+        let mut ctx = Context::new(bytes_per_sample, channels);
         let signal_bytes = vec![0u8; bytes_per_sample * channels * block_size];
         b.iter(|| ctx.fill_le_bytes(black_box(&signal_bytes), bytes_per_sample));
     }
