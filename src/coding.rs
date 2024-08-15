@@ -425,7 +425,7 @@ fn encode_frame_impl(
 ) -> Frame {
     let nchannels = stream_info.channels();
     let bits_per_sample = stream_info.bits_per_sample();
-    let mut frame = Frame::new_empty(ch_info.clone(), offset, framebuf.size());
+    let mut frame = Frame::new_empty(ch_info.clone(), offset, framebuf.filled_size());
     for ch in 0..nchannels {
         frame.add_subframe(encode_subframe(
             &config.subframe_coding,
@@ -469,15 +469,13 @@ fn try_stereo_coding(
 ) -> Frame {
     reuse!(MSFRAMEBUF, |ms_framebuf: &mut FrameBuf| {
         ms_framebuf.resize(framebuf.size());
-
-        for t in 0..framebuf.size() {
-            let l = framebuf.channel_slice(0)[t];
-            let r = framebuf.channel_slice(1)[t];
-            let (ch0, ch1) = ((l + r) >> 1, l - r);
-            ms_framebuf.channel_slice_mut(0)[t] = ch0;
-            ms_framebuf.channel_slice_mut(1)[t] = ch1;
-        }
-
+        ms_framebuf.fill_stereo_with_iter(
+            framebuf
+                .channel_slice(0)
+                .iter()
+                .zip(framebuf.channel_slice(1).iter())
+                .map(|(l, r)| ((l + r) >> 1, l - r)),
+        );
         let ms_frame = encode_frame_impl(
             config,
             ms_framebuf,
@@ -651,8 +649,17 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
     let mut framebuf_and_context = (
         FrameBuf::with_size(src.channels(), block_size)?,
-        Context::new(src.bits_per_sample(), src.channels(), block_size),
+        Context::new(src.bits_per_sample(), src.channels()),
     );
+
+    // Probably not very important, but it follows the FLAC reference encoder's behavior
+    // that copies `block_size` to `max_block_size` field of `StreamInfo` when there's
+    // only one frame that is shorter than `block_size`.
+    stream
+        .stream_info_mut()
+        .set_block_sizes(block_size, block_size)
+        .unwrap();
+
     loop {
         let read_samples = src.read_samples(block_size, &mut framebuf_and_context)?;
         if read_samples == 0 {

@@ -770,11 +770,9 @@ impl StreamInfo {
     ///     info.update_frame_info(other_stream.frame(n).unwrap());
     /// }
     /// assert_eq!(info.max_block_size(), 160);
-    /// assert_eq!(info.min_block_size(), 160);
+    /// assert_eq!(info.min_block_size(), 31234 % 160);
     ///
-    /// // `Frame` doesn't hold the original signal length, so `total_samples`
-    /// // becomes a multiple of block_size == 160.
-    /// assert_eq!(info.total_samples(), 31360);
+    /// assert_eq!(info.total_samples(), 31234);
     /// ```
     pub fn update_frame_info(&mut self, frame: &Frame) {
         let block_size = frame.block_size() as u16;
@@ -913,9 +911,7 @@ impl StreamInfo {
     ///     info.update_frame_info(other_stream.frame(n).unwrap());
     /// }
     ///
-    /// // `Frame` doesn't hold the original signal length, so `total_samples`
-    /// // becomes a multiple of block_size == 160.
-    /// assert_eq!(info.total_samples(), 31360);
+    /// assert_eq!(info.total_samples(), 31234);
     /// ```
     pub fn total_samples(&self) -> usize {
         self.total_samples as usize
@@ -937,7 +933,7 @@ impl StreamInfo {
     /// # use flacenc::component::*;
     /// # use flacenc::source::{Context, Fill};
     /// # use flacenc::*;
-    /// let mut ctx = Context::new(16, 2, 123);
+    /// let mut ctx = Context::new(16, 2);
     /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     /// ctx.fill_interleaved(&[0x0000_0FFFi32; 246]);
     /// info.set_total_samples(ctx.total_samples());
@@ -988,7 +984,7 @@ impl StreamInfo {
     /// # use flacenc::component::*;
     /// # use flacenc::*;
     /// # use flacenc::source::{Context, Fill};
-    /// let mut ctx = Context::new(16, 2, 128);
+    /// let mut ctx = Context::new(16, 2);
     /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.md5_digest(), &[0x00u8; 16]);
     /// ctx.fill_interleaved(&[0x0000_0FFFi32; 256]);
