@@ -213,7 +213,7 @@ source venv/bin/activate
 python ./testtool/reporter.py \
   --flacbin flac-${FLAC_VERSION}/src/flac/flac \
   --testbin flacenc-bin/target/release/flacenc \
-  --workdir report/out/stable \
+  --workdir report/out/nightly \
   --output ${INTEGRATION_REPORT_NIGHTLY}
 """
 
