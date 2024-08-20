@@ -34,12 +34,6 @@ jobs:
         command: test
         args: --verbose --features "simd-nightly"
         directory: flacenc-bin
-    - name: Run tests (flacdec CLI)
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: test
-        args: --verbose
-        directory: flacdec-bin
     - name: Check fuzz test buildable
       uses: ClementTsang/cargo-action@v0.0.3
       with:
@@ -117,15 +111,3 @@ jobs:
         command: clippy
         args: --tests -- -D warnings
         directory: flacenc-bin
-    - name: Code format check (flacdec CLI)
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: fmt
-        args: --check
-        directory: flacdec-bin
-    - name: Clippy (flacdec CLI)
-      uses: ClementTsang/cargo-action@v0.0.3
-      with:
-        command: clippy
-        args: --tests -- -D warnings
-        directory: flacdec-bin

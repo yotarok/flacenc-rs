@@ -2083,14 +2083,8 @@ impl FrameHeader {
     }
 
     /// Overwrites `sample_rate_spec`.
-    #[cfg(all(feature = "decode", not(feature = "__export_decode")))]
+    #[cfg(feature = "decode")]
     pub(crate) fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
-        self.sample_rate_spec = spec;
-    }
-
-    /// This function will be removed once `flacdec-bin` is deprecated.
-    #[cfg(feature = "__export_decode")]
-    pub fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
         self.sample_rate_spec = spec;
     }
 

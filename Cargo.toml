@@ -18,10 +18,9 @@ debug = 1
 [features]
 default = ["log", "par", "serde"]
 
-__export_decode = ["decode"]
 __export_sigen = ["dep:rand"]
-experimental = ["dep:nalgebra"]
 decode = ["dep:nom"]
+experimental = ["dep:nalgebra"]
 log = ["dep:log"]
 mimalloc = ["dep:mimalloc"]
 par = ["dep:crossbeam-channel"]
