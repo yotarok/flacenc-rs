@@ -45,8 +45,8 @@ pub const MIN_BLOCK_SIZE: usize = 32;
 
 /// Minimum length of a block supported in prediction modules.
 ///
-/// Frames shorter than this constant will be encoded in `[component::Constant]` or
-/// `[component::Verbatim]`.
+/// Frames shorter than this constant will be encoded in [`component::Constant`] or
+/// [`component::Verbatim`].
 pub(crate) const MIN_BLOCK_SIZE_FOR_PREDICTION: usize = 64;
 
 /// Maximum bits-per-sample supported. (32 in the specification.)
