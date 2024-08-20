@@ -146,7 +146,7 @@ impl FrameBuf {
     ///
     /// Returns `VerifyError` if arguments are out of the ranges of FLAC
     /// specifications. Specifically `channels` must be in `1..=[MAX_CHANNELS]` and
-    /// size must be in `[MIN_BLOCK_SIZE]..=[MAX_BLOCK_SIZE]`.
+    /// size must be in `MIN_BLOCK_SIZE]..=MAX_BLOCK_SIZE`.
     ///
     /// # Examples
     ///

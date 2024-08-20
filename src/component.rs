@@ -89,7 +89,7 @@ pub trait BitRepr: seal_bit_repr::Sealed {
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>>;
 }
 
-/// Traits for FLAC components containing signals (represented in `[i32]`).
+/// Traits for FLAC components containing signals (represented in [`i32`]).
 ///
 /// "Signal" here has slightly different meaning depending on the component
 /// that implements this trait. For example, for `Residual`, signal is a
@@ -601,7 +601,7 @@ pub enum MetadataBlockData {
 }
 
 impl MetadataBlockData {
-    /// Constructs new `MetadataBlockData::Unknown` from the content (in `[u8]`).
+    /// Constructs new `MetadataBlockData::Unknown` from the content (in [`u8`]).
     ///
     /// # Errors
     ///
@@ -919,13 +919,8 @@ impl StreamInfo {
 
     /// Sets `total_samples` field.
     ///
-    /// `total_samples` is updated during the encoding. However, since [`Frame`]
-    /// only knows its frame size, the effective number of samples is not
-    /// visible after paddings.  Similar to [`set_md5_digest`], this
-    /// field should be finalized by propagating information from [`Context`].
-    ///
-    /// [`set_md5_digest`]: StreamInfo::set_md5_digest
-    /// [`Context`]: crate::source::Context
+    /// Similar to MD5 digests, `total_samples` field of `StreamInfo` is expected to be manually
+    /// filled after the encoder is finalized. See also [`Self::set_md5_digest`].
     ///
     /// # Examples
     ///

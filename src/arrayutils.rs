@@ -644,7 +644,7 @@ pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
     }
 }
 
-/// Transmutes a slice of `[Simd]`s into a slice of scalars.
+/// Transmutes a slice of [`Simd`]s into a slice of scalars.
 ///
 /// This hides an unsafe block. The operation is basically safe as rust ensures
 /// that:
@@ -669,7 +669,7 @@ where
     unsafe { std::slice::from_raw_parts(simds.as_ptr().cast(), newlen) }
 }
 
-/// Transmutes a slice of `[Simd]`s into a slice of scalars.
+/// Transmutes a slice of [`Simd`]s into a slice of scalars.
 ///
 /// This hides an unsafe block. See documents for `transmute_and_flatten_simd`
 /// for safety discussions.
