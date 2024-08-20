@@ -14,7 +14,7 @@ rand = "0.8.5"
 
 [dependencies.flacenc]
 path = ".."
-features = ["__export_sigen", "__export_decode"]
+features = ["__export_sigen", "decode"]
 
 # Prevent this from interfering with workspaces
 [workspace]

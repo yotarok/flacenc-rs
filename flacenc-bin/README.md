@@ -37,6 +37,14 @@ Then, edit `config.toml` and encode with the customized config, as:
 flacenc --output output.flac --config config.toml input.wav
 ```
 
+### (Experimental) decoder mode
+
+This tool can also decode FLAC files, as follows:
+
+```bash
+flacenc decode --output output.wav input.flac
+```
+
 ## Feature Flags
 
 This binary crate has a few feature flags to enable additional features:

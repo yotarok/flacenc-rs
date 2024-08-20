@@ -707,7 +707,7 @@ where
 fn u_to_i(x: u32, bits: usize) -> i32 {
     let x: u64 = x.into(); // widen
     let msb: u64 = 1u64 << (bits - 1);
-    let offset: i32 = if x > msb { (1u32 << bits) as i32 } else { 0 };
+    let offset: i32 = if x >= msb { (1u32 << bits) as i32 } else { 0 };
     i32::try_from(x).unwrap() - offset
 }
 
@@ -1014,5 +1014,11 @@ mod tests {
         let (_remaining_input, decoded) = unary_code::<VerboseError<BitInput>>((&[0xDF], 2))
             .expect("Unexpected error from `unary_code`.");
         assert_eq!(decoded, 1);
+    }
+
+    #[test]
+    fn unsigned_to_signed_conversion() {
+        assert_eq!(127, u_to_i(127, 8));
+        assert_eq!(-128, u_to_i(128, 8));
     }
 }

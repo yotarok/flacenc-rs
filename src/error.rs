@@ -461,6 +461,24 @@ pub enum EncodeError {
     Config(VerifyError),
 }
 
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Self::Source(e) => e.fmt(f),
+            Self::Config(e) => e.fmt(f),
+        }
+    }
+}
+
+impl Error for EncodeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Source(e) => e.source(),
+            Self::Config(e) => e.source(),
+        }
+    }
+}
+
 impl From<SourceError> for EncodeError {
     fn from(e: SourceError) -> Self {
         Self::Source(e)
@@ -630,16 +648,6 @@ impl fmt::Display for SourceErrorReason {
             }
         }
     }
-}
-
-/// Enum for possible decoder errors.
-#[non_exhaustive]
-#[cfg(any(test, feature = "__export_decode"))]
-#[allow(clippy::module_name_repetitions)]
-#[derive(Clone, Debug)]
-pub enum DecodeError {
-    /// Decode error due to invalid parameter value.
-    Range(RangeError),
 }
 
 mod seal_verify {
