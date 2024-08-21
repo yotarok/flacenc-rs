@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2022-2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -932,7 +932,8 @@ impl StreamInfo {
     /// let mut info = StreamInfo::new(16000, 2, 16).unwrap();
     /// ctx.fill_interleaved(&[0x0000_0FFFi32; 246]);
     /// info.set_total_samples(ctx.total_samples());
-    /// assert_ne!(info.total_samples(), 246);
+    /// assert_ne!(info.total_samples(), 246); // not sample count
+    /// assert_eq!(info.total_samples(), 123); // but inter-channel sample count
     /// ```
     pub fn set_total_samples(&mut self, n: usize) {
         self.total_samples = n as u64;
