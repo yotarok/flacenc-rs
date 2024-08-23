@@ -427,19 +427,21 @@ macro_rules! verify_range {
     ($varname: literal, $actual:expr, $lowlimit:tt ..) => {{
         #[allow(unused_parens)]
         let limit = $lowlimit;
+        let actual = $actual;
         verify_true!(
             $varname,
             $actual >= limit,
-            "must be greater than or equal to {limit}"
+            "must be greater than or equal to {limit} (actual={actual})"
         )
     }};
     ($varname: literal, $actual:expr, ..= $highlimit:tt) => {{
         #[allow(unused_parens)]
         let limit = $highlimit;
+        let actual = $actual;
         verify_true!(
             $varname,
             $actual <= limit,
-            "must be less than or equal to {limit}"
+            "must be less than or equal to {limit} (actual={actual})"
         )
     }};
     ($varname: literal, $actual:expr, .. $highlimit:tt) => {{

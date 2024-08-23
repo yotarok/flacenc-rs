@@ -18,9 +18,6 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use once_cell::sync::Lazy;
-use rand::distributions::Distribution;
-use rand::distributions::Uniform;
-use rand::Rng;
 use tempfile::NamedTempFile;
 
 use super::arrayutils::le_bytes_to_i32s;
@@ -30,7 +27,6 @@ use super::component::BlockSizeSpec;
 use super::component::ChannelAssignment;
 use super::component::Frame;
 use super::component::FrameOffset;
-use super::component::Residual;
 use super::component::SampleRateSpec;
 use super::component::SampleSizeSpec;
 use super::component::Stream;
@@ -181,42 +177,6 @@ where
         }
     }
     stream
-}
-
-pub fn make_random_residual<R: Rng>(mut rng: R, warmup_length: usize) -> Residual {
-    // when blocksize is minimum (64), the partition length is 16, and warmup samples
-    // are not expected to go beyond the partition boundary.
-    assert!(warmup_length <= 16);
-    let block_size = 4 * Uniform::from(16..=1024).sample(&mut rng);
-    let partition_order: usize = 2;
-    let nparts = 2usize.pow(partition_order as u32);
-    let part_len = block_size / nparts;
-    let params = vec![7, 8, 6, 7];
-    let mut quotients: Vec<u32> = vec![];
-    let mut remainders: Vec<u32> = vec![];
-
-    for t in 0..block_size {
-        if t < warmup_length {
-            quotients.push(0u32);
-            remainders.push(0u32);
-        } else {
-            let part_id = t / part_len;
-            let p = params[part_id];
-            let denom = 1u32 << p;
-
-            quotients.push(255 / denom);
-            remainders.push(255 % denom);
-        }
-    }
-    Residual::new(
-        partition_order,
-        block_size,
-        warmup_length,
-        &params,
-        &quotients,
-        &remainders,
-    )
-    .expect("Error in random construction of Residual")
 }
 
 pub fn make_verbatim_frame(stream_info: &StreamInfo, samples: &[i32], offset: u64) -> Frame {

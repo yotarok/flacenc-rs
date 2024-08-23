@@ -2271,6 +2271,12 @@ impl QuantizedParameters {
             .map(|x| dequantize_parameter(*x, self.shift))
             .collect()
     }
+
+    /// Increment shift value to decrease the coefficients (for test).
+    #[cfg(test)]
+    pub(crate) fn increment_shift(&mut self) {
+        self.shift += 1;
+    }
 }
 
 /// [`RESIDUAL`](https://xiph.org/flac/format.html#residual) component.

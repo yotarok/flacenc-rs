@@ -116,6 +116,8 @@ macro_rules! info { (target: $t:literal, $($x:tt)*) => (
     }
 ) }
 
+#[cfg(test)]
+pub mod arbitrary;
 pub(crate) mod arrayutils;
 pub mod bitsink;
 pub(crate) mod coding;

@@ -741,26 +741,25 @@ where
 mod tests {
     use super::*;
 
+    use crate::arbitrary::random_sample;
+    use crate::arbitrary::Arb;
     use crate::coding;
+    use crate::component::arbitrary::BitsPerSample;
+    use crate::component::arbitrary::BlockSize;
+    use crate::component::arbitrary::SampleRate;
     use crate::component::bitrepr::encode_to_utf8like;
     use crate::component::BitRepr;
-    use crate::config;
+    use crate::component::ChannelAssignment;
+    use crate::component::Decode;
+    use crate::component::Frame;
+    use crate::component::FrameHeader;
     use crate::config::Encoder as EncoderConfig;
-    use crate::config::Window;
-    use crate::constant;
     use crate::error::Verify;
-    use crate::lpc;
     use crate::sigen;
     use crate::sigen::Signal;
     use crate::source;
-    use crate::test_helper::make_random_residual;
-    use crate::test_helper::make_verbatim_frame;
 
     use nom::error::VerboseError;
-
-    use rand::distributions::Distribution;
-    use rand::distributions::Uniform;
-    use rand::Rng;
 
     #[test]
     fn decoding_stream() {
@@ -823,18 +822,27 @@ mod tests {
         }
     }
 
-    fn decoding_frame_testimpl(block_size: usize, bits_per_sample: usize, sample_rate: usize) {
-        let nchannels: usize = 2;
-        let stream_info =
-            component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
-        let framebuf = vec![-1i32; block_size * nchannels];
-        let comp = make_verbatim_frame(&stream_info, &framebuf, 0);
+    fn bitdecode_testimpl<T, F>(comp: T, parse_fn: F)
+    where
+        T: Verify + BitRepr + 'static,
+        F: for<'a> Fn(&T, BitInput<'a>) -> IResult<BitInput<'a>, T, VerboseError<BitInput<'a>>>,
+    {
+        comp.verify()
+            .expect("Test sample should be a valid component.");
 
         let bytes = comp.to_bytes();
-        let (_remaining_input, decoded) = frame::<VerboseError<&[u8]>>(&stream_info, true)(&bytes)
-            .expect("Unexpected parse error");
+        let (_remaining_input, decoded) = parse_fn(&comp, (&bytes, 0)).expect("Parse error");
 
         assert_eq!(comp.to_bytes(), decoded.to_bytes());
+    }
+
+    fn bitdecode_testimpl_randgen<T, F>(parse_fn: F)
+    where
+        T: Verify + Decode + BitRepr + 'static,
+        Arb<T>: for<'b> arbitrary::Arbitrary<'b>,
+        F: for<'a> Fn(&T, BitInput<'a>) -> IResult<BitInput<'a>, T, VerboseError<BitInput<'a>>>,
+    {
+        bitdecode_testimpl(Arb::<T>::random_test_sample(rand::thread_rng()), parse_fn);
     }
 
     #[test]
@@ -842,28 +850,24 @@ mod tests {
         for block_size in [1152, 1024] {
             let bits_per_sample = 16;
             let sample_rate = 65535;
-            decoding_frame_testimpl(block_size, bits_per_sample, sample_rate);
+            let nchannels = 2;
+            let stream_info =
+                component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
+            let comp: Frame = random_sample(
+                rand::thread_rng(),
+                &(
+                    Some(BlockSize(block_size)),
+                    ChannelAssignment::Independent(nchannels as u8),
+                    BitsPerSample(bits_per_sample),
+                    SampleRate(sample_rate as u32),
+                    FrameOffset::Frame(0),
+                ),
+            )
+            .unwrap();
+            bitdecode_testimpl(comp, |_c, i| {
+                nom::bits::bytes(frame::<VerboseError<_>>(&stream_info, true))(i)
+            });
         }
-    }
-
-    fn decoding_frame_header_testimpl(
-        block_size: usize,
-        bits_per_sample: usize,
-        sample_rate: usize,
-    ) {
-        let nchannels: usize = 2;
-        let stream_info =
-            component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
-        let framebuf = vec![-1i32; block_size * nchannels];
-        let frame = make_verbatim_frame(&stream_info, &framebuf, 0);
-        let comp = frame.header().clone();
-
-        let bytes = comp.to_bytes();
-
-        let (_remaining_input, decoded) =
-            frame_header::<VerboseError<&[u8]>>(true)(&bytes).expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
     }
 
     #[test]
@@ -871,10 +875,58 @@ mod tests {
         for block_size in [192, 1152, 127, 298, 1024] {
             for bits_per_sample in [8, 16, 24] {
                 for sample_rate in [88200, 3, 65535, 95900] {
-                    decoding_frame_header_testimpl(block_size, bits_per_sample, sample_rate);
+                    let comp: FrameHeader = random_sample(
+                        rand::thread_rng(),
+                        &(
+                            Some(BlockSize(block_size)),
+                            ChannelAssignment::Independent(2),
+                            BitsPerSample(bits_per_sample),
+                            SampleRate(sample_rate as u32),
+                            FrameOffset::Frame(0),
+                        ),
+                    )
+                    .unwrap();
+                    bitdecode_testimpl(comp, |_c, i| {
+                        nom::bits::bytes(frame_header::<VerboseError<_>>(true))(i)
+                    });
                 }
             }
         }
+    }
+
+    #[test]
+    fn decoding_constant() {
+        bitdecode_testimpl_randgen::<component::Constant, _>(|c, i| {
+            constant(c.block_size(), c.bits_per_sample())(i)
+        });
+    }
+
+    #[test]
+    fn decoding_fixed_lpc() {
+        bitdecode_testimpl_randgen::<component::FixedLpc, _>(|c, i| {
+            fixed_lpc(c.residual().block_size(), c.bits_per_sample())(i)
+        });
+    }
+
+    #[test]
+    fn decoding_lpc() {
+        bitdecode_testimpl_randgen::<component::Lpc, _>(|c, i| {
+            lpc(c.residual().block_size(), c.bits_per_sample())(i)
+        });
+    }
+
+    #[test]
+    fn decoding_verbatim() {
+        bitdecode_testimpl_randgen::<component::Verbatim, _>(|c, i| {
+            verbatim(c.samples().len(), c.bits_per_sample())(i)
+        });
+    }
+
+    #[test]
+    fn decoding_residual() {
+        bitdecode_testimpl_randgen::<component::Residual, _>(|c, i| {
+            residual(c.block_size(), c.warmup_length())(i)
+        });
     }
 
     #[test]
@@ -899,107 +951,6 @@ mod tests {
             assert_eq!(remaining_input, &[]);
             assert_eq!(*x, y);
         }
-    }
-
-    fn random_lpc<R: Rng>(mut rng: R) -> component::Lpc {
-        let block_size = Uniform::from(64..=256).sample(&mut rng);
-        let order = Uniform::from(1..=constant::qlpc::MAX_ORDER).sample(&mut rng);
-        let precision = Uniform::from(1..=constant::qlpc::MAX_PRECISION).sample(&mut rng);
-        let mut signal = Vec::with_capacity(block_size);
-        for _t in 0..block_size {
-            signal.push(Uniform::from(-127..=127).sample(&mut rng));
-        }
-        let lpc_coefs = lpc::lpc_from_autocorr(&signal, &Window::default(), order);
-        let qlpc = lpc::quantize_parameters(&lpc_coefs[0..order], precision);
-        let mut errors = vec![0i32; signal.len()];
-        lpc::compute_error(&qlpc, &signal, &mut errors);
-        let residual = coding::encode_residual(&config::Prc::default(), &errors, qlpc.order());
-
-        component::Lpc::from_parts(
-            heapless::Vec::from_slice(&signal[0..qlpc.order()])
-                .expect("LPC order exceeded the maximum"),
-            qlpc,
-            residual,
-            8,
-        )
-    }
-
-    #[test]
-    fn decoding_constant() {
-        let mut rng = rand::thread_rng();
-        let block_size = Uniform::from(64..=256).sample(&mut rng);
-        let offset = Uniform::from(-1000..1000).sample(&mut rng);
-        let comp = component::Constant::new(block_size, offset, 16).expect("construction error");
-        let bytes = comp.to_bytes();
-
-        let (_remaining_input, decoded) = constant::<VerboseError<BitInput>>(
-            comp.block_size(),
-            comp.bits_per_sample(),
-        )((&bytes, 0))
-        .expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
-    }
-
-    #[test]
-    fn decoding_fixedlpc() {
-        let residual = make_random_residual(rand::thread_rng(), 2);
-        let comp = component::FixedLpc::new(&[0, 0], residual, 16).expect("");
-        let bytes = comp.to_bytes();
-
-        let (_remaining_input, decoded) = fixed_lpc::<VerboseError<BitInput>>(
-            comp.residual().block_size(),
-            comp.bits_per_sample(),
-        )((&bytes, 0))
-        .expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
-    }
-
-    #[test]
-    fn decoding_lpc() {
-        let comp = random_lpc(rand::thread_rng());
-        let bytes = comp.to_bytes();
-
-        let (_remaining_input, decoded) = lpc::<VerboseError<BitInput>>(
-            comp.residual().block_size(),
-            comp.bits_per_sample(),
-        )((&bytes, 0))
-        .expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
-    }
-
-    #[test]
-    fn decoding_verbatim() {
-        let mut rng = rand::thread_rng();
-        let block_size = Uniform::from(1..=128).sample(&mut rng);
-        let mut samples = Vec::with_capacity(block_size);
-        for _t in 0..block_size {
-            samples.push(Uniform::from(-127..=127).sample(&mut rng));
-        }
-        let bits_per_sample = 12;
-
-        let comp = component::Verbatim::from_samples(samples.as_slice(), bits_per_sample as u8);
-        let bytes = comp.to_bytes();
-        let (_remaining_input, decoded) =
-            verbatim::<VerboseError<BitInput>>(block_size, bits_per_sample)((&bytes, 0))
-                .expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
-    }
-
-    #[test]
-    fn decoding_residual() {
-        let comp = make_random_residual(rand::thread_rng(), 0);
-        let bytes = comp.to_bytes();
-        let (_remaining_input, decoded) = residual::<VerboseError<BitInput>>(
-            comp.block_size(),
-            comp.warmup_length(),
-        )((&bytes, 0))
-        .expect("Unexpected parse error");
-
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
     }
 
     #[test]

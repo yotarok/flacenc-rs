@@ -50,6 +50,9 @@ pub const MIN_BLOCK_SIZE: usize = 32;
 pub(crate) const MIN_BLOCK_SIZE_FOR_PREDICTION: usize = 64;
 
 /// Maximum bits-per-sample supported. (32 in the specification.)
+///
+/// Note that internally `bits-per-sample` value can exceed this value. Specifically,
+/// a side-channel for 24-bit input signal must have 25 bits-per-sample.
 pub const MAX_BITS_PER_SAMPLE: usize = 24;
 
 /// Maximum length of a block supported (65535 in the specification.)

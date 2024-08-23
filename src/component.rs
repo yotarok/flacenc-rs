@@ -13,7 +13,8 @@
 // limitations under the License.
 
 //! Components to be written in the output file.
-
+#[cfg(test)]
+pub mod arbitrary;
 mod bitrepr;
 mod datatype;
 #[cfg(any(test, feature = "decode"))]
