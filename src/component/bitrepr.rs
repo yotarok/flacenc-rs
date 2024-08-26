@@ -64,6 +64,32 @@ pub trait BitRepr: seal_bit_repr::Sealed {
         self.write(&mut sink).expect("No error expected");
         sink.into_inner()
     }
+
+    /// Test utility for obtaining bits as eight-bit separated `String`.
+    #[cfg(test)]
+    fn to_bitstring(&self) -> String {
+        let mut sink = MemSink::<u8>::new();
+        self.write(&mut sink).expect("No error expected");
+        sink.to_bitstring()
+    }
+
+    #[cfg(test)]
+    /// Checks if the number of bits actually written equals to the expected number of bits.
+    ///
+    /// # Errors
+    ///
+    /// If the check passed i.e. the number of bits actually written is as same as the expected
+    /// number, it returns `Ok(bits)`. Otherwise, it returns `Err((expected_bits, actual_bits))`.
+    fn verify_bit_counter(&self) -> Result<usize, (usize, usize)> {
+        let expected = self.count_bits();
+        let mut sink = MemSink::<u8>::new();
+        self.write(&mut sink).expect("No error expected");
+        if expected == sink.len() {
+            Ok(expected)
+        } else {
+            Err((expected, sink.len()))
+        }
+    }
 }
 
 /// Lookup table for `encode_to_utf8like`.
@@ -221,7 +247,7 @@ impl BitRepr for StreamInfo {
             .map_err(OutputError::<S>::from_sink)?;
         dest.write_lsbs(self.total_samples() as u64, 36)
             .map_err(OutputError::<S>::from_sink)?;
-        dest.write_bytes_aligned(self.md5())
+        dest.write_bytes_aligned(self.md5_digest())
             .map_err(OutputError::<S>::from_sink)?;
         Ok(())
     }
@@ -573,5 +599,137 @@ impl BitRepr for Residual {
             p += 1;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Verify;
+    use crate::test_helper::make_random_residual;
+    use crate::test_helper::make_verbatim_frame;
+
+    #[test]
+    fn write_empty_stream() {
+        let stream = Stream::new(44100, 2, 16).expect("`Stream::new` should not fail.");
+        let stream_bytes = stream.to_bytes();
+        assert_eq!(
+            stream_bytes.len() * 8,
+            32 // fLaC
+      + 1 + 7 + 24 // METADATA_BLOCK_HEADER
+      + 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128 // METADATA_BLOCK_STREAMINFO
+        );
+        assert_eq!(stream.count_bits(), stream_bytes.len() * 8);
+    }
+
+    #[test]
+    fn write_stream_info() {
+        let stream_info = StreamInfo::new(44100, 2, 16).expect("`Stream::new` should not fail.");
+        let stream_info_bytes = stream_info.to_bytes();
+        assert_eq!(
+            stream_info_bytes.len() * 8,
+            16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128
+        );
+        assert_eq!(stream_info.count_bits(), stream_info_bytes.len() * 8);
+    }
+
+    #[test]
+    fn write_frame_header() {
+        let header = FrameHeader::new(2304, ChannelAssignment::Independent(2), 192);
+        header.to_bytes(); // just checking it doesn't panic.
+
+        // test with canonical frame
+        let header = FrameHeader::new(192, ChannelAssignment::Independent(2), 0);
+        header
+            .verify_bit_counter()
+            .expect("`FrameHeader::count_bits` should be accurate.");
+        assert_eq!(
+            header.to_bitstring(),
+            concat!(
+                "11111111_111110", // sync
+                "01_",             // reserved/ blocking strategy (const in this impl)
+                "00010000_",       // block size/ sample_rate (0=header)
+                "00010000_",       // channel/ bps (0=header)/ reserved
+                "00000000_",       // sample number
+                "01101001",        // crc8
+            )
+        );
+
+        assert_eq!(header.count_bits(), 48);
+    }
+
+    #[test]
+    fn block_size_encoding() {
+        let (head, _foot, footsize) = block_size_spec(192);
+        assert_eq!(head, 0x01);
+        assert_eq!(footsize, 0);
+
+        let (head, _foot, footsize) = block_size_spec(2048);
+        assert_eq!(head, 0x0B);
+        assert_eq!(footsize, 0);
+
+        let (head, _foot, footsize) = block_size_spec(1152);
+        assert_eq!(head, 0x03);
+        assert_eq!(footsize, 0);
+
+        let (head, foot, footsize) = block_size_spec(193);
+        assert_eq!(head, 0x06);
+        assert_eq!(footsize, 8);
+        assert_eq!(foot, 0xC0);
+
+        let (head, foot, footsize) = block_size_spec(1151);
+        assert_eq!(head, 0x07);
+        assert_eq!(footsize, 16);
+        assert_eq!(foot, 0x047E);
+    }
+
+    #[test]
+    fn channel_assignment_encoding() {
+        let ch = ChannelAssignment::Independent(8);
+        assert_eq!(ch.to_bitstring(), "0111****");
+        let ch = ChannelAssignment::RightSide;
+        assert_eq!(ch.to_bitstring(), "1001****");
+        ch.verify_bit_counter()
+            .expect("`ChanneAssignment::count_bits` should be accurate.");
+    }
+
+    #[test]
+    fn write_verbatim_frame() {
+        let nchannels: usize = 3;
+        let nsamples: usize = 17;
+        let bits_per_sample: usize = 16;
+        let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample)
+            .expect("`StreamInfo::new` should not return error");
+        let framebuf = vec![-1i32; nsamples * nchannels];
+        let frame = make_verbatim_frame(&stream_info, &framebuf, 0);
+        frame
+            .header()
+            .verify_bit_counter()
+            .expect("`FrameHeader::count_bits` should be accurate.");
+
+        for ch in 0..3 {
+            frame.subframe(ch).unwrap().to_bytes();
+            frame
+                .subframe(ch)
+                .unwrap()
+                .verify_bit_counter()
+                .expect("`SubFrame::count_bits` should be accurate.");
+        }
+
+        frame
+            .verify_bit_counter()
+            .expect("`Frame::count_bits` should be accurate.");
+    }
+
+    #[test]
+    #[allow(clippy::cast_lossless)]
+    fn bit_count_residual() {
+        let residual = make_random_residual(rand::thread_rng(), 0);
+        residual
+            .verify()
+            .expect("should construct a valid Residual");
+        residual
+            .verify_bit_counter()
+            .expect("`Residual::count_bits` should be accurate");
     }
 }

@@ -67,6 +67,14 @@ pub trait Signal: std::fmt::Debug {
         self.mix(Noise::new(amplitude))
     }
 
+    /// Mixes noise
+    fn noise_with_seed(self, seed0: u64, amplitude: f32) -> Mix<Self, Noise>
+    where
+        Self: Sized,
+    {
+        self.mix(Noise::with_seed(seed0, amplitude))
+    }
+
     /// Mixes signal from the other generator
     fn mix<T: Signal + Sized>(self, other: T) -> Mix<Self, T>
     where

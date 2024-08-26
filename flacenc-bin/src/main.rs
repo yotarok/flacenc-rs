@@ -64,6 +64,7 @@ use log::info;
 #[cfg(feature = "pprof")]
 use pprof::protos::Message;
 
+use flacenc::component::parser;
 use flacenc::component::BitRepr;
 use flacenc::component::Decode;
 use flacenc::component::Stream;
@@ -71,7 +72,6 @@ use flacenc::config;
 use flacenc::error::EncodeError;
 use flacenc::error::Verified;
 use flacenc::error::Verify;
-use flacenc::parser;
 use flacenc::source::Source;
 
 mod display;

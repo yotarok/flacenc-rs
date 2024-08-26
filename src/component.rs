@@ -18,6 +18,8 @@ mod bitrepr;
 mod datatype;
 #[cfg(any(test, feature = "decode"))]
 mod decode;
+#[cfg(any(test, feature = "decode"))]
+pub mod parser;
 mod verify;
 
 pub use bitrepr::*;
@@ -31,89 +33,9 @@ mod tests {
     use crate::bitsink::MemSink;
     use crate::error::OutputError;
     use crate::error::RangeError;
-    use crate::error::Verify;
     use crate::sigen;
     use crate::sigen::Signal;
-    use crate::test_helper::make_random_residual;
     use crate::test_helper::make_verbatim_frame;
-
-    #[test]
-    fn write_empty_stream() -> Result<(), OutputError<MemSink<u8>>> {
-        let stream = Stream::new(44100, 2, 16).unwrap();
-        let mut bv: MemSink<u8> = MemSink::new();
-        stream.write(&mut bv)?;
-        assert_eq!(
-            bv.len(),
-            32 // fLaC
-      + 1 + 7 + 24 // METADATA_BLOCK_HEADER
-      + 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128 // METADATA_BLOCK_STREAMINFO
-        );
-        assert_eq!(stream.count_bits(), bv.len());
-        Ok(())
-    }
-
-    #[test]
-    fn write_stream_info() -> Result<(), OutputError<MemSink<u8>>> {
-        let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
-        let mut bv: MemSink<u8> = MemSink::new();
-        stream_info.write(&mut bv)?;
-        assert_eq!(bv.len(), 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 128);
-        assert_eq!(stream_info.count_bits(), bv.len());
-        Ok(())
-    }
-
-    #[test]
-    fn write_frame_header() -> Result<(), OutputError<MemSink<u8>>> {
-        let header = FrameHeader::new(2304, ChannelAssignment::Independent(2), 192);
-        let mut bv: MemSink<u8> = MemSink::new();
-        header.write(&mut bv)?;
-
-        // test with canonical frame
-        let header = FrameHeader::new(192, ChannelAssignment::Independent(2), 0);
-        let mut bv: MemSink<u8> = MemSink::new();
-        header.write(&mut bv)?;
-
-        assert_eq!(
-            bv.to_bitstring(),
-            concat!(
-                "11111111_111110", // sync
-                "01_",             // reserved/ blocking strategy (const in this impl)
-                "00010000_",       // block size/ sample_rate (0=header)
-                "00010000_",       // channel/ bps (0=header)/ reserved
-                "00000000_",       // sample number
-                "01101001",        // crc8
-            )
-        );
-
-        assert_eq!(header.count_bits(), bv.len());
-
-        Ok(())
-    }
-
-    #[test]
-    fn write_verbatim_frame() -> Result<(), OutputError<MemSink<u64>>> {
-        let nchannels: usize = 3;
-        let nsamples: usize = 17;
-        let bits_per_sample: usize = 16;
-        let stream_info = StreamInfo::new(16000, nchannels, bits_per_sample).unwrap();
-        let framebuf = vec![-1i32; nsamples * nchannels];
-        let frame = make_verbatim_frame(&stream_info, &framebuf, 0);
-        let mut bv: MemSink<u64> = MemSink::new();
-
-        frame.header().write(&mut bv)?;
-        assert_eq!(frame.header().count_bits(), bv.len());
-
-        for ch in 0..3 {
-            bv.clear();
-            frame.subframe(ch).unwrap().write(&mut bv)?;
-            assert_eq!(frame.subframe(ch).unwrap().count_bits(), bv.len());
-        }
-
-        bv.clear();
-        frame.write(&mut bv)?;
-        assert_eq!(frame.count_bits(), bv.len());
-        Ok(())
-    }
 
     #[test]
     fn utf8_encoding() -> Result<(), RangeError> {
@@ -132,45 +54,6 @@ mod tests {
         let v = 0x10_0000_0000u64; //  out of domain
         encode_to_utf8like(v).expect_err("Should be out of domain");
 
-        Ok(())
-    }
-
-    #[test]
-    fn block_size_encoding() {
-        let (head, _foot, footsize) = block_size_spec(192);
-        assert_eq!(head, 0x01);
-        assert_eq!(footsize, 0);
-
-        let (head, _foot, footsize) = block_size_spec(2048);
-        assert_eq!(head, 0x0B);
-        assert_eq!(footsize, 0);
-
-        let (head, _foot, footsize) = block_size_spec(1152);
-        assert_eq!(head, 0x03);
-        assert_eq!(footsize, 0);
-
-        let (head, foot, footsize) = block_size_spec(193);
-        assert_eq!(head, 0x06);
-        assert_eq!(footsize, 8);
-        assert_eq!(foot, 0xC0);
-
-        let (head, foot, footsize) = block_size_spec(1151);
-        assert_eq!(head, 0x07);
-        assert_eq!(footsize, 16);
-        assert_eq!(foot, 0x047E);
-    }
-
-    #[test]
-    fn channel_assignment_encoding() -> Result<(), OutputError<MemSink<u8>>> {
-        let ch = ChannelAssignment::Independent(8);
-        let mut bv: MemSink<u8> = MemSink::new();
-        ch.write(&mut bv)?;
-        assert_eq!(bv.to_bitstring(), "0111****");
-        let ch = ChannelAssignment::RightSide;
-        let mut bv: MemSink<u8> = MemSink::new();
-        ch.write(&mut bv)?;
-        assert_eq!(bv.to_bitstring(), "1001****");
-        assert_eq!(ch.count_bits(), bv.len());
         Ok(())
     }
 
@@ -206,21 +89,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::cast_lossless)]
-    fn bit_count_residual() -> Result<(), OutputError<MemSink<u64>>> {
-        let residual = make_random_residual(rand::thread_rng(), 0);
-        residual
-            .verify()
-            .expect("should construct a valid Residual");
-
-        let mut bv: MemSink<u64> = MemSink::new();
-        residual.write(&mut bv)?;
-
-        assert_eq!(residual.count_bits(), bv.len());
-        Ok(())
-    }
-
-    #[test]
     fn frame_bitstream_precomputataion() -> Result<(), OutputError<MemSink<u64>>> {
         let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let samples = sigen::Sine::new(128, 0.2)
@@ -245,12 +113,6 @@ mod tests {
         // anyway cache should be discarded.
         assert!(!frame.is_bitstream_precomputed());
         Ok(())
-    }
-
-    #[test]
-    fn channel_assignment_is_small_enough() {
-        let size = std::mem::size_of::<ChannelAssignment>();
-        assert_eq!(size, 2);
     }
 }
 

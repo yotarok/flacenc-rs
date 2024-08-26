@@ -751,6 +751,7 @@ mod tests {
     use crate::coding;
     use crate::component::encode_to_utf8like;
     use crate::component::BitRepr;
+    use crate::config;
     use crate::config::Encoder as EncoderConfig;
     use crate::config::Window;
     use crate::constant;
@@ -763,7 +764,6 @@ mod tests {
     use crate::test_helper::make_verbatim_frame;
 
     use nom::error::VerboseError;
-    use rstest::rstest;
 
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
@@ -810,30 +810,27 @@ mod tests {
         assert_eq!(comp.to_bytes(), decoded.to_bytes());
     }
 
-    #[rstest]
-    fn decoding_metadata_block_and_stream_info(#[values(true, false)] is_last: bool) {
-        let nchannels: usize = 2;
-        let sample_rate: usize = 44100;
-        let bits_per_sample: usize = 24;
-        let mut stream_info =
-            component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
-        stream_info.set_block_sizes(128, 1024).unwrap();
-        stream_info.set_frame_sizes(123, 4567).unwrap();
-        let comp = component::MetadataBlock::from_parts(is_last, stream_info.into());
+    #[test]
+    fn decoding_metadata_block_and_stream_info() {
+        for is_last in [true, false] {
+            let nchannels: usize = 2;
+            let sample_rate: usize = 44100;
+            let bits_per_sample: usize = 24;
+            let mut stream_info =
+                component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
+            stream_info.set_block_sizes(128, 1024).unwrap();
+            stream_info.set_frame_sizes(123, 4567).unwrap();
+            let comp = component::MetadataBlock::from_parts(is_last, stream_info.into());
 
-        let bytes = comp.to_bytes();
-        let (_remaining_input, decoded) =
-            metadata_block::<VerboseError<&[u8]>>(&bytes).expect("Unexpected parse error");
+            let bytes = comp.to_bytes();
+            let (_remaining_input, decoded) =
+                metadata_block::<VerboseError<&[u8]>>(&bytes).expect("Unexpected parse error");
 
-        assert_eq!(comp.to_bytes(), decoded.to_bytes());
+            assert_eq!(comp.to_bytes(), decoded.to_bytes());
+        }
     }
 
-    #[rstest]
-    fn decoding_frame(
-        #[values(1152, 1024)] block_size: usize,
-        #[values(16)] bits_per_sample: usize,
-        #[values(65535)] sample_rate: usize,
-    ) {
+    fn decoding_frame_testimpl(block_size: usize, bits_per_sample: usize, sample_rate: usize) {
         let nchannels: usize = 2;
         let stream_info =
             component::StreamInfo::new(sample_rate, nchannels, bits_per_sample).unwrap();
@@ -847,11 +844,19 @@ mod tests {
         assert_eq!(comp.to_bytes(), decoded.to_bytes());
     }
 
-    #[rstest]
-    fn decoding_frame_header(
-        #[values(192, 1152, 127, 298, 1024)] block_size: usize,
-        #[values(8, 16, 24)] bits_per_sample: usize,
-        #[values(88200, 3, 65535, 95900)] sample_rate: usize,
+    #[test]
+    fn decoding_frame() {
+        for block_size in [1152, 1024] {
+            let bits_per_sample = 16;
+            let sample_rate = 65535;
+            decoding_frame_testimpl(block_size, bits_per_sample, sample_rate);
+        }
+    }
+
+    fn decoding_frame_header_testimpl(
+        block_size: usize,
+        bits_per_sample: usize,
+        sample_rate: usize,
     ) {
         let nchannels: usize = 2;
         let stream_info =
@@ -869,6 +874,17 @@ mod tests {
     }
 
     #[test]
+    fn decoding_frame_header() {
+        for block_size in [192, 1152, 127, 298, 1024] {
+            for bits_per_sample in [8, 16, 24] {
+                for sample_rate in [88200, 3, 65535, 95900] {
+                    decoding_frame_header_testimpl(block_size, bits_per_sample, sample_rate);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn decoding_utf8_code() {
         for x in &[
             0u64,
@@ -882,7 +898,7 @@ mod tests {
             65535,
             65536,
             68000,
-            68719476735,
+            68_719_476_735, // 2^36 - 1
         ] {
             let code = encode_to_utf8like(*x).expect("encode error");
             let (remaining_input, y) =
@@ -894,7 +910,7 @@ mod tests {
 
     fn random_lpc<R: Rng>(mut rng: R) -> component::Lpc {
         let block_size = Uniform::from(64..=256).sample(&mut rng);
-        let order = Uniform::from(0..=constant::qlpc::MAX_ORDER).sample(&mut rng);
+        let order = Uniform::from(1..=constant::qlpc::MAX_ORDER).sample(&mut rng);
         let precision = Uniform::from(1..=constant::qlpc::MAX_PRECISION).sample(&mut rng);
         let mut signal = Vec::with_capacity(block_size);
         for _t in 0..block_size {
@@ -902,10 +918,9 @@ mod tests {
         }
         let lpc_coefs = lpc::lpc_from_autocorr(&signal, &Window::default(), order);
         let qlpc = lpc::quantize_parameters(&lpc_coefs[0..order], precision);
-        let mut errors = vec![];
-        errors.resize(signal.len(), 0i32);
+        let mut errors = vec![0i32; signal.len()];
         lpc::compute_error(&qlpc, &signal, &mut errors);
-        let residual = coding::encode_residual(&Default::default(), &errors, qlpc.order());
+        let residual = coding::encode_residual(&config::Prc::default(), &errors, qlpc.order());
 
         component::Lpc::from_parts(
             heapless::Vec::from_slice(&signal[0..qlpc.order()])

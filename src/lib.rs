@@ -128,8 +128,6 @@ pub(crate) mod fakesimd;
 pub(crate) mod lpc;
 #[cfg(feature = "par")]
 pub(crate) mod par;
-#[cfg(feature = "decode")]
-pub mod parser;
 pub(crate) mod repeat;
 pub(crate) mod rice;
 #[cfg(any(test, feature = "__export_sigen"))]

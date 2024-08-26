@@ -305,7 +305,7 @@ impl Stream {
     }
 
     /// Returns [`Frame`]s as mutable Vec.
-    #[cfg(feature = "decode")]
+    #[cfg(any(test, feature = "decode"))]
     pub(crate) fn frames_mut(&mut self) -> &mut Vec<Frame> {
         &mut self.frames
     }
@@ -527,6 +527,7 @@ impl StreamInfo {
     ///
     /// assert!(info.min_frame_size() > 0);
     /// ```
+    #[inline]
     pub fn min_frame_size(&self) -> usize {
         self.min_frame_size as usize
     }
@@ -541,6 +542,7 @@ impl StreamInfo {
     ///
     /// assert_eq!(info.max_frame_size(), 0);
     /// ```
+    #[inline]
     pub fn max_frame_size(&self) -> usize {
         self.max_frame_size as usize
     }
@@ -562,6 +564,7 @@ impl StreamInfo {
     ///
     /// assert_eq!(info.min_block_size(), 160);
     /// ```
+    #[inline]
     pub fn min_block_size(&self) -> usize {
         self.min_block_size as usize
     }
@@ -576,6 +579,7 @@ impl StreamInfo {
     ///
     /// assert_eq!(info.max_block_size(), 0);
     /// ```
+    #[inline]
     pub fn max_block_size(&self) -> usize {
         self.max_block_size as usize
     }
@@ -589,6 +593,7 @@ impl StreamInfo {
     /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.sample_rate(), 16000);
     /// ```
+    #[inline]
     pub fn sample_rate(&self) -> usize {
         self.sample_rate as usize
     }
@@ -602,6 +607,7 @@ impl StreamInfo {
     /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.channels(), 2);
     /// ```
+    #[inline]
     pub fn channels(&self) -> usize {
         self.channels as usize
     }
@@ -615,6 +621,7 @@ impl StreamInfo {
     /// let info = StreamInfo::new(16000, 2, 16).unwrap();
     /// assert_eq!(info.bits_per_sample(), 16);
     /// ```
+    #[inline]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -638,6 +645,7 @@ impl StreamInfo {
     ///
     /// assert_eq!(info.total_samples(), 31234);
     /// ```
+    #[inline]
     pub fn total_samples(&self) -> usize {
         self.total_samples as usize
     }
@@ -660,6 +668,7 @@ impl StreamInfo {
     /// assert_ne!(info.total_samples(), 246); // not sample count
     /// assert_eq!(info.total_samples(), 123); // but inter-channel sample count
     /// ```
+    #[inline]
     pub fn set_total_samples(&mut self, n: usize) {
         self.total_samples = n as u64;
     }
@@ -686,6 +695,7 @@ impl StreamInfo {
     /// // `update_frame_info` doesn't update MD5
     /// assert_eq!(info.md5_digest(), &[0u8; 16]);
     /// ```
+    #[inline]
     pub fn md5_digest(&self) -> &[u8; 16] {
         &self.md5
     }
@@ -789,10 +799,6 @@ impl StreamInfo {
         )?;
         Ok(())
     }
-
-    pub(crate) fn md5(&self) -> &[u8; 16] {
-        &self.md5
-    }
 }
 
 /// [`FRAME`](https://xiph.org/flac/format.html#frame) component.
@@ -823,6 +829,7 @@ impl Frame {
     ///
     /// assert_eq!(frame.block_size(), 160);
     /// ```
+    #[inline]
     pub fn block_size(&self) -> usize {
         self.header.block_size as usize
     }
@@ -869,6 +876,7 @@ impl Frame {
     }
 
     /// Constructs Frame from [`FrameHeader`] and [`SubFrame`]s.
+    #[inline]
     pub(crate) fn from_parts(header: FrameHeader, subframes: Vec<SubFrame>) -> Self {
         Self {
             header,
@@ -893,6 +901,7 @@ impl Frame {
     ///
     /// assert_eq!(subframes.len(), 2);
     /// ```
+    #[inline]
     pub fn into_parts(self) -> (FrameHeader, Vec<SubFrame>) {
         (self.header, self.subframes)
     }
@@ -902,6 +911,7 @@ impl Frame {
     /// # Panics
     ///
     /// Panics when the number of subframes added exceeded the `MAX_CHANNELS`.
+    #[inline]
     pub(crate) fn add_subframe(&mut self, subframe: SubFrame) {
         self.precomputed_bitstream = None;
         self.subframes.push(subframe);
@@ -921,11 +931,13 @@ impl Frame {
     /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
     /// assert_eq!(frame.header().block_size(), 160);
     /// ```
+    #[inline]
     pub fn header(&self) -> &FrameHeader {
         &self.header
     }
 
     /// Returns a mutable reference to [`FrameHeader`] of this frame.
+    #[inline]
     pub(crate) fn header_mut(&mut self) -> &mut FrameHeader {
         &mut self.header
     }
@@ -972,6 +984,7 @@ impl Frame {
         self.subframes.len()
     }
 
+    #[inline]
     pub(crate) fn subframes(&self) -> &[SubFrame] {
         &self.subframes
     }
@@ -1010,6 +1023,7 @@ impl Frame {
         }
     }
 
+    #[inline]
     pub(crate) fn precomputed_bitstream(&self) -> &Option<Vec<u8>> {
         &self.precomputed_bitstream
     }
@@ -1038,6 +1052,7 @@ impl Frame {
     }
 
     #[cfg(test)]
+    #[inline]
     pub(crate) const fn is_bitstream_precomputed(&self) -> bool {
         self.precomputed_bitstream.is_some()
     }
@@ -1077,6 +1092,7 @@ impl ChannelAssignment {
     ///     Some(ChannelAssignment::MidSide),
     /// );
     /// ```
+    #[inline]
     pub const fn from_tag(tag: u8) -> Option<Self> {
         if tag < 8 {
             Some(Self::Independent(tag + 1))
@@ -1107,6 +1123,7 @@ impl ChannelAssignment {
     /// assert_eq!(rs.bits_per_sample_offset(0), 1);
     /// assert_eq!(rs.bits_per_sample_offset(1), 0);
     /// ```
+    #[inline]
     pub const fn bits_per_sample_offset(&self, ch: usize) -> usize {
         #[allow(clippy::match_same_arms, clippy::bool_to_int_with_if)]
         match *self {
@@ -1151,6 +1168,7 @@ impl ChannelAssignment {
         }
     }
 
+    #[inline]
     pub(crate) fn channels(&self) -> usize {
         if let Self::Independent(n) = self {
             *n as usize
@@ -1199,6 +1217,7 @@ impl SampleSizeSpec {
     /// assert_eq!(SampleSizeSpec::from_tag(4), Some(SampleSizeSpec::B16));
     /// assert_eq!(SampleSizeSpec::from_tag(8), None);
     /// ```
+    #[inline]
     pub const fn from_tag(value: u8) -> Option<Self> {
         match value {
             0 => Some(Self::Unspecified),
@@ -1221,6 +1240,7 @@ impl SampleSizeSpec {
     /// # use flacenc::component::*;
     /// assert_eq!(SampleSizeSpec::from_tag(4).unwrap().into_tag(), 4);
     /// ```
+    #[inline]
     pub const fn into_tag(self) -> u8 {
         self as u8
     }
@@ -1234,6 +1254,7 @@ impl SampleSizeSpec {
     /// assert_eq!(SampleSizeSpec::from_bits(8), Some(SampleSizeSpec::B8));
     /// assert_eq!(SampleSizeSpec::from_bits(13), None);
     /// ```
+    #[inline]
     pub const fn from_bits(bits: u8) -> Option<Self> {
         match bits {
             8 => Some(Self::B8),
@@ -1254,6 +1275,7 @@ impl SampleSizeSpec {
     /// # use flacenc::component::*;
     /// assert_eq!(SampleSizeSpec::from_bits(8).unwrap().into_bits(), Some(8));
     /// ```
+    #[inline]
     pub const fn into_bits(self) -> Option<u8> {
         match self {
             Self::Unspecified | Self::Reserved => None,
@@ -1326,6 +1348,7 @@ impl SampleRateSpec {
     /// assert_eq!(SampleRateSpec::from_freq(44000), Some(SampleRateSpec::KHz(44u8)));
     /// assert_eq!(SampleRateSpec::from_freq(65537), None);
     /// ```
+    #[inline]
     pub fn from_freq(freq: u32) -> Option<Self> {
         match freq {
             88_200 => Some(Self::R88_2kHz),
@@ -1354,7 +1377,8 @@ impl SampleRateSpec {
         .or_else(|| freq.try_into().ok().map(Self::Hz))
     }
 
-    #[cfg(feature = "decode")]
+    #[cfg(any(test, feature = "decode"))]
+    #[inline]
     pub(crate) fn from_tag_and_data(tag: u8, value: Option<usize>) -> Option<Self> {
         if tag > 0b1110 {
             return None;
@@ -1380,6 +1404,7 @@ impl SampleRateSpec {
     }
 
     /// Returns the number of extra bits required to store the specification.
+    #[inline]
     pub(crate) fn count_extra_bits(self) -> usize {
         match self {
             Self::KHz(_) => 8,
@@ -1400,6 +1425,7 @@ impl SampleRateSpec {
     }
 
     /// Returns 4-bit indicator for the sample-rate specifier.
+    #[inline]
     pub(crate) fn tag(self) -> u8 {
         match self {
             Self::Unspecified => 0,
@@ -1421,6 +1447,7 @@ impl SampleRateSpec {
     }
 
     /// Writes
+    #[inline]
     pub(crate) fn write_extra_bits<S: BitSink>(self, dest: &mut S) -> Result<(), S::Error> {
         match self {
             Self::KHz(v) => dest.write_lsbs(v, 8),
@@ -1455,6 +1482,7 @@ pub struct FrameHeader {
 }
 
 impl FrameHeader {
+    #[inline]
     pub(crate) const fn new(
         block_size: usize,
         channel_assignment: ChannelAssignment,
@@ -1495,6 +1523,7 @@ impl FrameHeader {
     ///     0xF0, 0x9E, 0x89, 0x80 // start sample number encoded in utf-8
     /// ]);
     /// ```
+    #[inline]
     pub fn new_variable_size(
         block_size: usize,
         channel_assignment: ChannelAssignment,
@@ -1534,6 +1563,7 @@ impl FrameHeader {
     ///     0xE3, 0x80, 0xB9 // frame number encoded in utf-8
     /// ]);
     /// ```
+    #[inline]
     pub fn new_fixed_size(
         block_size: usize,
         channel_assignment: ChannelAssignment,
@@ -1551,6 +1581,7 @@ impl FrameHeader {
         Ok(ret)
     }
 
+    #[inline]
     pub(crate) fn is_variable_block_size_mode(&self) -> bool {
         self.variable_block_size
     }
@@ -1578,32 +1609,41 @@ impl FrameHeader {
     /// assert_eq!(sink.as_slice()[1] & 0x01u8, 0u8);
     /// assert_eq!(sink.as_slice()[4], 12u8);
     /// ```
+    #[inline]
     pub fn set_frame_number(&mut self, frame_number: u32) {
         self.variable_block_size = false;
         self.frame_number = frame_number;
     }
 
+    #[inline]
     pub(crate) fn frame_number(&self) -> u32 {
         self.frame_number
     }
 
+    #[inline]
     pub(crate) fn start_sample_number(&self) -> u64 {
         self.start_sample_number
     }
+
+    #[inline]
     pub(crate) fn sample_rate_spec(&self) -> &SampleRateSpec {
         &self.sample_rate_spec
     }
+
+    #[inline]
     pub(crate) fn sample_size_spec(&self) -> &SampleSizeSpec {
         &self.sample_size_spec
     }
 
     /// Overwrites `sample_rate_spec`.
-    #[cfg(feature = "decode")]
+    #[cfg(any(test, feature = "decode"))]
+    #[inline]
     pub(crate) fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
         self.sample_rate_spec = spec;
     }
 
     /// Overwrites channel assignment information of the frame.
+    #[inline]
     pub(crate) fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
     }
@@ -1611,6 +1651,7 @@ impl FrameHeader {
     /// Resets `sample_size_spec` field using [`StreamInfo`].
     ///
     /// This field must be specified for Claxon compatibility.
+    #[inline]
     pub(crate) fn reset_sample_size_spec(&mut self, stream_info: &StreamInfo) {
         self.sample_size_spec = SampleSizeSpec::from_bits(stream_info.bits_per_sample)
             .unwrap_or(SampleSizeSpec::Unspecified);
@@ -1619,6 +1660,7 @@ impl FrameHeader {
     /// Resets `sample_rate_spec` field using [`StreamInfo`].
     ///
     /// This field must be specified for Claxon compatibility.
+    #[inline]
     pub(crate) fn reset_sample_rate_spec(&mut self, stream_info: &StreamInfo) {
         self.sample_rate_spec = SampleRateSpec::from_freq(stream_info.sample_rate)
             .unwrap_or(SampleRateSpec::Unspecified);
@@ -1639,6 +1681,7 @@ impl FrameHeader {
     ///
     /// assert_eq!(header.block_size(), 160);
     /// ```
+    #[inline]
     pub fn block_size(&self) -> usize {
         self.block_size as usize
     }
@@ -1661,6 +1704,7 @@ impl FrameHeader {
     /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::B12, 0).unwrap();
     /// assert_eq!(header.bits_per_sample().unwrap(), 12);
     /// ```
+    #[inline]
     pub fn bits_per_sample(&self) -> Option<usize> {
         self.sample_size_spec.into_bits().map(|x| x as usize)
     }
@@ -1682,6 +1726,7 @@ impl FrameHeader {
     /// // non-stereo signals.
     /// assert_eq!(header.channel_assignment(), &ChannelAssignment::Independent(1));
     /// ```
+    #[inline]
     pub fn channel_assignment(&self) -> &ChannelAssignment {
         &self.channel_assignment
     }
@@ -1775,6 +1820,7 @@ impl Constant {
     }
 
     /// Constructs new `Constant`. (unverified version)
+    #[inline]
     pub(crate) fn from_parts(block_size: usize, dc_offset: i32, bits_per_sample: u8) -> Self {
         Self {
             block_size,
@@ -1784,16 +1830,19 @@ impl Constant {
     }
 
     /// Returns block size.
+    #[inline]
     pub fn block_size(&self) -> usize {
         self.block_size
     }
 
     /// Returns offset value.
+    #[inline]
     pub fn dc_offset(&self) -> i32 {
         self.dc_offset
     }
 
     /// Returns bits-per-sample.
+    #[inline]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1858,11 +1907,13 @@ impl Verbatim {
     }
 
     /// Returns a slice for the verbatim samples.
+    #[inline]
     pub fn samples(&self) -> &[i32] {
         &self.data
     }
 
     /// Returns bits-per-sample.
+    #[inline]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -1920,6 +1971,7 @@ impl FixedLpc {
     ///
     /// Panics when `warm_up.len()`, i.e. the order of LPC, is larger than the
     /// maximum fixed-LPC order (4).
+    #[inline]
     pub(crate) fn from_parts(
         warm_up: heapless::Vec<i32, 4>,
         residual: Residual,
@@ -1933,21 +1985,25 @@ impl FixedLpc {
     }
 
     /// Returns the order of LPC (of fixed LPC).
+    #[inline]
     pub fn order(&self) -> usize {
         self.warm_up.len()
     }
 
     /// Returns warm-up samples as a slice.
+    #[inline]
     pub fn warm_up(&self) -> &[i32] {
         &self.warm_up
     }
 
     /// Returns a reference to the internal [`Residual`] component.
+    #[inline]
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
     /// Returns bits-per-sample.
+    #[inline]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -2013,6 +2069,7 @@ impl Lpc {
     /// # Panics
     ///
     /// Panics if the length of `warm_up` is not equal to `parameters.order()`.
+    #[inline]
     pub(crate) fn from_parts(
         warm_up: heapless::Vec<i32, MAX_LPC_ORDER>,
         parameters: QuantizedParameters,
@@ -2029,26 +2086,31 @@ impl Lpc {
     }
 
     /// Returns the order of LPC (of fixed LPC).
+    #[inline]
     pub const fn order(&self) -> usize {
         self.parameters.order()
     }
 
     /// Returns warm-up samples as a slice.
+    #[inline]
     pub fn warm_up(&self) -> &[i32] {
         &self.warm_up
     }
 
     /// Returns a reference to parameter struct.
+    #[inline]
     pub fn parameters(&self) -> &QuantizedParameters {
         &self.parameters
     }
 
     /// Returns a reference to the internal [`Residual`] component.
+    #[inline]
     pub fn residual(&self) -> &Residual {
         &self.residual
     }
 
     /// Returns bits-per-sample.
+    #[inline]
     pub fn bits_per_sample(&self) -> usize {
         self.bits_per_sample as usize
     }
@@ -2106,6 +2168,7 @@ impl QuantizedParameters {
     }
 
     /// Constructs new `QuantizedParameters` from parts without data verification.
+    #[inline]
     pub(crate) fn from_parts(coefs: &[i16], order: usize, shift: i8, precision: usize) -> Self {
         debug_assert!(coefs.len() == order);
         let mut coefs_v = simd::i16x32::default();
@@ -2142,11 +2205,13 @@ impl QuantizedParameters {
     }
 
     /// Returns `Vec` containing quantized coefficients.
+    #[inline]
     pub(crate) fn coefs(&self) -> Vec<i16> {
         (0..self.order()).map(|j| self.coefs[j]).collect()
     }
 
     /// Returns `Vec` containing dequantized coefficients.
+    #[inline]
     #[allow(dead_code)]
     pub(crate) fn dequantized(&self) -> Vec<f32> {
         self.coefs()
@@ -2204,6 +2269,7 @@ impl Residual {
     }
 
     /// Constructs `Residual` with consuming parts.
+    #[inline]
     pub(crate) fn from_parts(
         partition_order: u8,
         block_size: usize,
@@ -2236,11 +2302,13 @@ impl Residual {
     }
 
     /// Returns the partition order for the PRC.
+    #[inline]
     pub fn partition_order(&self) -> usize {
         self.partition_order as usize
     }
 
     /// Returns the rice parameter for the `p`-th partition
+    #[inline]
     pub fn rice_parameter(&self, p: usize) -> usize {
         self.rice_params[p] as usize
     }
@@ -2261,7 +2329,7 @@ impl Residual {
     /// In common use cases, this accessor is not necessary as `block_size` is normally known
     /// before constructing `Residual`. However, in some use cases like tests, it's convenient to
     /// have it here.
-    #[allow(dead_code)]
+    #[inline]
     pub(crate) fn block_size(&self) -> usize {
         self.block_size
     }
@@ -2271,28 +2339,46 @@ impl Residual {
     /// In common use cases, this accessor is not necessary as `warmup_length` is normally known
     /// before constructing `Residual`. However, in some use cases like tests, it's convenient to
     /// have it here.
-    #[allow(dead_code)]
+    #[inline]
     pub(crate) fn warmup_length(&self) -> usize {
         self.warmup_length
     }
 
+    #[inline]
     pub(crate) fn sum_quotients(&self) -> usize {
         self.sum_quotients
     }
 
+    #[inline]
     pub(crate) fn sum_rice_params(&self) -> usize {
         self.sum_rice_params
     }
 
+    #[inline]
     pub(crate) fn rice_params(&self) -> &[u8] {
         &self.rice_params
     }
 
+    #[inline]
     pub(crate) fn quotients(&self) -> &[u32] {
         &self.quotients
     }
 
+    #[inline]
     pub(crate) fn remainders(&self) -> &[u32] {
         &self.remainders
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Maybe, this test is not very informative but it's still good to ensure some conditions for
+    // avoiding future performance regression.
+    #[test]
+    fn channel_assignment_is_small_enough() {
+        let size = std::mem::size_of::<ChannelAssignment>();
+        assert_eq!(size, 2);
     }
 }
