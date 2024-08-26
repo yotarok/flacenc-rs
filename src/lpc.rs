@@ -1112,7 +1112,7 @@ mod tests {
     fn qlpc_recovery(#[values(2, 12, 24)] lpc_order: usize) {
         let coef_prec: usize = 15;
         let signal = sigen::Sine::new(32, 0.8)
-            .noise(0.01)
+            .noise_with_seed(123, 0.01)
             .to_vec_quantized(16, 1024);
 
         let lpc_coefs = LPC_ESTIMATOR.with(|estimator| {
