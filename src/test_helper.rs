@@ -26,9 +26,13 @@ use tempfile::NamedTempFile;
 use super::arrayutils::le_bytes_to_i32s;
 use super::bitsink::ByteSink;
 use super::component::BitRepr;
+use super::component::BlockSizeSpec;
 use super::component::ChannelAssignment;
 use super::component::Frame;
+use super::component::FrameOffset;
 use super::component::Residual;
+use super::component::SampleRateSpec;
+use super::component::SampleSizeSpec;
 use super::component::Stream;
 use super::component::StreamInfo;
 use super::component::Verbatim;
@@ -215,12 +219,21 @@ pub fn make_random_residual<R: Rng>(mut rng: R, warmup_length: usize) -> Residua
     .expect("Error in random construction of Residual")
 }
 
-pub fn make_verbatim_frame(stream_info: &StreamInfo, samples: &[i32], offset: usize) -> Frame {
+pub fn make_verbatim_frame(stream_info: &StreamInfo, samples: &[i32], offset: u64) -> Frame {
     let channels = stream_info.channels();
     let block_size = samples.len() / channels;
     let bits_per_sample: u8 = stream_info.bits_per_sample() as u8;
     let ch_info = ChannelAssignment::Independent(channels as u8);
-    let mut frame = Frame::new_empty(ch_info, offset, block_size);
+    let mut frame = Frame::new_empty(
+        BlockSizeSpec::from_size(block_size as u16),
+        ch_info,
+        SampleSizeSpec::from_bits(bits_per_sample).unwrap_or(SampleSizeSpec::Unspecified),
+        SampleRateSpec::from_freq(stream_info.sample_rate() as u32)
+            .unwrap_or(SampleRateSpec::Unspecified),
+    );
+    frame
+        .header_mut()
+        .set_frame_offset(FrameOffset::StartSample(offset));
     for ch in 0..channels {
         frame.add_subframe(
             Verbatim::from_samples(

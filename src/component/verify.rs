@@ -88,10 +88,10 @@ impl Verify for Stream {
 
         if self.frames().is_empty() {
             Ok(())
-        } else if self.frames()[0].header().is_variable_block_size_mode() {
-            self.verify_frames_in_variable_block_size_mode()
+        } else if self.frames()[0].header().is_variable_blocking() {
+            self.verify_variable_blocking_frames()
         } else {
-            self.verify_frames_in_fixed_block_size_mode()
+            self.verify_fixed_blocking_frames()
         }
     }
 }

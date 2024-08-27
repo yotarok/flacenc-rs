@@ -22,15 +22,33 @@ mod decode;
 pub mod parser;
 mod verify;
 
-pub use bitrepr::*;
-pub use datatype::*;
+pub use bitrepr::BitRepr;
+pub(crate) use datatype::BlockSizeSpec;
+pub use datatype::ChannelAssignment;
+pub use datatype::Constant;
+pub use datatype::FixedLpc;
+pub use datatype::Frame;
+pub use datatype::FrameHeader;
+pub use datatype::FrameOffset;
+pub use datatype::Lpc;
+pub use datatype::MetadataBlock;
+pub use datatype::MetadataBlockData;
+pub use datatype::QuantizedParameters;
+pub use datatype::Residual;
+pub(crate) use datatype::SampleRateSpec;
+pub(crate) use datatype::SampleSizeSpec;
+pub use datatype::Stream;
+pub use datatype::StreamInfo;
+pub use datatype::SubFrame;
+pub use datatype::Verbatim;
 #[cfg(any(test, feature = "decode"))]
-pub use decode::*;
+pub use decode::Decode;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::bitsink::MemSink;
+    use crate::component::bitrepr::encode_to_utf8like;
     use crate::error::OutputError;
     use crate::error::RangeError;
     use crate::sigen;
