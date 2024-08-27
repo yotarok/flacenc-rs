@@ -339,35 +339,6 @@ impl BitRepr for ChannelAssignment {
     }
 }
 
-/// Returns header bits for the given block size.
-pub const fn block_size_spec(block_size: u16) -> (u8, u16, usize) {
-    match block_size {
-        192 => (0x01, 0x0000, 0),
-        576 | 1152 | 2304 | 4608 => {
-            let n: usize = block_size as usize / 576;
-            let pow = n.trailing_zeros() as u8;
-            let head: u8 = 2 + pow;
-            (head, 0x0000, 0)
-        }
-        256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 => {
-            let n: usize = block_size as usize / 256;
-            let pow = n.trailing_zeros() as u8;
-            let head: u8 = 8 + pow;
-            (head, 0x0000, 0)
-        }
-        _ => {
-            if block_size < 256 {
-                let footer: u8 = (block_size - 1) as u8;
-                (0x06, footer as u16, 8)
-            } else {
-                // block_size is always < 65536 as it is u16.
-                let footer: u16 = block_size - 1;
-                (0x07, footer, 16)
-            }
-        }
-    }
-}
-
 reusable!(HEADER_CRC_BUFFER: ByteSink = ByteSink::new());
 pub static HEADER_CRC: crc::Crc<u8, crc::Table<16>> =
     crc::Crc::<u8, crc::Table<16>>::new(&CRC_8_FLAC);
@@ -376,13 +347,12 @@ impl BitRepr for FrameHeader {
     #[inline]
     fn count_bits(&self) -> usize {
         let mut ret = 40;
-        if self.is_variable_block_size_mode() {
+        if self.is_variable_blocking() {
             ret += 8 * utf8like_bytesize(self.start_sample_number() as usize);
         } else {
             ret += 8 * utf8like_bytesize(self.frame_number() as usize);
         }
-        let (_head, _foot, footsize) = block_size_spec(self.block_size() as u16);
-        ret += footsize;
+        ret += self.block_size_spec().count_extra_bits();
         ret += self.sample_rate_spec().count_extra_bits();
         ret
     }
@@ -393,14 +363,16 @@ impl BitRepr for FrameHeader {
             header_buffer.reserve(self.count_bits());
 
             // sync-code + reserved 1-bit + variable-block indicator
-            let header_word = 0xFFF8u16 + u16::from(self.is_variable_block_size_mode());
+            let header_word = 0xFFF8u16 + u16::from(self.is_variable_blocking());
             // ^ `from` converts true to 1 and false to 0.
             header_buffer.write_lsbs(header_word, 16).unwrap();
 
-            let (head, foot, footsize) = block_size_spec(self.block_size() as u16);
-            // head + 4-bit sample rate specifier.
+            // block_size_spec tag + 4-bit sample rate specifier.
             header_buffer
-                .write_lsbs(head << 4 | self.sample_rate_spec().tag(), 8)
+                .write_lsbs(
+                    self.block_size_spec().tag() << 4 | self.sample_rate_spec().tag(),
+                    8,
+                )
                 .unwrap();
             self.channel_assignment()
                 .write(header_buffer)
@@ -411,14 +383,16 @@ impl BitRepr for FrameHeader {
                 .write_lsbs(self.sample_size_spec().into_tag() << 1, 4)
                 .unwrap();
 
-            if self.is_variable_block_size_mode() {
+            if self.is_variable_blocking() {
                 let v = encode_to_utf8like(self.start_sample_number())?;
                 header_buffer.write_bytes_aligned(&v).unwrap();
             } else {
                 let v = encode_to_utf8like(self.frame_number().into())?;
                 header_buffer.write_bytes_aligned(&v).unwrap();
             }
-            header_buffer.write_lsbs(foot, footsize).unwrap();
+            self.block_size_spec()
+                .write_extra_bits(header_buffer)
+                .unwrap();
             self.sample_rate_spec()
                 .write_extra_bits(header_buffer)
                 .unwrap();
@@ -635,11 +609,21 @@ mod tests {
 
     #[test]
     fn write_frame_header() {
-        let header = FrameHeader::new(2304, ChannelAssignment::Independent(2), 192);
+        let header = FrameHeader::from_specs(
+            BlockSizeSpec::from_size(2304),
+            ChannelAssignment::Independent(2),
+            SampleSizeSpec::Unspecified,
+            SampleRateSpec::Unspecified,
+        );
         header.to_bytes(); // just checking it doesn't panic.
 
         // test with canonical frame
-        let header = FrameHeader::new(192, ChannelAssignment::Independent(2), 0);
+        let header = FrameHeader::from_specs(
+            BlockSizeSpec::from_size(192),
+            ChannelAssignment::Independent(2),
+            SampleSizeSpec::Unspecified,
+            SampleRateSpec::Unspecified,
+        );
         header
             .verify_bit_counter()
             .expect("`FrameHeader::count_bits` should be accurate.");
@@ -656,31 +640,6 @@ mod tests {
         );
 
         assert_eq!(header.count_bits(), 48);
-    }
-
-    #[test]
-    fn block_size_encoding() {
-        let (head, _foot, footsize) = block_size_spec(192);
-        assert_eq!(head, 0x01);
-        assert_eq!(footsize, 0);
-
-        let (head, _foot, footsize) = block_size_spec(2048);
-        assert_eq!(head, 0x0B);
-        assert_eq!(footsize, 0);
-
-        let (head, _foot, footsize) = block_size_spec(1152);
-        assert_eq!(head, 0x03);
-        assert_eq!(footsize, 0);
-
-        let (head, foot, footsize) = block_size_spec(193);
-        assert_eq!(head, 0x06);
-        assert_eq!(footsize, 8);
-        assert_eq!(foot, 0xC0);
-
-        let (head, foot, footsize) = block_size_spec(1151);
-        assert_eq!(head, 0x07);
-        assert_eq!(footsize, 16);
-        assert_eq!(foot, 0x047E);
     }
 
     #[test]

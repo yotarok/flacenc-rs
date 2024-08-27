@@ -254,7 +254,7 @@ impl Stream {
         &self.frames
     }
 
-    pub(crate) fn verify_frames_in_variable_block_size_mode(&self) -> Result<(), VerifyError> {
+    pub(crate) fn verify_variable_blocking_frames(&self) -> Result<(), VerifyError> {
         let mut current = 0u64;
 
         for (i, frame) in self.frames.iter().enumerate() {
@@ -274,12 +274,12 @@ impl Stream {
             frame
                 .verify()
                 .map_err(|e| e.within(&format!("frames[{i}]")))?;
-            current = current.wrapping_add(frame.header.block_size.into());
+            current = current.wrapping_add(frame.header.block_size() as u64);
         }
         Ok(())
     }
 
-    pub(crate) fn verify_frames_in_fixed_block_size_mode(&self) -> Result<(), VerifyError> {
+    pub(crate) fn verify_fixed_blocking_frames(&self) -> Result<(), VerifyError> {
         let mut current = 0u32;
 
         for (i, frame) in self.frames.iter().enumerate() {
@@ -815,30 +815,18 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Returns block size of this frame.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// # #[path = "../doctest_helper.rs"]
-    /// # mod doctest_helper;
-    /// # use doctest_helper::*;
-    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
-    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
-    ///
-    /// assert_eq!(frame.block_size(), 160);
-    /// ```
-    #[inline]
-    pub fn block_size(&self) -> usize {
-        self.header.block_size as usize
-    }
-
     /// Constructs an empty `Frame`.
     ///
-    /// This makes an invalid `Frame`; therefore this shouldn't be "pub" so far.
-    pub(crate) fn new_empty(ch_info: ChannelAssignment, offset: usize, block_size: usize) -> Self {
-        let header = FrameHeader::new(block_size, ch_info, offset);
+    /// This makes an invalid `Frame`; therefore this shouldn't be "pub" so far. Specifically,
+    /// the frame offset to the header must be set before actually written to the bitstream.
+    pub(crate) fn new_empty(
+        block_size_spec: BlockSizeSpec,
+        ch_info: ChannelAssignment,
+        sample_size_spec: SampleSizeSpec,
+        sample_rate_spec: SampleRateSpec,
+    ) -> Self {
+        let header =
+            FrameHeader::from_specs(block_size_spec, ch_info, sample_size_spec, sample_rate_spec);
         Self {
             header,
             subframes: Vec::with_capacity(MAX_CHANNELS),
@@ -858,7 +846,7 @@ impl Frame {
     /// ```
     /// # use flacenc::component::*;
     /// let chs = ChannelAssignment::Independent(1);
-    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::B8, 0).unwrap();
+    /// let header = FrameHeader::new(192, chs, 8, FrameOffset::Frame(0)).unwrap();
     /// let subframe = Constant::new(192, -1, 8).unwrap();
     /// let frame = Frame::new(header, [subframe.into()].into_iter()).unwrap();
     /// ```
@@ -987,6 +975,25 @@ impl Frame {
     #[inline]
     pub(crate) fn subframes(&self) -> &[SubFrame] {
         &self.subframes
+    }
+
+    /// Returns block size of this frame.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// # #[path = "../doctest_helper.rs"]
+    /// # mod doctest_helper;
+    /// # use doctest_helper::*;
+    /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
+    /// let frame = make_example_frame(signal_len, block_size, channels, sample_rate);
+    ///
+    /// assert_eq!(frame.block_size(), 160);
+    /// ```
+    #[inline]
+    pub fn block_size(&self) -> usize {
+        self.header.block_size()
     }
 
     /// Allocates precomputed bitstream buffer, and precomputes.
@@ -1178,12 +1185,116 @@ impl ChannelAssignment {
     }
 }
 
+/// Enum representing the location of frame either by a frame count or starting-sample number.
+///
+/// The use of `Self::Frame` implies fixed-blocking mode, and `Self::StartSample` implies variable
+/// blocking mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrameOffset {
+    Frame(u32),
+    StartSample(u64),
+}
+
+/// Reimplementation of `u32::ilog2` for older rust compilers.
+///
+/// # Panics
+///
+/// It panics when `x == 0`.
+#[inline]
+fn ilog2(x: u32) -> u32 {
+    31 - x.leading_zeros()
+}
+
+/// Enum for block size specifier in [`FrameHeader`].
+///
+/// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
+/// specification for details.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "type"))]
+pub enum BlockSizeSpec {
+    /// Reserved.
+    #[allow(dead_code)]
+    Reserved,
+    /// Special case when `size = 192`.
+    S192,
+    /// Size that can be represented as `size = 576 * 2^n` where `n` in `0..=3`.
+    Pow2Mul576(u8),
+    /// Size that is stored in a byte at the end of [`FrameHeader`].
+    ExtraByte(u8),
+    /// Size that is stored in two bytes at the end of [`FrameHeader`].
+    ExtraTwoBytes(u16),
+    /// Size that can be represented as `size = 256 * 2^n` where `n` in `0..=8`.
+    Pow2Mul256(u8),
+}
+
+impl BlockSizeSpec {
+    /// Constructs `BlockSizeSpec` from frequency in Hz.
+    ///
+    /// This function never returns `Self::Reserved`.
+    #[inline]
+    pub fn from_size(size: u16) -> Self {
+        match size {
+            192 => Self::S192,
+            576 | 1152 | 2304 | 4608 => Self::Pow2Mul576(ilog2(u32::from(size / 576)) as u8),
+            256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 => {
+                Self::Pow2Mul256(ilog2(u32::from(size / 256)) as u8)
+            }
+            x if x <= 256 => Self::ExtraByte((x - 1) as u8),
+            x => Self::ExtraTwoBytes(x - 1),
+        }
+    }
+
+    /// Returns the number of extra bits required to store the specification.
+    #[inline]
+    pub(crate) fn count_extra_bits(self) -> usize {
+        match self {
+            Self::ExtraByte(_) => 8,
+            Self::ExtraTwoBytes(_) => 16,
+            Self::Reserved | Self::S192 | Self::Pow2Mul576(_) | Self::Pow2Mul256(_) => 0,
+        }
+    }
+
+    #[inline]
+    pub fn block_size(self) -> Option<usize> {
+        match self {
+            Self::Reserved => None,
+            Self::S192 => Some(192),
+            Self::Pow2Mul576(x) => Some(576usize * (1usize << x as usize)),
+            Self::ExtraByte(x) => Some((x + 1) as usize),
+            Self::ExtraTwoBytes(x) => Some((x + 1) as usize),
+            Self::Pow2Mul256(x) => Some(256usize * (1usize << x as usize)),
+        }
+    }
+
+    /// Returns 4-bit indicator for the sample-rate specifier.
+    #[inline]
+    pub(crate) fn tag(self) -> u8 {
+        match self {
+            Self::Reserved => 0,
+            Self::S192 => 1,
+            Self::Pow2Mul576(x) => 2 + x,
+            Self::ExtraByte(_) => 6,
+            Self::ExtraTwoBytes(_) => 7,
+            Self::Pow2Mul256(x) => 8 + x,
+        }
+    }
+
+    /// Writes extra data field to `dest`.
+    #[inline]
+    pub(crate) fn write_extra_bits<S: BitSink>(self, dest: &mut S) -> Result<(), S::Error> {
+        match self {
+            Self::ExtraByte(v) => dest.write_lsbs(v, 8),
+            Self::ExtraTwoBytes(v) => dest.write_lsbs(v, 16),
+            Self::Reserved | Self::S192 | Self::Pow2Mul576(_) | Self::Pow2Mul256(_) => Ok(()),
+        }
+    }
+}
+
 /// Enum for supported sample sizes.
 ///
 /// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
 /// specification for details.
-///
-/// TODO: Hide this from public API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "type"))]
@@ -1209,15 +1320,8 @@ pub enum SampleSizeSpec {
 
 impl SampleSizeSpec {
     /// Constructs `SampleSizeSpec` from the tag (an integer in the bitstream).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// assert_eq!(SampleSizeSpec::from_tag(4), Some(SampleSizeSpec::B16));
-    /// assert_eq!(SampleSizeSpec::from_tag(8), None);
-    /// ```
     #[inline]
+    #[allow(dead_code)]
     pub const fn from_tag(value: u8) -> Option<Self> {
         match value {
             0 => Some(Self::Unspecified),
@@ -1233,27 +1337,12 @@ impl SampleSizeSpec {
     }
 
     /// Returns the tag (an integer in the bitstream) corresponding to `self`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// assert_eq!(SampleSizeSpec::from_tag(4).unwrap().into_tag(), 4);
-    /// ```
     #[inline]
     pub const fn into_tag(self) -> u8 {
         self as u8
     }
 
     /// Constructs `SampleSizeSpec` from the bits-per-sample value.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// assert_eq!(SampleSizeSpec::from_bits(8), Some(SampleSizeSpec::B8));
-    /// assert_eq!(SampleSizeSpec::from_bits(13), None);
-    /// ```
     #[inline]
     pub const fn from_bits(bits: u8) -> Option<Self> {
         match bits {
@@ -1268,13 +1357,6 @@ impl SampleSizeSpec {
     }
 
     /// Returns the bits-per-sample value corresponding to `self`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// assert_eq!(SampleSizeSpec::from_bits(8).unwrap().into_bits(), Some(8));
-    /// ```
     #[inline]
     pub const fn into_bits(self) -> Option<u8> {
         match self {
@@ -1338,16 +1420,6 @@ impl SampleRateSpec {
     /// `SampleRateSpec::R*` variants), this function tries to use `KHz`, `DaHz`, and `Hz` in this
     /// order. This function never returns `Self::Unspecified`.
     ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// assert_eq!(SampleRateSpec::from_freq(44100), Some(SampleRateSpec::R44_1kHz));
-    /// assert_eq!(SampleRateSpec::from_freq(44084), Some(SampleRateSpec::Hz(44084u16)));
-    /// assert_eq!(SampleRateSpec::from_freq(44080), Some(SampleRateSpec::DaHz(4408u16)));
-    /// assert_eq!(SampleRateSpec::from_freq(44000), Some(SampleRateSpec::KHz(44u8)));
-    /// assert_eq!(SampleRateSpec::from_freq(65537), None);
-    /// ```
     #[inline]
     pub fn from_freq(freq: u32) -> Option<Self> {
         match freq {
@@ -1446,7 +1518,7 @@ impl SampleRateSpec {
         }
     }
 
-    /// Writes
+    /// Writes extra data field to `dest`.
     #[inline]
     pub(crate) fn write_extra_bits<S: BitSink>(self, dest: &mut S) -> Result<(), S::Error> {
         match self {
@@ -1473,7 +1545,7 @@ impl SampleRateSpec {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FrameHeader {
     variable_block_size: bool, // must be same in all frames
-    block_size: u16,           // encoded with special function
+    block_size_spec: BlockSizeSpec,
     channel_assignment: ChannelAssignment,
     sample_size_spec: SampleSizeSpec,
     sample_rate_spec: SampleRateSpec,
@@ -1483,19 +1555,20 @@ pub struct FrameHeader {
 
 impl FrameHeader {
     #[inline]
-    pub(crate) const fn new(
-        block_size: usize,
+    pub(crate) const fn from_specs(
+        block_size_spec: BlockSizeSpec,
         channel_assignment: ChannelAssignment,
-        start_sample_number: usize,
+        sample_size_spec: SampleSizeSpec,
+        sample_rate_spec: SampleRateSpec,
     ) -> Self {
         Self {
             variable_block_size: true,
-            block_size: block_size as u16,
+            block_size_spec,
             channel_assignment,
-            sample_size_spec: SampleSizeSpec::Unspecified,
-            sample_rate_spec: SampleRateSpec::Unspecified,
+            sample_size_spec,
+            sample_rate_spec,
             frame_number: 0,
-            start_sample_number: start_sample_number as u64,
+            start_sample_number: 0,
         }
     }
 
@@ -1510,11 +1583,9 @@ impl FrameHeader {
     /// ```
     /// # use flacenc::component::*;
     /// # use flacenc::bitsink::*;
-    /// let header = FrameHeader::new_variable_size(
-    ///     192,
-    ///     ChannelAssignment::Independent(1),
-    ///     SampleSizeSpec::B8,
-    /// 123456).unwrap();
+    /// let header = FrameHeader::new(
+    ///     192, ChannelAssignment::Independent(1), 8, FrameOffset::StartSample(123456)
+    /// ).unwrap();
     /// let mut sink = ByteSink::new();
     /// header.write(&mut sink);
     /// assert_eq!(&sink.as_slice()[..8], &[
@@ -1524,69 +1595,40 @@ impl FrameHeader {
     /// ]);
     /// ```
     #[inline]
-    pub fn new_variable_size(
+    pub fn new(
         block_size: usize,
         channel_assignment: ChannelAssignment,
-        bits_per_sample: SampleSizeSpec,
-        start_sample_number: usize,
+        bits_per_sample: usize,
+        offset: FrameOffset,
     ) -> Result<Self, VerifyError> {
         verify_block_size!("block_size", block_size)?;
-        // TODO: `channel_assignment` is not following the verifocation guideline.
-        //       So, it needs to be checked here.
+        let block_size_spec = BlockSizeSpec::from_size(block_size as u16);
+        let sample_size_spec =
+            SampleSizeSpec::from_bits(bits_per_sample as u8).ok_or_else(|| {
+                VerifyError::new("bits_per_sample", "must be one of a supported value.")
+            })?;
+        verify_true!(
+            "bits_per_sample",
+            sample_size_spec != SampleSizeSpec::B32,
+            "32-bit encoding is not supported currently."
+        )?;
         channel_assignment.verify()?;
-        let mut ret = Self::new(block_size, channel_assignment, start_sample_number);
-        ret.sample_size_spec = bits_per_sample;
-        Ok(ret)
-    }
-
-    /// Constructs `FrameHeader` in fixed-length mode.
-    ///
-    /// # Errors
-    ///
-    /// Returns error when `block_size` or `frame_number` is invalid.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use flacenc::component::*;
-    /// # use flacenc::bitsink::*;
-    /// let header = FrameHeader::new_fixed_size(
-    ///     192,
-    ///     ChannelAssignment::Independent(1),
-    ///     SampleSizeSpec::B8,
-    /// 12345).unwrap();
-    /// let mut sink = ByteSink::new();
-    /// header.write(&mut sink);
-    /// assert_eq!(&sink.as_slice()[..7], &[
-    ///     0xFF, 0xF8, // sync-code + fixed/var
-    ///     0x10, 0x02, // block size + rate + channel + sample size + reserved
-    ///     0xE3, 0x80, 0xB9 // frame number encoded in utf-8
-    /// ]);
-    /// ```
-    #[inline]
-    pub fn new_fixed_size(
-        block_size: usize,
-        channel_assignment: ChannelAssignment,
-        bits_per_sample: SampleSizeSpec,
-        frame_number: usize,
-    ) -> Result<Self, VerifyError> {
-        verify_block_size!("block_size", block_size)?;
-        verify_range!("frame_number", frame_number, 0..=(u32::MAX as usize))?;
-        // TODO: `channel_assignment` is not following the verifocation guideline.
-        //       So, it needs to be checked here.
-        channel_assignment.verify()?;
-        let mut ret = Self::new(block_size, channel_assignment, 0);
-        ret.sample_size_spec = bits_per_sample;
-        ret.set_frame_number(frame_number as u32);
+        let mut ret = Self::from_specs(
+            block_size_spec,
+            channel_assignment,
+            sample_size_spec,
+            SampleRateSpec::Unspecified,
+        );
+        ret.set_frame_offset(offset);
         Ok(ret)
     }
 
     #[inline]
-    pub(crate) fn is_variable_block_size_mode(&self) -> bool {
+    pub(crate) fn is_variable_blocking(&self) -> bool {
         self.variable_block_size
     }
 
-    /// Clear `variable_block_size` flag, and set `frame_number`.
+    /// Sets the location of frame.
     ///
     /// # Examples
     ///
@@ -1599,20 +1641,30 @@ impl FrameHeader {
     /// let (signal_len, block_size, channels, sample_rate) = (31234, 160, 2, 16000);
     /// let mut header = make_example_frame_header(signal_len, block_size, channels, sample_rate);
     ///
-    /// header.set_frame_number(12);
+    /// header.set_frame_offset(FrameOffset::Frame(3));
     ///
-    /// let mut sink = ByteSink::new();
-    /// header.write(&mut sink);
-    ///
-    /// // 16-th bit denotes blocking strategy and it should be 0 (fixed blocking mode)
-    /// // after setting the frame number.
-    /// assert_eq!(sink.as_slice()[1] & 0x01u8, 0u8);
-    /// assert_eq!(sink.as_slice()[4], 12u8);
+    /// header.set_frame_offset(FrameOffset::StartSample(480));
     /// ```
     #[inline]
-    pub fn set_frame_number(&mut self, frame_number: u32) {
+    pub fn set_frame_offset(&mut self, offset: FrameOffset) {
+        match offset {
+            FrameOffset::Frame(n) => self.set_frame_number(n),
+            FrameOffset::StartSample(n) => self.set_start_sample_number(n),
+        }
+    }
+
+    /// Enters to fixed blocking mode, and sets `frame_number`.
+    #[inline]
+    fn set_frame_number(&mut self, frame_number: u32) {
         self.variable_block_size = false;
         self.frame_number = frame_number;
+    }
+
+    /// Enters to variable blocking mode, and sets `start_sample_number`.
+    #[inline]
+    fn set_start_sample_number(&mut self, start_sample_number: u64) {
+        self.variable_block_size = true;
+        self.start_sample_number = start_sample_number;
     }
 
     #[inline]
@@ -1635,38 +1687,17 @@ impl FrameHeader {
         &self.sample_size_spec
     }
 
-    /// Overwrites `sample_rate_spec`.
-    #[cfg(any(test, feature = "decode"))]
-    #[inline]
-    pub(crate) fn set_sample_rate_spec(&mut self, spec: SampleRateSpec) {
-        self.sample_rate_spec = spec;
-    }
-
     /// Overwrites channel assignment information of the frame.
     #[inline]
     pub(crate) fn reset_channel_assignment(&mut self, channel_assignment: ChannelAssignment) {
         self.channel_assignment = channel_assignment;
     }
 
-    /// Resets `sample_size_spec` field using [`StreamInfo`].
-    ///
-    /// This field must be specified for Claxon compatibility.
-    #[inline]
-    pub(crate) fn reset_sample_size_spec(&mut self, stream_info: &StreamInfo) {
-        self.sample_size_spec = SampleSizeSpec::from_bits(stream_info.bits_per_sample)
-            .unwrap_or(SampleSizeSpec::Unspecified);
-    }
-
-    /// Resets `sample_rate_spec` field using [`StreamInfo`].
-    ///
-    /// This field must be specified for Claxon compatibility.
-    #[inline]
-    pub(crate) fn reset_sample_rate_spec(&mut self, stream_info: &StreamInfo) {
-        self.sample_rate_spec = SampleRateSpec::from_freq(stream_info.sample_rate)
-            .unwrap_or(SampleRateSpec::Unspecified);
-    }
-
     /// Returns block size.
+    ///
+    /// # Panics
+    ///
+    /// If the component is built with reserved block-size spec.
     ///
     /// # Examples
     ///
@@ -1683,25 +1714,31 @@ impl FrameHeader {
     /// ```
     #[inline]
     pub fn block_size(&self) -> usize {
-        self.block_size as usize
+        self.block_size_spec
+            .block_size()
+            .expect("Reserved block-size tag should not be used.")
+    }
+
+    /// Returns block size spec.
+    #[inline]
+    pub(crate) fn block_size_spec(&self) -> BlockSizeSpec {
+        self.block_size_spec
     }
 
     /// Returns bits-per-sample.
     ///
-    /// This function returns `None` when bits-per-sample specification is
-    /// given in the `FrameHeader`.  Otherwise, it returns `None` and bits-per-sample
-    /// should be retrieved from [`StreamInfo`] instead.
+    /// This function returns `None` when bits-per-sample specification is not
+    /// given in the `FrameHeader`. Currently, flacenc cannot construct `FrameHeader` without
+    /// valid bits-per-sample specification.  Therefore, this function returns `None` only
+    /// when it is dealing with `FrameHeader` loaded from another sources (requiring `"decode"`
+    /// feature)
     ///
     /// # Examples
     ///
     /// ```
     /// # use flacenc::component::*;
     /// let chs = ChannelAssignment::Independent(1);
-    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::Unspecified, 0).unwrap();
-    /// assert!(header.bits_per_sample().is_none());
-    ///
-    /// let chs = ChannelAssignment::Independent(1);
-    /// let header = FrameHeader::new_fixed_size(192, chs, SampleSizeSpec::B12, 0).unwrap();
+    /// let header = FrameHeader::new(192, chs, 12, FrameOffset::Frame(0)).unwrap();
     /// assert_eq!(header.bits_per_sample().unwrap(), 12);
     /// ```
     #[inline]

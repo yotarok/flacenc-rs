@@ -124,6 +124,7 @@ pub mod config;
 pub mod constant;
 pub mod error;
 #[cfg(not(feature = "simd-nightly"))]
+#[doc(hidden)]
 pub(crate) mod fakesimd;
 pub(crate) mod lpc;
 #[cfg(feature = "par")]
@@ -131,6 +132,7 @@ pub(crate) mod par;
 pub(crate) mod repeat;
 pub(crate) mod rice;
 #[cfg(any(test, feature = "__export_sigen"))]
+#[doc(hidden)]
 pub mod sigen;
 pub mod source;
 

@@ -32,6 +32,9 @@ use nom::IResult;
 use nom::Offset;
 
 use crate::component;
+use crate::component::bitrepr::FRAME_CRC;
+use crate::component::bitrepr::HEADER_CRC;
+use crate::component::FrameOffset;
 use crate::constant::MAX_BITS_PER_SAMPLE;
 use crate::error::VerifyError;
 
@@ -217,7 +220,7 @@ where
         .map_err(convert_bits_err)?;
         let test_crc16 = check_crc.then(|| {
             let frame_bytes = &input_start[..input_start.offset(remaining_input)];
-            component::FRAME_CRC.checksum(frame_bytes)
+            FRAME_CRC.checksum(frame_bytes)
         });
         let (remaining_input, _) =
             verify(be_u16, |crc| test_crc16.map_or(true, |x| x == *crc))(remaining_input)?;
@@ -232,11 +235,6 @@ where
     E: ParseError<&'a [u8]>,
 {
     e.map(|(inp, kind)| E::from_error_kind(inp, kind))
-}
-
-enum Loc {
-    Block(u64),
-    SampleOffset(u64),
 }
 
 /// Recognizes [`component::FrameHeader`].
@@ -293,71 +291,57 @@ where
                     nom::error::ErrorKind::TagBits
                 ))
             })?;
-        let (remaining_input, loc) = if blocking_type == 0 {
-            map(utf8_code, Loc::Block)(remaining_input)?
+        let (remaining_input, offset) = if blocking_type == 0 {
+            map(utf8_code, |x| FrameOffset::Frame(x as u32))(remaining_input)?
         } else {
-            map(utf8_code, Loc::SampleOffset)(remaining_input)?
+            map(utf8_code, FrameOffset::StartSample)(remaining_input)?
         };
 
-        let (remaining_input, block_size): (&[u8], usize) =
+        let (remaining_input, block_size_spec): (&[u8], component::BlockSizeSpec) =
             block_size_code(block_size_tag)(remaining_input)?;
         let (remaining_input, sample_rate) = sample_rate_code(sample_rate_tag)(remaining_input)?;
 
         let test_crc8 = check_crc.then(|| {
             let header_bytes = &input_start[..input_start.offset(remaining_input)];
-            component::HEADER_CRC.checksum(header_bytes)
+            HEADER_CRC.checksum(header_bytes)
         });
         let (remaining_input, _) =
             verify(be_u8, |crc| test_crc8.map_or(true, |x| x == *crc))(remaining_input)?;
 
-        let mut frame_header = match loc {
-            Loc::Block(frame_number) => component::FrameHeader::new_fixed_size(
-                block_size,
-                channel_assignment,
-                bits_per_sample,
-                frame_number as usize,
-            ),
-            Loc::SampleOffset(sample_number) => component::FrameHeader::new_variable_size(
-                block_size,
-                channel_assignment,
-                bits_per_sample,
-                sample_number as usize,
-            ),
-        }
-        .map_err(|_e| {
-            nom::Err::Error(error_position!(
-                remaining_input,
-                nom::error::ErrorKind::TagBits
-            ))
-        })?;
-        frame_header.set_sample_rate_spec(sample_rate);
+        let mut frame_header = component::FrameHeader::from_specs(
+            block_size_spec,
+            channel_assignment,
+            bits_per_sample,
+            sample_rate,
+        );
+        frame_header.set_frame_offset(offset);
 
         Ok((remaining_input, frame_header))
     }
 }
 
-fn block_size_code<'a, E>(tag: u8) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], usize, E>
+fn block_size_code<'a, E>(
+    tag: u8,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], component::BlockSizeSpec, E>
 where
     E: ParseError<&'a [u8]>,
 {
-    debug_assert!(tag <= 0b1111);
     move |input| match tag {
-        0b0000 => Err(nom::Err::Error(error_position!(
-            input,
-            nom::error::ErrorKind::TagBits
-        ))),
-        0b0001 => Ok((input, 192)),
-        0b0010..=0b0101 => Ok((input, 576 * (1usize << (tag - 0b0010)))),
+        0b0001 => Ok((input, component::BlockSizeSpec::S192)),
+        0b0010..=0b0101 => Ok((input, component::BlockSizeSpec::Pow2Mul576(tag - 0b0010))),
         0b0110 => {
             let (i, x) = be_u8(input)?;
-            Ok((i, x as usize + 1))
+            Ok((i, component::BlockSizeSpec::ExtraByte(x)))
         }
         0b0111 => {
             let (i, x) = be_u16(input)?;
-            Ok((i, x as usize + 1))
+            Ok((i, component::BlockSizeSpec::ExtraTwoBytes(x)))
         }
-        0b1000..=0b1111 => Ok((input, 256 * (1usize << (tag - 0b1000)))),
-        _ => unreachable!(),
+        0b1000..=0b1111 => Ok((input, component::BlockSizeSpec::Pow2Mul256(tag - 0b1000))),
+        _ => Err(nom::Err::Error(error_position!(
+            input,
+            nom::error::ErrorKind::TagBits
+        ))),
     }
 }
 
@@ -749,7 +733,7 @@ mod tests {
     use super::*;
 
     use crate::coding;
-    use crate::component::encode_to_utf8like;
+    use crate::component::bitrepr::encode_to_utf8like;
     use crate::component::BitRepr;
     use crate::config;
     use crate::config::Encoder as EncoderConfig;
