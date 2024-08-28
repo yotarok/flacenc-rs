@@ -368,7 +368,7 @@ pub fn le_bytes_to_i32s(bytes: &[u8], dest: &mut [i32], bytes_per_sample: usize)
 /// Converts i32s to little-endian bytes.
 ///
 /// NOTE: Currenty, this function is not used in "flacenc-bin", and therefore
-/// this might be slow.
+/// the performance is not checked recently, might be too slow.
 #[allow(dead_code)] // only used in unittests with `cfg(features = "serde")`.
 pub fn i32s_to_le_bytes(ints: &[i32], dest: &mut [u8], bytes_per_sample: usize) {
     let mut n = 0;
@@ -739,6 +739,14 @@ mod tests {
         let mut dest = [0i32; 4];
         le_bytes_to_i32s(&bytes, &mut dest, 3);
         assert_eq!(dest, [0x12_3456, 0x13_579B, -1, 0x24_68AC]);
+    }
+
+    #[test]
+    fn convert_bytes_to_i8s() {
+        let bytes = [0x56, 0x34, 0x12, 0x9B, 0x80, 0x13, 0xFF, 0x68];
+        let mut dest = [0i32; 8];
+        le_bytes_to_i32s(&bytes, &mut dest, 1);
+        assert_eq!(dest, [0x56, 0x34, 0x12, -0x65, -0x80, 0x13, -0x01, 0x68]);
     }
 
     #[cfg(feature = "simd-nightly")]

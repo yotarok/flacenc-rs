@@ -421,7 +421,7 @@ pub fn subframe<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     alt((
         into(constant::<E>(block_size, bits_per_sample)),
         into(fixed_lpc::<E>(block_size, bits_per_sample)),
@@ -456,7 +456,7 @@ pub fn constant<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     move |input| {
         let remaining_input = input;
         let (remaining_input, (typetag, _wasted_flag)) = subframe_header(remaining_input)?;
@@ -493,7 +493,7 @@ pub fn fixed_lpc<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     move |input| {
         let remaining_input = input;
         let (remaining_input, (typetag, _wasted_flag)) = subframe_header(remaining_input)?;
@@ -532,7 +532,7 @@ pub fn lpc<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     move |input| {
         let remaining_input = input;
         let (remaining_input, (typetag, _wasted_flag)) = subframe_header(remaining_input)?;
@@ -598,7 +598,7 @@ pub fn verbatim<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     move |input| {
         let remaining_input = input;
         let (remaining_input, (typetag, _wasted_flag)) = subframe_header(remaining_input)?;
@@ -703,7 +703,7 @@ fn raw_samples<'a, E>(
 where
     E: ParseError<BitInput<'a>>,
 {
-    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE);
+    debug_assert!(bits_per_sample <= MAX_BITS_PER_SAMPLE + 1);
     move |input| {
         let mut remaining_input = input;
         let mut data = Vec::with_capacity(size);
