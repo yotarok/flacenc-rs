@@ -376,6 +376,22 @@ where
     }
 }
 
+/// Parses args with prepending the default command "encode" if no command is specified.
+fn parse_args<I>(args: I) -> ProgramArgs
+where
+    I: Iterator<Item = std::ffi::OsString>,
+{
+    // If the first argument is not the known subcommand, this part of code inserts the default
+    // subcommand "encode" into `args_raw`. This is a bit hacky, but "flacenc encode" is a bit
+    // redundant as the command name already contains "enc".
+    let mut args_raw: Vec<std::ffi::OsString> = args.collect();
+    let empty = std::ffi::OsString::new();
+    if !KNOWN_COMMAND_STRS.contains(&args_raw.get(1).unwrap_or(&empty).to_string_lossy().as_ref()) {
+        args_raw.insert(1, DEFAULT_COMMAND_STR.to_owned().into());
+    }
+    ProgramArgs::parse_from(args_raw.iter())
+}
+
 #[cfg(not(feature = "pprof"))]
 #[inline]
 fn run_with_profiler_if_requested<F>(args: EncodeArgs, body: F) -> Result<(), NonZeroU8>
@@ -390,18 +406,163 @@ fn main() -> ExitCode {
         .format_timestamp(None)
         .init();
 
-    // If the first argument is not the known subcommand, this part of code inserts the default
-    // subcommand "encode" into `args_raw`. This is a bit hacky, but "flacenc encode" is a bit
-    // redundant as the command name already contains "enc".
-    let mut args_raw: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    let empty = std::ffi::OsString::new();
-    if !KNOWN_COMMAND_STRS.contains(&args_raw.get(1).unwrap_or(&empty).to_string_lossy().as_ref()) {
-        args_raw.insert(1, DEFAULT_COMMAND_STR.to_owned().into());
-    }
-
-    match ProgramArgs::parse_from(args_raw.iter()).command {
+    match parse_args(std::env::args_os()).command {
         Commands::Encode(args) => run_with_profiler_if_requested(args, main_enc_body),
         Commands::Decode(args) => main_dec_body(args),
     }
     .map_or_else(|e| ExitCode::from(e.get()), |()| ExitCode::SUCCESS)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use flacenc::sigen::*;
+    use rstest::rstest;
+
+    #[test]
+    fn arg_parser() {
+        match parse_args(
+            ["binary-name", "encode", "-o", "output", "source"]
+                .iter()
+                .map(|s| s.to_owned().into()),
+        )
+        .command
+        {
+            Commands::Encode(args) => {
+                assert_eq!("output", args.output);
+                assert_eq!("source", args.source);
+            }
+            x @ Commands::Decode(_) => {
+                panic!("result should be encode args, but {x:?}.");
+            }
+        }
+
+        match parse_args(
+            ["binary-name", "decode", "-o", "output", "source"]
+                .iter()
+                .map(|s| s.to_owned().into()),
+        )
+        .command
+        {
+            Commands::Decode(args) => {
+                assert_eq!("output", args.output);
+                assert_eq!("source", args.source);
+            }
+            x @ Commands::Encode(_) => {
+                panic!("result should be decode args, but {x:?}");
+            }
+        }
+
+        match parse_args(
+            ["binary-name", "-o", "output", "source"]
+                .iter()
+                .map(|s| s.to_owned().into()),
+        )
+        .command
+        {
+            Commands::Encode(args) => {
+                assert_eq!("output", args.output);
+                assert_eq!("source", args.source);
+            }
+            x @ Commands::Decode(_) => {
+                panic!("result should be encode args, but {x:?}");
+            }
+        }
+    }
+
+    struct SourceConfig {
+        duration_secs: usize,
+        sample_rate: usize,
+        channels: usize,
+        bits_per_sample: usize,
+    }
+
+    fn generate_test_wav<P: AsRef<Path>>(output_path: P, src: &SourceConfig) {
+        let period_440 = src.sample_rate / 440;
+        let signal_len = src.sample_rate * src.duration_secs;
+        let mut signals = vec![];
+        for _ch in 0..src.channels {
+            signals.push(
+                Sine::new(period_440, 0.8)
+                    .mix(Noise::new(0.2))
+                    .to_vec_quantized(src.bits_per_sample, signal_len),
+            );
+        }
+
+        let mut writer = hound::WavWriter::create(
+            &output_path,
+            hound::WavSpec {
+                channels: src.channels as u16,
+                sample_rate: src.sample_rate as u32,
+                bits_per_sample: src.bits_per_sample as u16,
+                sample_format: hound::SampleFormat::Int,
+            },
+        )
+        .expect("Should be able to create test wav.");
+
+        for t in 0..signal_len {
+            for s in &signals {
+                let v = s[t];
+                writer
+                    .write_sample(v)
+                    .expect("Should be able to write a sample");
+            }
+        }
+    }
+
+    fn check_wav_file_eq<P: AsRef<Path>, Q: AsRef<Path>>(expected: P, actual: Q) {
+        let mut reader_expected =
+            hound::WavReader::open(expected).expect("expected file should be openable.");
+        let mut reader_actual =
+            hound::WavReader::open(actual).expect("actual file should be openable.");
+        for (n, (e, a)) in reader_expected
+            .samples()
+            .zip(reader_actual.samples())
+            .enumerate()
+        {
+            let e: i32 = e.expect("sample from expected file  should be readable");
+            let a: i32 = a.expect("sample from actual file  should be readable");
+            assert_eq!(
+                e, a,
+                "expected and actual samples should be identical (sample-offset={n}."
+            );
+        }
+    }
+
+    #[rstest]
+    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 16})]
+    #[case(SourceConfig { duration_secs: 3, sample_rate: 44097, channels: 2, bits_per_sample: 16})]
+    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 16})]
+    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 3, bits_per_sample: 16})]
+    fn integration_encoder_decoder(#[case] source_config: SourceConfig) {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let mut config_dump_path = tmpdir.as_ref().to_path_buf();
+        config_dump_path.push("dumped.toml");
+        let mut flac_path = tmpdir.as_ref().to_path_buf();
+        flac_path.push("compressed.flac");
+        let mut source_path = tmpdir.as_ref().to_path_buf();
+        source_path.push("source.wav");
+        let mut decoded_path = tmpdir.as_ref().to_path_buf();
+        decoded_path.push("decoded.wav");
+
+        generate_test_wav(&source_path, &source_config);
+
+        main_enc_body(EncodeArgs {
+            config: None,
+            dump_config: Some(config_dump_path.to_string_lossy().to_string()),
+            source: source_path.to_string_lossy().to_string(),
+            output: flac_path.to_string_lossy().to_string(),
+        })
+        .expect("no error expected.");
+
+        main_dec_body(DecodeArgs {
+            dump_struct: None,
+            source: flac_path.to_string_lossy().to_string(),
+            output: decoded_path.to_string_lossy().to_string(),
+        })
+        .expect("no error expected.");
+
+        check_wav_file_eq(source_path, decoded_path);
+    }
 }
