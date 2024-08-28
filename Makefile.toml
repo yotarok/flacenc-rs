@@ -71,7 +71,7 @@ dependencies = ["toml-format", "md-format", "rs-format", "py-format"]
 
 [tasks.integration]
 description = "Generates integration reports (aka performance comparison reports) with stableand nightly toolchains."
-dependencies = ["integration-stable", "integration-nightly", "build-dec-bin"]
+dependencies = ["integration-stable", "integration-nightly"]
 
 [tasks.profile]
 description = "Runs binary with pprof mode and updates `report/profile.st.pdf`."
@@ -108,7 +108,6 @@ dependencies = [
 dependencies = [
   "clippy-lib-nightly",
   "clippy-bin-nightly",
-  "clippy-dec-bin-nightly",
   "clippy-lib-stable",
   "clippy-fuzz-nightly",
 ]
@@ -135,20 +134,6 @@ args = [
   "--tests",
   "--features",
   "${CLIPPY_FEATURES_BIN_NIGHTLY}",
-  "--",
-  "-D",
-  "warnings",
-]
-
-[tasks.clippy-dec-bin-nightly]
-cwd = "flacdec-bin"
-command = "cargo"
-toolchain = "nightly"
-args = [
-  "clippy",
-  "--tests",
-  "--features",
-  "${CLIPPY_FEATURES_DECBIN_NIGHTLY}",
   "--",
   "-D",
   "warnings",
@@ -182,7 +167,7 @@ args = [
 ]
 
 [tasks.fmtcheck]
-dependencies = ["fmtcheck-lib", "fmtcheck-bin", "fmtcheck-dec-bin", "fmtcheck-fuzz"]
+dependencies = ["fmtcheck-lib", "fmtcheck-bin", "fmtcheck-fuzz"]
 
 [tasks.fmtcheck-bin]
 cwd = "flacenc-bin"
@@ -190,11 +175,6 @@ command = "cargo"
 args = ["fmt", "--check", "--all"]
 
 [tasks.fmtcheck-lib]
-command = "cargo"
-args = ["fmt", "--check", "--all"]
-
-[tasks.fmtcheck-dec-bin]
-cwd = "flacdec-bin"
 command = "cargo"
 args = ["fmt", "--check", "--all"]
 
@@ -382,20 +362,9 @@ args = [
   "report/st.config.toml",
 ]
 
-[tasks.build-dec-bin]
-command = "cargo"
-toolchain = "stable"
-args = [
-  "build",
-]
-
 [tasks.refresh-lock]
 script = """
-rm -f flacdec-bin/Cargo.lock
 rm -f flacenc-bin/Cargo.lock
-cd flacdec-bin
-cargo build --all-features
 cd ../flacenc-bin
 cargo build --all-features
 """
-
