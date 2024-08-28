@@ -46,3 +46,8 @@ toml = "0.8.10"
 default = []
 pprof = ["dep:pprof"]
 simd-nightly = ["flacenc/simd-nightly"]
+
+[dev-dependencies]
+flacenc = { version = "0.5.0", path = "..", features = ["__export_sigen"] }
+tempfile = "3"
+rstest = "0.22"
