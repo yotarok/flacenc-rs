@@ -39,7 +39,7 @@ flacenc --output output.flac --config config.toml input.wav
 
 ### (Experimental) decoder mode
 
-This tool can also decode FLAC files, as follows:
+This CLI tool can also decode FLAC files, as follows:
 
 ```bash
 flacenc decode --output output.wav input.flac
