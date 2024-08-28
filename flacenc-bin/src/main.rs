@@ -61,6 +61,7 @@ use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use log::info;
+use md5::Digest;
 #[cfg(feature = "pprof")]
 use pprof::protos::Message;
 
@@ -207,10 +208,6 @@ fn main_enc_body(args: EncodeArgs) -> Result<(), NonZeroU8> {
         display::show_error_msg("Invalid config parameter is detected.", Some(e));
         EX_DATAERR
     })?;
-    if let Err(e) = encoder_config.verify() {
-        eprintln!("Error: {}", e.within("encoder_config"));
-        return Err(EX_DATAERR);
-    }
 
     let _ = display::show_progress(&args, &Progress::Started);
 
@@ -311,8 +308,13 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
         })?;
     }
 
-    let mut writer = hound::WavWriter::create(
-        &args.output,
+    let temp_wav_file = tempfile::NamedTempFile::new().map_err(|e| {
+        display::show_error_msg("Unable to create temporary output file.", Some(e));
+        EX_IOERR
+    })?;
+
+    let mut writer = hound::WavWriter::new(
+        &temp_wav_file,
         hound::WavSpec {
             channels: stream_info.channels() as u16,
             sample_rate: stream_info.sample_rate() as u32,
@@ -321,20 +323,36 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
         },
     )
     .map_err(|e| {
-        display::show_error_msg("Failed to create the output file.", Some(e));
+        display::show_error_msg("Failed to create temporary output file.", Some(e));
         EX_CANTCREAT
     })?;
 
+    let mut md5 = md5::Md5::new();
+    let bytes_per_sample = (stream_info.bits_per_sample() + 7) / 8;
     for n in 0..frame_count {
-        let frame_signal = stream.frame(n).unwrap().decode();
+        let frame = stream.frame(n).unwrap();
+        let frame_signal = frame.decode();
         for v in &frame_signal {
             let v = *v;
             writer.write_sample(v).map_err(|e| {
                 display::show_error_msg("Failed to write decoded samples.", Some(e));
                 EX_CANTCREAT
             })?;
+            md5.update(&v.to_le_bytes()[0..bytes_per_sample]);
         }
     }
+    let computed_digest: [u8; 16] = md5.finalize().into();
+    let stored_digest = stream_info.md5_digest();
+    if stored_digest != &[0x00; 16] && stored_digest != &computed_digest {
+        display::show_error_msg::<std::convert::Infallible>("MD5 digests did not match.", None);
+        return Err(EX_CANTCREAT);
+    }
+
+    std::fs::rename(temp_wav_file.path(), &args.output).map_err(|e| {
+        display::show_error_msg("Failed to write to the output path.", Some(e));
+        EX_CANTCREAT
+    })?;
+
     let decode_time = decoder_start.elapsed();
     let _ = display::show_progress(
         &args,
@@ -516,6 +534,10 @@ mod tests {
             hound::WavReader::open(expected).expect("expected file should be openable.");
         let mut reader_actual =
             hound::WavReader::open(actual).expect("actual file should be openable.");
+
+        assert_eq!(reader_expected.spec(), reader_actual.spec());
+        assert_eq!(reader_expected.len(), reader_actual.len());
+
         for (n, (e, a)) in reader_expected
             .samples()
             .zip(reader_actual.samples())
@@ -525,25 +547,55 @@ mod tests {
             let a: i32 = a.expect("sample from actual file  should be readable");
             assert_eq!(
                 e, a,
-                "expected and actual samples should be identical (sample-offset={n}."
+                "expected and actual samples should be identical (sample-offset={n})."
             );
         }
     }
 
     #[rstest]
-    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 16})]
-    #[case(SourceConfig { duration_secs: 3, sample_rate: 44097, channels: 2, bits_per_sample: 16})]
-    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 16})]
-    #[case(SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 3, bits_per_sample: 16})]
-    fn integration_encoder_decoder(#[case] source_config: SourceConfig) {
+    #[case(
+        "canonical", 
+        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 16 }
+    )]
+    #[case(
+        "sr44097",
+        SourceConfig { duration_secs: 3, sample_rate: 44097, channels: 2, bits_per_sample: 16 }
+    )]
+    #[case(
+        "ch1",
+        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 16 }
+    )]
+    #[case(
+        "ch3",
+        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 3, bits_per_sample: 16 }
+    )]
+    #[case(
+        "bps24",
+        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 24 }
+    )]
+    #[case(
+        "bps8",
+        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 8 }
+    )]
+    fn integration_encoder_decoder(#[case] case_name: &str, #[case] source_config: SourceConfig) {
         let tmpdir = tempfile::tempdir().unwrap();
-        let mut config_dump_path = tmpdir.as_ref().to_path_buf();
+        let tmpdir_path = std::env::var_os("FLACENC_TEST_WORKDIR").map_or_else(
+            || tmpdir.as_ref().to_path_buf(),
+            |dir| {
+                eprintln!("FLACENC_TEST_WORKDIR is set to {}", dir.to_string_lossy());
+                let mut workdir = std::path::PathBuf::from(dir);
+                workdir.push(case_name);
+                std::fs::create_dir_all(&workdir).expect("Work dir creation should not fail.");
+                workdir
+            },
+        );
+        let mut config_dump_path = tmpdir_path.clone();
         config_dump_path.push("dumped.toml");
-        let mut flac_path = tmpdir.as_ref().to_path_buf();
+        let mut flac_path = tmpdir_path.clone();
         flac_path.push("compressed.flac");
-        let mut source_path = tmpdir.as_ref().to_path_buf();
+        let mut source_path = tmpdir_path.clone();
         source_path.push("source.wav");
-        let mut decoded_path = tmpdir.as_ref().to_path_buf();
+        let mut decoded_path = tmpdir_path;
         decoded_path.push("decoded.wav");
 
         generate_test_wav(&source_path, &source_config);

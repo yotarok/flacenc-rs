@@ -38,7 +38,9 @@ pprof = { version = "0.13", features = [
   "flamegraph",
   "protobuf-codec",
 ], optional = true }
+md-5 = "0.10.6"
 rmp-serde = "1.1.2"
+tempfile = "3"
 termcolor = "1.4"
 toml = "0.8.10"
 
@@ -49,5 +51,4 @@ simd-nightly = ["flacenc/simd-nightly"]
 
 [dev-dependencies]
 flacenc = { version = "0.5.0", path = "..", features = ["__export_sigen"] }
-tempfile = "3"
 rstest = "0.22"

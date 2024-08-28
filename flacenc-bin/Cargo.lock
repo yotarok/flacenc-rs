@@ -374,6 +374,7 @@ dependencies = [
  "flacenc",
  "hound",
  "log",
+ "md-5",
  "pprof",
  "rmp-serde",
  "rstest",

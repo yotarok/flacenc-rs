@@ -115,6 +115,12 @@ impl Source for HoundSource {
             .map_err(SourceError::from_io_error)?;
 
         self.current_offset += to_read;
+        if self.bytes_per_sample == 1 {
+            // 8-bit wav is not in two's complement, so convert it first
+            self.bytebuf.iter_mut().for_each(|p| {
+                *p = (i32::from(*p) - 128).to_le_bytes()[0];
+            });
+        }
         dest.fill_le_bytes(&self.bytebuf, self.bytes_per_sample)?;
 
         Ok(read_bytes / self.channels() / self.bytes_per_sample)
