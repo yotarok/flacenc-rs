@@ -11,13 +11,14 @@ this crate currently supports the following use cases:
 1. Performing FLAC encoding from custom input sources.
 1. Inspecting the encoded streams, enabling analysis and serialization of
    encoder results.
+1. Decoding a FLAC bitstream (experimental).
 
 Importantly, this encoder is designed for hackability. Its portable and
-(relatively) clean code make it easy to modify and adapt to your specific use
+(relatively) clean code makes it easy to modify and adapt to your specific use
 cases.
 
-If you need a stand-alone FLAC encoder, rather than an embeddable library,
-try our companion CLI tool, [`flacenc-bin`].
+If you need a stand-alone FLAC encoder/ decoder, rather than an embeddable
+library, try our companion CLI tool, [`flacenc-bin`].
 
 For a detailed comparison of this encoder's characteristics against the
 [FLAC reference implementation](https://xiph.org/flac/download.html), please
@@ -28,7 +29,7 @@ refer to the [auto-generated report].
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = "0.4.0"
+flacenc = "0.5.0"
 ```
 
 This crate is intended to be, and primarily developed with
@@ -38,8 +39,11 @@ possible to build within a stable toolchain. If you are okay with using a
 nightly toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = { version = "0.4.0", features = ["simd-nightly"] }
+flacenc = { version = "0.5.0", features = ["simd-nightly"] }
 ```
+
+The performance improvement with "simd-nightly" feature can be seen by comparing
+[benchmark report (nightly)] and [benchmark report (stable)].
 
 ## Examples
 
@@ -101,8 +105,12 @@ possible customization can be categorized into three groups:
 
 ## Feature Flags
 
-`flacenc` has a few Cargo features that changes the internal behaviors and APIs.
+`flacenc` has a few Cargo features that change the internal behaviors and APIs.
 
+- `decode`: Enables decoder-related features such as bit-stream parsing, and
+  component to signal conversion. `flacenc` employs
+  [`nom`](https://crates.io/crates/nom) as a bitstream parser toolkit, and
+  enabling this feature adds dependency to it.
 - `experimental`: Enables experimental coding algorithms that are typically
   slower. Due to its experimental nature, there's no documentation on how to
   activate each algorithm. You may need to explore `flacenc::config` module or
@@ -123,9 +131,11 @@ possible customization can be categorized into three groups:
   dependency tree smaller, you may do that by `default-features = false`. `par`
   adds dependency to
   [`crossbeam-channel`](https://crates.io/crates/crossbeam-channel) crate.
+- `serde`: Makes FLAC component datatypes to be serializable/ deserializable.
+  This is convenient for analyzing FLAC streams.
 
 In an example encoder `flacenc-bin`, all the features except for `simd-nightly`
-are enabled by default. Further, `simd-nightly` is used in
+are enabled by default. `simd-nightly` is used in
 [the benchmarking script](run_reporter.sh).
 
 ## Contributing
@@ -143,6 +153,8 @@ and Google specifically disclaims all warranties as to its quality,
 merchantability, or fitness for a particular purpose.
 
 [auto-generated report]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
+[benchmark report (nightly)]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
+[benchmark report (stable)]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.stable.md
 [`component`]: https://docs.rs/flacenc/latest/flacenc/component/index.html
 [`config::encoder`]: https://docs.rs/flacenc/latest/flacenc/config/struct.Encoder.html
 [`contributing.md`]: https://github.com/yotarok/flacenc-rs/blob/main/CONTRIBUTING.md

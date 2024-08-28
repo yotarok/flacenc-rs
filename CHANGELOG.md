@@ -1,5 +1,40 @@
 # ChangeLog
 
+## [Unreleased]
+
+### Breaking Changes
+
+- API for creating `FrameHeader` is changed. Previously, some intermediate
+  data-structures are exposed so the client code can even generate the invalid
+  `FrameHeader`. Now, `SampleSizeSpec`, `SampleRateSpec`, and `BlockSizeSpec`
+  are hidden, and internally generated. (#212)
+
+### Changed
+
+- Performance improvement for LPC by changing algorithm. (#189)
+- An abstraction layer to explicitly compute that unweighted auto-correlation
+  (#190).  Previously, it was done by a weight function that returns 1 always.
+- "crc" dependency is upgraded, and now we use pre-computed tables. (#191)
+- Removed dev-dependency to "bitvec" crate. (#193)
+- Added more "#[inline]" to explicitly instruct inlining (#197)
+- Experimental "flacdec-bin" is removed and fused into "flacenc-bin". (#209)
+
+### Added
+
+- new decoder functionality (depending on "nom") is now publicized (#208)
+
+### Fixed
+
+- Fixed QuickTime playback bug. (bug: #195, #198, follow-up fix in experimental
+  decoder implementation: #201)
+- Fixed a difference between flacenc and the reference encoder regarding the
+  last-frame handling. (#203, #205, bug: #199)
+- Documentation and code comment fix. (#188, #206, #207)
+- Fixed Makefile bug that outputs intermediate results of "integration-nightly"
+  to a wrong directory. (#204)
+- "component.rs" is split to multiple submodules. (#210, #211)
+
+
 ## 0.4.0 (flacenc-bin: 0.2.4) - 2024-03-05
 
 ### Breaking Changes
