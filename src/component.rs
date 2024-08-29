@@ -31,7 +31,7 @@ pub use datatype::Frame;
 pub use datatype::FrameHeader;
 pub use datatype::FrameOffset;
 pub use datatype::Lpc;
-pub use datatype::MetadataBlock;
+pub(crate) use datatype::MetadataBlock;
 pub use datatype::MetadataBlockData;
 pub use datatype::QuantizedParameters;
 pub use datatype::Residual;

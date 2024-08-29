@@ -64,7 +64,6 @@ where
 
     /// Returns the number of internal simd-vectors.
     #[inline]
-    #[allow(dead_code)]
     pub fn simd_len(&self) -> usize {
         self.inner.len()
     }
@@ -119,7 +118,6 @@ where
 
     /// Returns a slice of the simd vectors.
     #[inline]
-    #[allow(dead_code)]
     pub fn as_ref_simd(&self) -> &[simd::Simd<T, N>] {
         &self.inner
     }

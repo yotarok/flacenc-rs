@@ -42,6 +42,12 @@ type BitInput<'a> = (&'a [u8], usize);
 
 /// Recognizes [`component::Stream`].
 ///
+/// # Examples
+///
+/// ```
+///
+/// ```
+///
 /// # Errors
 ///
 /// Same as other nom parsers, this returns [`nom::Err`] if `input` doesn't conforms the format.
@@ -87,10 +93,13 @@ where
 
 /// Recognizes [`component::MetadataBlock`].
 ///
+/// This parser is intentionally hidden from public API because [`metadata_block_data`] already
+/// provides full-control over the components.
+///
 /// # Errors
 ///
 /// Same as other nom parsers, this returns [`nom::Err`] if `input` doesn't conforms the format.
-pub fn metadata_block<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], component::MetadataBlock, E>
+fn metadata_block<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], component::MetadataBlock, E>
 where
     E: ParseError<&'a [u8]>,
 {
