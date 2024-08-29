@@ -144,7 +144,16 @@ impl Stream {
     /// # Panics
     ///
     /// Panics if `self` is corrupted by manually modifying fields.
-    pub(crate) fn stream_info_mut(&mut self) -> &mut StreamInfo {
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use flacenc::component::*;
+    /// let mut stream = Stream::new(16000, 1, 24).unwrap();
+    /// stream.stream_info_mut().set_total_samples(123456);
+    /// assert_eq!(stream.stream_info().total_samples(), 123456);
+    /// ```
+    pub fn stream_info_mut(&mut self) -> &mut StreamInfo {
         if let MetadataBlockData::StreamInfo(ref mut info) = self.stream_info.data {
             info
         } else {
@@ -155,9 +164,8 @@ impl Stream {
     /// Appends [`Frame`] to this `Stream` and updates [`StreamInfo`].
     ///
     /// This also updates frame statistics in `stream_info` but does not update
-    /// MD5 checksums and the total number of samples.  For updating those,
-    /// please manually call `set_total_samples` and `set_md5_digest`,
-    /// respectively, via `self.stream_info_mut`.
+    /// MD5 checksums. For updating those, call `set_md5_digest` manually via
+    /// [`Self::stream_info_mut`].
     ///
     /// # Examples
     ///
@@ -222,6 +230,7 @@ impl Stream {
     /// let frame19 = stream.frame(19).expect("19-th frame is not found.");
     /// assert!(frame0.count_bits() > 0);
     /// assert!(frame19.count_bits() > 0);
+    /// assert!(stream.frame(200).is_none());
     /// ```
     pub fn frame(&self, n: usize) -> Option<&Frame> {
         self.frames.get(n)
@@ -312,6 +321,9 @@ impl Stream {
 }
 
 /// [`METADATA_BLOCK`](https://xiph.org/flac/format.html#metadata_block) component.
+///
+/// It is currently hidden from the public interface because [`MetadataBlockData`]
+/// and relevant accessor methods in [`Stream`] can hide this implementation detail.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataBlock {
@@ -475,7 +487,7 @@ impl StreamInfo {
         Ok(ret)
     }
 
-    /// Updates `StreamInfo` with values from the given Frame.
+    /// Updates `StreamInfo` with values from the given [`Frame`].
     ///
     /// This function updates `{min|max}_{block|frame}_size` and
     /// `total_samples`.
@@ -510,7 +522,9 @@ impl StreamInfo {
         self.total_samples += u64::from(block_size);
     }
 
-    /// Returns `min_frame_size` field.
+    /// Returns the minimum frame size in bytes.
+    ///
+    /// [`METADATA_BLOCK_STREAM_INFO`]: https://xiph.org/flac/format.html#metadata_block_streaminfo
     ///
     /// # Examples
     ///
@@ -532,7 +546,9 @@ impl StreamInfo {
         self.min_frame_size as usize
     }
 
-    /// Returns `max_frame_size` field.
+    /// Returns the maximum frame size in bytes.
+    ///
+    /// [`METADATA_BLOCK_STREAM_INFO`]: https://xiph.org/flac/format.html#metadata_block_streaminfo
     ///
     /// # Examples
     ///
@@ -547,7 +563,7 @@ impl StreamInfo {
         self.max_frame_size as usize
     }
 
-    /// Returns `min_block_size` field.
+    /// Returns the minimum block size in samples.
     ///
     /// # Examples
     ///
@@ -569,7 +585,7 @@ impl StreamInfo {
         self.min_block_size as usize
     }
 
-    /// Returns `max_block_size` field.
+    /// Returns the maximum block size in samples.
     ///
     /// # Examples
     ///
@@ -584,7 +600,7 @@ impl StreamInfo {
         self.max_block_size as usize
     }
 
-    /// Returns `sample_rate` field.
+    /// Returns sampling rate of the stream.
     ///
     /// # Examples
     ///
@@ -598,7 +614,7 @@ impl StreamInfo {
         self.sample_rate as usize
     }
 
-    /// Returns `channels` field.
+    /// Returns the number of channels of the stream.
     ///
     /// # Examples
     ///
@@ -612,7 +628,7 @@ impl StreamInfo {
         self.channels as usize
     }
 
-    /// Returns `bits_per_sample` field.
+    /// Returns bits-per-sample of the stream.
     ///
     /// # Examples
     ///
@@ -626,7 +642,7 @@ impl StreamInfo {
         self.bits_per_sample as usize
     }
 
-    /// Returns `total_samples` field.
+    /// Returns the number of samples of the stream.
     ///
     /// # Examples
     ///
@@ -650,10 +666,7 @@ impl StreamInfo {
         self.total_samples as usize
     }
 
-    /// Sets `total_samples` field.
-    ///
-    /// Similar to MD5 digests, `total_samples` field of `StreamInfo` is expected to be manually
-    /// filled after the encoder is finalized. See also [`Self::set_md5_digest`].
+    /// Sets the number of samples.
     ///
     /// # Examples
     ///
@@ -673,7 +686,7 @@ impl StreamInfo {
         self.total_samples = n as u64;
     }
 
-    /// Returns `md5_digest` field.
+    /// Returns md5 digest of the input waveform.
     ///
     /// # Examples
     ///
@@ -726,7 +739,7 @@ impl StreamInfo {
         self.md5.copy_from_slice(digest);
     }
 
-    /// Resets `min_block_size` and `max_block_size` fields.
+    /// Resets the minimum/ maximum block sizes.
     ///
     /// # Errors
     ///
@@ -764,7 +777,7 @@ impl StreamInfo {
         Ok(())
     }
 
-    /// Resets `min_frame_size` and `max_frame_size` fields.
+    /// Resets the minimum/ maximum frame sizes.
     ///
     /// # Errors
     ///
@@ -1039,9 +1052,7 @@ impl Frame {
     ///
     /// # Errors
     ///
-    /// When `self.subframe_count() != 2`, this function returns the
-    /// reconstructed self. On error, this allocates from the heap, and it is
-    /// not efficient.
+    /// When `self.subframe_count() != 2`, this function returns the reconstructed self.
     ///
     /// # Panics
     ///
@@ -1191,7 +1202,9 @@ impl ChannelAssignment {
 /// blocking mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrameOffset {
+    /// Frame offset specifier based on the number of frames preceding.
     Frame(u32),
+    /// Frame offset specifier based on the number of samples preceding.
     StartSample(u64),
 }
 
@@ -1572,11 +1585,11 @@ impl FrameHeader {
         }
     }
 
-    /// Constructs `FrameHeader` in variable-length mode.
+    /// Constructs `FrameHeader` from the given metadata.
     ///
     /// # Errors
     ///
-    /// Returns error when `block_size` or `start_sample_number` is invalid.
+    /// Returns error when `block_size` or `bits_per_sample` is invalid.
     ///
     /// # Examples
     ///
@@ -1697,7 +1710,7 @@ impl FrameHeader {
     ///
     /// # Panics
     ///
-    /// If the component is built with reserved block-size spec.
+    /// It panics if `self` is deserialized from external data, and in an invalid state.
     ///
     /// # Examples
     ///
@@ -1730,8 +1743,7 @@ impl FrameHeader {
     /// This function returns `None` when bits-per-sample specification is not
     /// given in the `FrameHeader`. Currently, flacenc cannot construct `FrameHeader` without
     /// valid bits-per-sample specification.  Therefore, this function returns `None` only
-    /// when it is dealing with `FrameHeader` loaded from another sources (requiring `"decode"`
-    /// feature)
+    /// when `self` is deserialized from external data.
     ///
     /// # Examples
     ///
