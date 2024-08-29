@@ -859,7 +859,7 @@ impl Frame {
     /// ```
     /// # use flacenc::component::*;
     /// let chs = ChannelAssignment::Independent(1);
-    /// let header = FrameHeader::new(192, chs, 8, FrameOffset::Frame(0)).unwrap();
+    /// let header = FrameHeader::new(192, chs, 8, 44100, FrameOffset::Frame(0)).unwrap();
     /// let subframe = Constant::new(192, -1, 8).unwrap();
     /// let frame = Frame::new(header, [subframe.into()].into_iter()).unwrap();
     /// ```
@@ -1597,13 +1597,13 @@ impl FrameHeader {
     /// # use flacenc::component::*;
     /// # use flacenc::bitsink::*;
     /// let header = FrameHeader::new(
-    ///     192, ChannelAssignment::Independent(1), 8, FrameOffset::StartSample(123456)
+    ///     192, ChannelAssignment::Independent(1), 8, 44100, FrameOffset::StartSample(123456)
     /// ).unwrap();
     /// let mut sink = ByteSink::new();
     /// header.write(&mut sink);
     /// assert_eq!(&sink.as_slice()[..8], &[
     ///     0xFF, 0xF9, // sync-code + fixed/var
-    ///     0x10, 0x02, // block size + rate + channel + sample size + reserved
+    ///     0x19, 0x02, // block size + rate + channel + sample size + reserved
     ///     0xF0, 0x9E, 0x89, 0x80 // start sample number encoded in utf-8
     /// ]);
     /// ```
@@ -1612,6 +1612,7 @@ impl FrameHeader {
         block_size: usize,
         channel_assignment: ChannelAssignment,
         bits_per_sample: usize,
+        sample_rate: usize,
         offset: FrameOffset,
     ) -> Result<Self, VerifyError> {
         verify_block_size!("block_size", block_size)?;
@@ -1626,11 +1627,13 @@ impl FrameHeader {
             "32-bit encoding is not supported currently."
         )?;
         channel_assignment.verify()?;
+        let sample_rate_spec = SampleRateSpec::from_freq(sample_rate as u32)
+            .ok_or_else(|| VerifyError::new("sample_rate", "must be in a supported range."))?;
         let mut ret = Self::from_specs(
             block_size_spec,
             channel_assignment,
             sample_size_spec,
-            SampleRateSpec::Unspecified,
+            sample_rate_spec,
         );
         ret.set_frame_offset(offset);
         Ok(ret)
@@ -1750,7 +1753,7 @@ impl FrameHeader {
     /// ```
     /// # use flacenc::component::*;
     /// let chs = ChannelAssignment::Independent(1);
-    /// let header = FrameHeader::new(192, chs, 12, FrameOffset::Frame(0)).unwrap();
+    /// let header = FrameHeader::new(192, chs, 12, 44100, FrameOffset::Frame(0)).unwrap();
     /// assert_eq!(header.bits_per_sample().unwrap(), 12);
     /// ```
     #[inline]
