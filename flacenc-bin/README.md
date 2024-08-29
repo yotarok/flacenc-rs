@@ -45,6 +45,15 @@ This CLI tool can also decode FLAC files, as follows:
 flacenc decode --output output.wav input.flac
 ```
 
+## Limitation
+
+The encoder CLI only supports WAV file with 8/ 16/ 24-bit PCM, currently.
+
+The decoder CLI only supports raw-FLAC file (typically with ".flac" extension).
+It currently does not support FLAC files with escape codes. However, at the
+moment, escape codes are not widely used (e.g. the FLAC reference encoder
+does not output FLAC files with escape codes.)
+
 ## Feature Flags
 
 This binary crate has a few feature flags to enable additional features:
