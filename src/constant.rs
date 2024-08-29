@@ -31,7 +31,7 @@ mod built {
 pub const DEFAULT_BLOCK_SIZE: usize = 4096;
 
 /// The number of partitions used in entropy estimation algorithm.
-pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 32;
+pub(crate) const DEFAULT_ENTROPY_ESTIMATOR_PARTITIONS: usize = 16;
 
 /// Minimum bits-per-sample supported. (4 in the specification.)
 pub const MIN_BITS_PER_SAMPLE: usize = 8;
