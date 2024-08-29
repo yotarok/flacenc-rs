@@ -7,7 +7,10 @@
 - API for creating `FrameHeader` is changed. Previously, some intermediate
   data-structures are exposed so the client code can even generate the invalid
   `FrameHeader`. Now, `SampleSizeSpec`, `SampleRateSpec`, and `BlockSizeSpec`
-  are hidden, and internally generated. (#212)
+  are hidden, and internally generated. (#212, #219)
+- `MetadataBlock` is also hidden now. Since `Stream` currently only handles
+  `MetadataBlockData` and it's rather simpler than using a wrapping type
+  `MetadataBlock`, this type is changed to be an internal type. (#218)
 
 ### Changed
 
@@ -18,10 +21,12 @@
 - Removed dev-dependency to "bitvec" crate. (#193)
 - Added more "#[inline]" to explicitly instruct inlining (#197)
 - Experimental "flacdec-bin" is removed and fused into "flacenc-bin". (#209)
+- Changed the default partition parameter for FixedLPC (#217)
 
 ### Added
 
-- new decoder functionality (depending on "nom") is now publicized (#208)
+- new decoder functionality (depending on "nom") is now publicized. (#208)
+- added integration test that covers CLI `main` functions. (#214)
 
 ### Fixed
 
@@ -32,7 +37,10 @@
 - Documentation and code comment fix. (#188, #206, #207)
 - Fixed Makefile bug that outputs intermediate results of "integration-nightly"
   to a wrong directory. (#204)
+- Fixed Makefile bug that still refers "flacdec-bin" directory in some tasks.
+  (#215)
 - "component.rs" is split to multiple submodules. (#210, #211)
+- Fixed encoder CLI error when dealing with WAV file with bps=8 or 24. (#216)
 
 
 ## 0.4.0 (flacenc-bin: 0.2.4) - 2024-03-05
