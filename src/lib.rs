@@ -17,6 +17,7 @@
 #![cfg_attr(feature = "simd-nightly", feature(test))]
 // Note that clippy attributes should be in sync with those declared in "main.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
+#![allow(unknown_lints)]
 // Some of clippy::pedantic rules are actually useful, so use it with a lot of
 // ad-hoc exceptions.
 #![allow(
@@ -27,7 +28,8 @@
     clippy::missing_const_for_fn,
     clippy::multiple_crate_versions,
     clippy::must_use_candidate,
-    clippy::wildcard_dependencies
+    clippy::wildcard_dependencies,
+    clippy::manual_div_ceil // This is introduced at 1.81, but our MSRV is 1.65 so far.
 )]
 // Some from restriction lint-group
 #![warn(

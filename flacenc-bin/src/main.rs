@@ -20,8 +20,7 @@
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    clippy::multiple_crate_versions,
-    clippy::must_use_candidate
+    clippy::multiple_crate_versions
 )]
 // Some from restriction lint-group
 #![warn(

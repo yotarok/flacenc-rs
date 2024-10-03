@@ -24,7 +24,20 @@ use crate::error::Verify;
 use crate::error::VerifyError;
 
 use super::bitrepr::BitRepr;
-use super::datatype::*;
+use super::datatype::ChannelAssignment;
+use super::datatype::Constant;
+use super::datatype::FixedLpc;
+use super::datatype::Frame;
+use super::datatype::FrameHeader;
+use super::datatype::Lpc;
+use super::datatype::MetadataBlock;
+use super::datatype::MetadataBlockData;
+use super::datatype::QuantizedParameters;
+use super::datatype::Residual;
+use super::datatype::Stream;
+use super::datatype::StreamInfo;
+use super::datatype::SubFrame;
+use super::datatype::Verbatim;
 
 // Some (internal) utility macros for value verification.
 macro_rules! verify_block_size {
