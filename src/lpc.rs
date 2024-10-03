@@ -73,9 +73,10 @@ pub trait LpcFloat:
 macro_rules! def_lpc_float {
     ($ty:ty) => {
         impl self::LpcFloat for $ty {
-            type Simd<const N: usize> = simd::Simd<$ty, N>
-                                            where
-                                                simd::LaneCount<N>: simd::SupportedLaneCount;
+            type Simd<const N: usize>
+                = simd::Simd<$ty, N>
+            where
+                simd::LaneCount<N>: simd::SupportedLaneCount;
 
             #[cfg(feature = "experimental")]
             #[inline]

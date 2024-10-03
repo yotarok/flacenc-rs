@@ -21,7 +21,19 @@ use super::super::error::OutputError;
 use super::super::error::RangeError;
 use super::super::repeat::try_repeat;
 
-use super::datatype::*;
+use super::datatype::ChannelAssignment;
+use super::datatype::Constant;
+use super::datatype::FixedLpc;
+use super::datatype::Frame;
+use super::datatype::FrameHeader;
+use super::datatype::Lpc;
+use super::datatype::MetadataBlock;
+use super::datatype::MetadataBlockData;
+use super::datatype::Residual;
+use super::datatype::Stream;
+use super::datatype::StreamInfo;
+use super::datatype::SubFrame;
+use super::datatype::Verbatim;
 
 const CRC_8_FLAC: crc::Algorithm<u8> = crc::CRC_8_SMBUS;
 const CRC_16_FLAC: crc::Algorithm<u16> = crc::CRC_16_UMTS;
@@ -579,6 +591,9 @@ impl BitRepr for Residual {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::BlockSizeSpec;
+    use crate::component::SampleRateSpec;
+    use crate::component::SampleSizeSpec;
     use crate::error::Verify;
     use crate::test_helper::make_random_residual;
     use crate::test_helper::make_verbatim_frame;
