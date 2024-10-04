@@ -94,7 +94,7 @@ impl<T: Fill, U: Fill> Fill for (T, U) {
     }
 }
 
-impl<'a, T> Fill for &'a mut T
+impl<T> Fill for &mut T
 where
     T: Fill,
 {
@@ -469,7 +469,7 @@ pub trait Source {
     }
 }
 
-impl<'a, T: Source> Source for &'a mut T {
+impl<T: Source> Source for &mut T {
     fn channels(&self) -> usize {
         T::channels(self)
     }
@@ -517,7 +517,7 @@ pub trait Seekable: Source {
     ) -> Result<usize, SourceError>;
 }
 
-impl<'a, T: Seekable> Seekable for &'a mut T {
+impl<T: Seekable> Seekable for &mut T {
     fn is_empty(&self) -> bool {
         T::is_empty(self)
     }

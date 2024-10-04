@@ -1044,8 +1044,8 @@ impl Frame {
     }
 
     #[inline]
-    pub(crate) fn precomputed_bitstream(&self) -> &Option<Vec<u8>> {
-        &self.precomputed_bitstream
+    pub(crate) fn precomputed_bitstream(&self) -> Option<&Vec<u8>> {
+        self.precomputed_bitstream.as_ref()
     }
 
     /// Consumes `self` and returns the parts if `self` is a stereo frame.

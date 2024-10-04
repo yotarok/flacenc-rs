@@ -286,7 +286,7 @@ impl BitRepr for Frame {
     }
 
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        if let Some(ref bytes) = self.precomputed_bitstream() {
+        if let Some(bytes) = self.precomputed_bitstream() {
             dest.write_bytes_aligned(bytes)
                 .map_err(OutputError::<S>::from_sink)?;
             Ok(())
