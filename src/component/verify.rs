@@ -152,7 +152,7 @@ impl Verify for Frame {
             sf.verify()
                 .map_err(|e| e.within(&format!("subframe[{ch}]")))?;
         }
-        if let Some(ref buf) = self.precomputed_bitstream() {
+        if let Some(buf) = self.precomputed_bitstream() {
             let mut dest = MemSink::<u8>::with_capacity(self.count_bits());
             self.write(&mut dest).map_err(|_| {
                 VerifyError::new(
