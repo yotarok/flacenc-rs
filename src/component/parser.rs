@@ -231,6 +231,7 @@ where
             let frame_bytes = &input_start[..input_start.offset(remaining_input)];
             FRAME_CRC.checksum(frame_bytes)
         });
+        #[allow(clippy::unnecessary_map_or)] // `is_none_or` is from rustc 1.82.0
         let (remaining_input, _) =
             verify(be_u16, |crc| test_crc16.map_or(true, |x| x == *crc))(remaining_input)?;
 
@@ -314,6 +315,7 @@ where
             let header_bytes = &input_start[..input_start.offset(remaining_input)];
             HEADER_CRC.checksum(header_bytes)
         });
+        #[allow(clippy::unnecessary_map_or)] // `is_none_or` is from rustc 1.82.0
         let (remaining_input, _) =
             verify(be_u8, |crc| test_crc8.map_or(true, |x| x == *crc))(remaining_input)?;
 

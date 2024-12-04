@@ -100,7 +100,7 @@ def_lpc_float!(f64);
 pub fn window_weights(win: &Window, len: usize) -> Vec<f32> {
     match *win {
         Window::Rectangle => vec![1.0f32; len],
-        Window::Tukey { alpha } if alpha == 0.0 => {
+        Window::Tukey { alpha: 0.0 } => {
             vec![1.0f32; len]
         }
         Window::Tukey { alpha } => {

@@ -974,6 +974,7 @@ mod bench {
         let stream_info = StreamInfo::new(44100, 2, 16).unwrap();
         let mut fb = FrameBuf::with_size(2, 4096).unwrap();
         // input is always zero, so it should use Constant and fast.
+        #[allow(clippy::large_stack_arrays)] // okay as it is just for benchmark preparation.
         fb.fill_interleaved(&[0i32; 4096 * 2]).unwrap();
         b.iter(|| {
             encode_fixed_size_frame(
