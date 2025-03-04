@@ -146,12 +146,6 @@ See [`CONTRIBUTING.md`] for details.
 
 Apache 2.0; see [`LICENSE`] for details.
 
-## Disclaimer
-
-This project is not an official Google project. It is not supported by Google
-and Google specifically disclaims all warranties as to its quality,
-merchantability, or fitness for a particular purpose.
-
 [auto-generated report]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
 [benchmark report (nightly)]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.nightly.md
 [benchmark report (stable)]: https://github.com/yotarok/flacenc-rs/blob/main/report/report.stable.md

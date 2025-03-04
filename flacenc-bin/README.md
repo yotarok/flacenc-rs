@@ -75,10 +75,6 @@ Apache 2.0; see [`LICENSE`] for details.
 
 ## Disclaimer
 
-This project is not an official Google project. It is not supported by Google
-and Google specifically disclaims all warranties as to its quality,
-merchantability, or fitness for a particular purpose.
-
 This encoder is still unstable and sometimes the encoded file may contain
 distortion, i.e. the encoder very rarely outputs broken signals. You can check
 whether you encountered an encoder bug by running, e.g., the reference decoder.
