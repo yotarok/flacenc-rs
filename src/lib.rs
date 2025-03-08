@@ -56,6 +56,10 @@
     clippy::unnecessary_self_imports,
     clippy::wildcard_enum_match_arm
 )]
+// Because `built` crate generates strings with hashes.
+#![allow(clippy::needless_raw_string_hashes)]
+// Because the current MSRV is 1.65
+#![allow(clippy::non_std_lazy_statics)]
 
 /// Expands import statements for `fakesimd` or `std::simd`.
 macro_rules! import_simd {

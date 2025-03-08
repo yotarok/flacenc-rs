@@ -232,7 +232,7 @@ impl BitRepr for MetadataBlockData {
                 dest.write_bytes_aligned(data)
                     .map_err(OutputError::<S>::from_sink)?;
             }
-        };
+        }
         Ok(())
     }
 }
@@ -383,7 +383,7 @@ impl BitRepr for FrameHeader {
             // block_size_spec tag + 4-bit sample rate specifier.
             header_buffer
                 .write_lsbs(
-                    self.block_size_spec().tag() << 4 | self.sample_rate_spec().tag(),
+                    (self.block_size_spec().tag() << 4) | self.sample_rate_spec().tag(),
                     8,
                 )
                 .unwrap();

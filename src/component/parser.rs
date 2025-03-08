@@ -416,7 +416,7 @@ where
 
     let (remaining_input, tail): (_, &[u8]) = byte_take(tail_count)(remaining_input)?;
     for b in tail {
-        acc = acc << 6 | u64::from(*b & 0x3F);
+        acc = (acc << 6) | u64::from(*b & 0x3F);
     }
     Ok((remaining_input, acc))
 }

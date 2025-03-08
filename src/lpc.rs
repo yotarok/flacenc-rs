@@ -534,6 +534,7 @@ where
     let warmup = order - 1;
     let weight = &weight;
     seq_macro::seq!(DELAY in 0..=32 {
+        #[allow(clippy::unnecessary_semicolon)]
         if DELAY < order {
             // `LANES` is starting from 8.
             #[allow(clippy::identity_op)] // delay may be zero.

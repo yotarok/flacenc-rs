@@ -53,4 +53,4 @@ tempfile = "3"
 toml = "0.5"
 
 [build-dependencies]
-built = "0.7.1"
+built = "=0.7.1"

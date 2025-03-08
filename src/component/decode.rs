@@ -78,7 +78,7 @@ impl Decode for Frame {
                     channels[1][t] = (m - s) >> 1;
                 }
             }
-        };
+        }
 
         // interleave
         let channel_count = channels.len();

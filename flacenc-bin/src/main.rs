@@ -46,6 +46,8 @@
     clippy::unnecessary_self_imports,
     clippy::wildcard_enum_match_arm
 )]
+// Because "flacenc-bin"'s MSRV is 1.70
+#![allow(clippy::manual_div_ceil)]
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
@@ -156,10 +158,15 @@ enum Commands {
 //
 // The unsafe blocks below is only a tentative workaround before "const_option" feature
 // is stabilized. See [[https://github.com/rust-lang/rust/issues/67441]].
+#[allow(clippy::useless_nonzero_new_unchecked)] // Option::unwrap is const since 1.83
 const EX_DATAERR: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(65) };
+#[allow(clippy::useless_nonzero_new_unchecked)] // Option::unwrap is const since 1.83
 const EX_NOINPUT: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(66) };
+#[allow(clippy::useless_nonzero_new_unchecked)] // Option::unwrap is const since 1.83
 const EX_SOFTWARE: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(70) };
+#[allow(clippy::useless_nonzero_new_unchecked)] // Option::unwrap is const since 1.83
 const EX_CANTCREAT: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(73) };
+#[allow(clippy::useless_nonzero_new_unchecked)] // Option::unwrap is const since 1.83
 const EX_IOERR: NonZeroU8 = unsafe { NonZeroU8::new_unchecked(74) };
 
 /// Serializes `Stream` to a file.
