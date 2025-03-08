@@ -255,6 +255,7 @@ pub fn deinterleave(interleaved: &[i32], channels: usize, channel_stride: usize,
         }
     }
     seq!(CH in 1..=8 {
+        #[allow(clippy::unnecessary_semicolon)]
         if channels == CH {
             return deinterleave_ch~CH(interleaved, channel_stride, dest);
         }

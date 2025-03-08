@@ -16,6 +16,7 @@
 //! Abstract interface for bit-based output.
 
 use std::convert::Infallible;
+use std::fmt::Write;
 
 /// Trait for the bit-addressible unsigned integers.
 ///
@@ -424,7 +425,7 @@ impl<S: Bits> MemSink<S> {
         let mut ret = String::new();
         for v in &self.storage {
             for b in v.to_be_bytes().as_ref() {
-                ret.push_str(&format!("{b:08b}"));
+                write!(ret, "{b:08b}").unwrap();
             }
             ret.push('_');
         }

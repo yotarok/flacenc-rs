@@ -100,7 +100,7 @@ impl PrcBitTable {
         // exploit the fact that `p_to_bits` only occupies 28-bits of u32.
         let mask = INDEX.simd_le(simd::u32x16::splat(max_p as u32));
         let four = simd::u32x16::splat(4);
-        let packed_bits_and_idxs = mask.select(self.p_to_bits, MAXES) << four | INDEX;
+        let packed_bits_and_idxs = (mask.select(self.p_to_bits, MAXES) << four) | INDEX;
         let minim = packed_bits_and_idxs.reduce_min();
         let ret_bits = minim >> 4;
         let ret_p = minim & 0x0F;
