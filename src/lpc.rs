@@ -163,6 +163,7 @@ pub trait Weight {
     /// Apply weight to a sample `x` at time-offset `t`.
     fn apply(&self, t: usize, x: f32) -> f32;
     /// Apply weights to a vector of samples `x` starting at time-offset `t0`.
+    #[cfg(feature = "experimental")]
     fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
     where
         simd::LaneCount<N>: simd::SupportedLaneCount;
@@ -179,6 +180,7 @@ impl<W: Weight> Weight for &W {
     fn apply(&self, t: usize, x: f32) -> f32 {
         (*self).apply(t, x)
     }
+    #[cfg(feature = "experimental")]
     #[inline]
     fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
     where
@@ -193,6 +195,7 @@ impl Weight for NoWeight {
     fn apply(&self, _t: usize, x: f32) -> f32 {
         x
     }
+    #[cfg(feature = "experimental")]
     #[inline]
     fn apply_simd<const N: usize>(&self, _t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
     where
@@ -1179,7 +1182,7 @@ mod tests {
         assert_close!(coefs[0], 1.0f32);
 
         let qlpc = quantize_parameters(&coefs[0..LPC_ORDER], 15);
-        eprintln!("{:?}", qlpc);
+        eprintln!("{qlpc:?}");
         let mut errors = vec![0i32; signal.len()];
         compute_error(&qlpc, &signal, &mut errors);
         for t in 0..errors.len() {
@@ -1403,7 +1406,7 @@ mod tests {
         let y = covar * x;
 
         for (dim, (y, y_expected)) in y.iter().zip(autocorr.iter().skip(1)).enumerate() {
-            eprintln!("{} == {} @ {dim}", y, y_expected);
+            eprintln!("{y} == {y_expected} @ {dim}");
             assert_close!(y, y_expected);
         }
     }

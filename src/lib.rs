@@ -30,7 +30,8 @@
     clippy::multiple_crate_versions,
     clippy::must_use_candidate,
     clippy::wildcard_dependencies,
-    clippy::manual_div_ceil // This is introduced at 1.81, but our MSRV is 1.65 so far.
+    clippy::manual_div_ceil, // This is introduced at 1.81, but our MSRV is 1.65 so far.
+    clippy::manual_is_multiple_of // `is_multiple_of` is introduced at 1.87.
 )]
 // Some from restriction lint-group
 #![warn(
@@ -56,8 +57,8 @@
     clippy::unnecessary_self_imports,
     clippy::wildcard_enum_match_arm
 )]
-// Because `built` crate generates strings with hashes.
-#![allow(clippy::needless_raw_string_hashes)]
+// Because `built` crate generates `built.rs` with clippy errors.
+#![allow(clippy::needless_raw_string_hashes, clippy::doc_markdown)]
 // Because the current MSRV is 1.65
 #![allow(clippy::non_std_lazy_statics)]
 

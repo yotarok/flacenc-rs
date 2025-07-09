@@ -80,7 +80,7 @@ pub trait Repeat {
     ) -> Result<(), E>;
 }
 
-pub struct Count<const N: usize> {}
+pub struct Count<const N: usize>;
 
 seq!(M in 1..=32 {
 
