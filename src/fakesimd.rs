@@ -132,7 +132,7 @@ impl SimdElement for f64 {
 }
 
 pub trait SupportedLaneCount {}
-pub struct LaneCount<const LANES: usize>();
+pub struct LaneCount<const LANES: usize>;
 impl SupportedLaneCount for LaneCount<1> {}
 impl SupportedLaneCount for LaneCount<2> {}
 impl SupportedLaneCount for LaneCount<4> {}

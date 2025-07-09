@@ -34,7 +34,7 @@ flacenc = { version = "0.5.0", path = "..", features = [
 ] }
 hound = "3.5.1"
 log = "0.4"
-pprof = { version = "0.13", features = [
+pprof = { version = "0.14", features = [
   "flamegraph",
   "protobuf-codec",
 ], optional = true }

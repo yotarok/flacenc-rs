@@ -78,7 +78,7 @@ where
 
     /// Returns an iterator for the simd-vectors.
     #[inline]
-    pub fn iter_simd(&self) -> IterSimd<T, N> {
+    pub fn iter_simd(&self) -> IterSimd<'_, T, N> {
         self.inner.iter()
     }
 

@@ -65,6 +65,7 @@ where
 /// [`STREAM`](https://xiph.org/flac/format.html#stream) component.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Stream {
+    #[allow(clippy::struct_field_names)] // because this is the name in the specification
     stream_info: MetadataBlock,
     metadata: Vec<MetadataBlock>,
     frames: Vec<Frame>,
