@@ -1,6 +1,6 @@
 # ChangeLog
 
-## [Unreleased]
+## 0.5.0
 
 ### Breaking Changes
 
@@ -22,6 +22,8 @@
 - Added more "#[inline]" to explicitly instruct inlining (#197)
 - Experimental "flacdec-bin" is removed and fused into "flacenc-bin". (#209)
 - Changed the default partition parameter for FixedLPC (#217)
+- Internal change to use "uv" for managing python venv (#229)
+- Performance is now measured using a VM in GCP. (#230)
 
 ### Added
 
