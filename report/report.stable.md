@@ -8,27 +8,27 @@ Sources used: wikimedia.i_love_you_california, wikimedia.jazz_funk_no1_sax, wiki
 ### Average compression rate
 
   - Reference
-    - opt8lax: 0.5256109155348949
-    - opt8: 0.5256109155348949
-    - opt5: 0.5327652679090971
+    - opt8lax: 0.5256092104541924
+    - opt8: 0.5256092104541924
+    - opt5: 0.5327653441525432
 
   - Ours
-    - default: 0.52764201484448
-    - mt1: 0.52764201484448
-    - st: 0.52764201484448
-    - experimental: 0.5278566892610805
+    - default: 0.5276479826269387
+    - mt1: 0.5276479826269387
+    - st: 0.5276479826269387
+    - experimental: 0.5278541316400268
 
 
 ### Average compression speed (inverse RTF)
   - Reference
-    - opt8lax: 260.0857303462358
-    - opt8: 263.83932828363254
-    - opt5: 556.6693489280271
+    - opt8lax: 248.40136589089747
+    - opt8: 248.4164731604115
+    - opt5: 613.640202752693
 
   - Ours
-    - default: 956.9184400149727
-    - mt1: 186.7391462483289
-    - st: 179.0767474321362
-    - experimental: 367.281888825276
+    - default: 648.0081119356249
+    - mt1: 165.72051040714717
+    - st: 156.79806464050142
+    - experimental: 260.6148874954981
 
 
