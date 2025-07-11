@@ -113,14 +113,10 @@ def assert_eq(expected, actual):
         actual_disp = str(actual)
         if len(expected_disp) > 80:
             s = "; len={len(expected)}" if hasattr(expected, "__len__") else ""
-            expected_disp = (
-                expected_disp[:10] + f"<snipped{s}>" + expected_disp[-10:]
-            )
+            expected_disp = expected_disp[:10] + f"<snipped{s}>" + expected_disp[-10:]
         if len(actual_disp) > 80:
             s = "; len={len(actual)}" if hasattr(actual, "__len__") else ""
-            actual_disp = (
-                actual_disp[:10] + f"<snipped{s}>" + actual_disp[-10:]
-            )
+            actual_disp = actual_disp[:10] + f"<snipped{s}>" + actual_disp[-10:]
         raise ValueError(f"{expected_disp} != {actual_disp}")
 
 
@@ -159,9 +155,7 @@ def itemize(vals: Sequence[str]):
     return ret
 
 
-def itemize_average(
-    run_results: RunResults, *, key: Callable[[EncoderRunStat], float]
-):
+def itemize_average(run_results: RunResults, *, key: Callable[[EncoderRunStat], float]):
     ret = ""
     for confname, results in run_results.items():
         vals = [key(runstat) for unused_src, runstat in results.items()]
@@ -197,7 +191,7 @@ def make_report(
 
 ## Summary
 
-Sources used: {', '.join(sources)}
+Sources used: {", ".join(sources)}
 
 ### Average compression rate
 

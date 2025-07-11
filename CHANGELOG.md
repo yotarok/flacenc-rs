@@ -16,7 +16,7 @@
 
 - Performance improvement for LPC by changing algorithm. (#189)
 - An abstraction layer to explicitly compute that unweighted auto-correlation
-  (#190).  Previously, it was done by a weight function that returns 1 always.
+  (#190). Previously, it was done by a weight function that returns 1 always.
 - "crc" dependency is upgraded, and now we use pre-computed tables. (#191)
 - Removed dev-dependency to "bitvec" crate. (#193)
 - Added more "#[inline]" to explicitly instruct inlining (#197)
@@ -41,7 +41,6 @@
   (#215)
 - "component.rs" is split to multiple submodules. (#210, #211)
 - Fixed encoder CLI error when dealing with WAV file with bps=8 or 24. (#216)
-
 
 ## 0.4.0 (flacenc-bin: 0.2.4) - 2024-03-05
 
@@ -120,8 +119,8 @@
 ## Hotfix (flacenc-bin: 0.2.3) - 2023-11-01
 
 - flacenc-bin: fix `Cargo.toml` dependency specification.
-  - This requires upload of the bin crate to crates.io, and an increment of
-    the bin crate version.
+  - This requires upload of the bin crate to crates.io, and an increment of the
+    bin crate version.
 
 ## 0.3.1 - 2023-10-30
 
@@ -129,7 +128,7 @@
 
 - Micro benchmarks for further optimization (#105)
 - Mutable reference to `Source` is now also a `Source` (#106)
-- \[bin\] fancier terminal output
+- [bin] fancier terminal output
   - iRTF and compression rate (#107)
   - Features used for building the library (#122)
 - Some infrastructure for refactoring and optimization
@@ -150,7 +149,7 @@
   - `toml` is removed from library dependency (#112)
   - `md5` is replaced by `md-5` (#118)
   - `nalgebra` version is bumped to "0.32" (#120)
-  - \[build-dependencies\] `built` is added (#122)
+  - [build-dependencies] `built` is added (#122)
 - Performance optimization
   - Misc. performance optimization (#108)
   - Components for fixed LPC is only constructed after optimizing the order
