@@ -184,13 +184,12 @@ command = "cargo"
 args = ["fmt", "--check", "--all"]
 
 [tasks.integration-nightly]
-dependencies = ["py-venv", "reference-bin", "testwavs"]
+dependencies = ["reference-bin", "testwavs"]
 script = """
 pushd flacenc-bin
 rustup run nightly cargo build --release --features ${TEST_FEATURES_BIN_NIGHTLY}
 popd
-source venv/bin/activate
-python ./testtool/reporter.py \
+uv run --project pytools python ./pytools/reporter.py \
   --flacbin flac-${FLAC_VERSION}/src/flac/flac \
   --testbin flacenc-bin/target/release/flacenc \
   --workdir report/out/nightly \
@@ -198,13 +197,12 @@ python ./testtool/reporter.py \
 """
 
 [tasks.integration-stable]
-dependencies = ["py-venv", "reference-bin", "testwavs"]
+dependencies = ["reference-bin", "testwavs"]
 script = """
 pushd flacenc-bin
 rustup run stable cargo build --release
 popd
-source venv/bin/activate
-python ./testtool/reporter.py \
+uv run --project pytools python ./pytools/reporter.py \
   --flacbin flac-${FLAC_VERSION}/src/flac/flac \
   --testbin flacenc-bin/target/release/flacenc \
   --workdir report/out/stable \
@@ -212,10 +210,8 @@ python ./testtool/reporter.py \
 """
 
 [tasks.md-format]
-dependencies = ["py-venv"]
 script = """
-source venv/bin/activate
-venv/bin/mdformat --wrap 80 \
+uv run --project pytools mdformat --wrap 80 \
     README.md \
     CHANGELOG.md \
     CONTRIBUTING.md \
@@ -223,30 +219,14 @@ venv/bin/mdformat --wrap 80 \
 """
 
 [tasks.py-codehealth]
-dependencies = ["py-venv"]
 script = """
-source venv/bin/activate
-black --check --line-length=79 --diff testtool
-pytype testtool
-flake8 testtool
+uv run --project pytools ruff format --check
+uv run --project pytools ruff check
 """
 
 [tasks.py-format]
-dependencies = ["py-venv"]
 script = """
-source venv/bin/activate
-black --line-length=79 testtool/reporter.py
-"""
-
-[tasks.py-venv]
-script = """
-python3 -m venv venv
-source venv/bin/activate
-
-pip install --quiet --upgrade pip
-pip install --quiet --upgrade black flake8
-pip install --quiet --upgrade pytype --ignore-requires-python
-pip install --quiet --upgrade mdformat
+uv run --project pytools ruff format
 """
 
 [tasks.reference-bin]
