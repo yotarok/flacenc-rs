@@ -586,7 +586,7 @@ where
     move |input| {
         let remaining_input = input;
         let (remaining_input, precision): (_, usize) =
-            map(bit_take(4usize), |p: u8| (p as usize + 1))(remaining_input)?;
+            map(bit_take(4usize), |p: u8| p as usize + 1)(remaining_input)?;
         let (remaining_input, shift): (_, i8) =
             map(bit_take(5usize), |x: u8| u_to_i(u32::from(x), 5) as i8)(remaining_input)?;
         let (remaining_input, coefs) = raw_samples(precision, order)(remaining_input)?;
