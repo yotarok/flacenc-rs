@@ -1,0 +1,13 @@
+[project]
+name = "pytools"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mdformat>=0.7.22",
+    "ruff>=0.12.2",
+]
