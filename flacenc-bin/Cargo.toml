@@ -1,6 +1,6 @@
 [package]
 name = "flacenc-bin"
-version = "0.2.5"
+version = "0.2.6"
 authors = ["Yotaro Kubo <yotaro@ieee.org>"]
 description = "FLAC encoder written in pure Rust. An example application for flacenc crate."
 readme = "README.md"
