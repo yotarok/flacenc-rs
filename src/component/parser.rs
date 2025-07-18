@@ -43,12 +43,6 @@ type BitInput<'a> = (&'a [u8], usize);
 
 /// Recognizes [`component::Stream`].
 ///
-/// # Examples
-///
-/// ```
-///
-/// ```
-///
 /// # Errors
 ///
 /// Same as other nom parsers, this returns [`nom::Err`] if `input` doesn't conforms the format.
