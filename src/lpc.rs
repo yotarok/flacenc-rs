@@ -164,6 +164,7 @@ pub trait Weight {
     fn apply(&self, t: usize, x: f32) -> f32;
     /// Apply weights to a vector of samples `x` starting at time-offset `t0`.
     #[cfg(feature = "experimental")]
+    #[allow(dead_code)]
     fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
     where
         simd::LaneCount<N>: simd::SupportedLaneCount;

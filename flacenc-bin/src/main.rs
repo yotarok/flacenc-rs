@@ -32,6 +32,7 @@
     clippy::exit,
     clippy::if_then_some_else_none,
     clippy::impl_trait_in_params,
+    clippy::implicit_clone,
     clippy::lossy_float_literal,
     clippy::multiple_inherent_impl,
     clippy::print_stdout,
@@ -41,7 +42,6 @@
     clippy::separated_literal_suffix,
     clippy::str_to_string,
     clippy::string_add,
-    clippy::string_to_string,
     clippy::try_err,
     clippy::unnecessary_self_imports,
     clippy::wildcard_enum_match_arm
