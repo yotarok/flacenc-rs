@@ -17,7 +17,15 @@ use super::super::constant::fixed::MAX_LPC_ORDER as MAX_FIXED_LPC_ORDER;
 use super::super::rice;
 use super::bitrepr::seal_bit_repr;
 
-use super::datatype::*;
+use super::datatype::ChannelAssignment;
+use super::datatype::Constant;
+use super::datatype::FixedLpc;
+use super::datatype::Frame;
+use super::datatype::Lpc;
+use super::datatype::Residual;
+use super::datatype::SubFrame;
+use super::datatype::Verbatim;
+
 /// Traits for FLAC components containing signals (represented in [`i32`]).
 ///
 /// "Signal" here has slightly different meaning depending on the component
@@ -60,17 +68,32 @@ impl Decode for Frame {
 
         match self.header().channel_assignment() {
             ChannelAssignment::Independent(_) => {}
-            ChannelAssignment::LeftSide => {
+            ChannelAssignment::LeftSide =>
+            {
+                #[allow(
+                    clippy::needless_range_loop,
+                    reason = "lifetime management is too complicated"
+                )]
                 for t in 0..self.block_size() {
                     channels[1][t] = channels[0][t] - channels[1][t];
                 }
             }
-            ChannelAssignment::RightSide => {
+            ChannelAssignment::RightSide =>
+            {
+                #[allow(
+                    clippy::needless_range_loop,
+                    reason = "lifetime management is too complicated"
+                )]
                 for t in 0..self.block_size() {
                     channels[0][t] += channels[1][t];
                 }
             }
-            ChannelAssignment::MidSide => {
+            ChannelAssignment::MidSide =>
+            {
+                #[allow(
+                    clippy::needless_range_loop,
+                    reason = "lifetime management is too complicated"
+                )]
                 for t in 0..self.block_size() {
                     let s = channels[1][t];
                     let m = (channels[0][t] << 1) + (s & 0x01);
