@@ -71,16 +71,16 @@ pub mod build_info {
     use super::built;
 
     /// Build profile. "debug" or "release".
-    pub const BUILD_PROFILE: &str = built::PROFILE;
+    pub static BUILD_PROFILE: &str = built::PROFILE;
 
     /// Version of `flacenc` library from Cargo.toml.
-    pub const CRATE_VERSION: &str = built::PKG_VERSION;
+    pub static CRATE_VERSION: &str = built::PKG_VERSION;
 
     /// Comma-separated strings of features activated.
-    pub const FEATURES: &str = built::FEATURES_LOWERCASE_STR;
+    pub static FEATURES: &str = built::FEATURES_LOWERCASE_STR;
 
     /// `rustc` version used for building this crate.
-    pub const RUSTC_VERSION: &str = built::RUSTC_VERSION;
+    pub static RUSTC_VERSION: &str = built::RUSTC_VERSION;
 }
 
 /// Constants related to keys for the environment variables.
