@@ -328,7 +328,7 @@ impl Context {
     /// assert_eq!(ctx.total_samples(), 0);
     /// ```
     pub fn new(bits_per_sample: usize, channels: usize) -> Self {
-        let bytes_per_sample = (bits_per_sample + 7) / 8;
+        let bytes_per_sample = bits_per_sample.div_ceil(8);
         assert!(
             bytes_per_sample <= 4,
             "bits_per_sample={bits_per_sample} cannot be larger than 32."

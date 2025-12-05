@@ -146,14 +146,14 @@ the date of the latest stable release.
 
 For example, as of October 15, 2025, the latest stable release is 1.90.0, which
 was released on September 18, 2025. Therefore, `flacenc` currently supports the
-latest stable compiler available as of Sep 18, 2024, which is 1.81.0.
+latest stable compiler available as of Dec 5, 2024, which is 1.83.0.
 
 When changing the MSRV, we increment the minor version number. Since `flacenc`
 is still at ver-0, this corresponds to changing the `Z` component in `X.Y.Z`.
 To avoid unnecessary version bumps, the MSRV may be set to an older version than
 the one derived by the rule above.
 
-*The current MSRV is 1.81.0.*
+*The current MSRV is 1.83.0.*
 
 ## Contributing
 

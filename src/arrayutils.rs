@@ -89,7 +89,7 @@ where
     #[inline]
     #[allow(dead_code)]
     pub fn resize(&mut self, new_len: usize, value: simd::Simd<T, N>) {
-        let len_v = (new_len + N - 1) / N;
+        let len_v = new_len.div_ceil(N);
         self.inner.resize(len_v, value);
         self.len = new_len;
     }
@@ -105,7 +105,7 @@ where
         I: Iterator<Item = simd::Simd<T, N>>,
     {
         self.inner.clear();
-        let capacity_v = (new_len + N - 1) / N;
+        let capacity_v = new_len.div_ceil(N);
         self.inner.reserve(capacity_v);
         self.inner.extend(iter.take(capacity_v));
         self.len = new_len;
@@ -400,7 +400,7 @@ where
     let zero_v = simd::Simd::<T, LANES>::default();
     dest.clear();
     let len = src.len();
-    let len_v = (len + LANES - 1) / LANES;
+    let len_v = len.div_ceil(LANES);
     dest.resize(len_v, zero_v);
 
     transmute_and_flatten_simd_mut(dest)[0..len].copy_from_slice(src);

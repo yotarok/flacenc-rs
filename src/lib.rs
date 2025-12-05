@@ -30,7 +30,6 @@
     clippy::multiple_crate_versions,
     clippy::must_use_candidate,
     clippy::wildcard_dependencies,
-    clippy::manual_div_ceil, // This is introduced at 1.81, but our MSRV is 1.65 so far.
     clippy::manual_is_multiple_of // `is_multiple_of` is introduced at 1.87.
 )]
 // Some from restriction lint-group
