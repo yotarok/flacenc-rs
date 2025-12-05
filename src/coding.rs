@@ -210,7 +210,7 @@ fn estimate_entropy(errors: &[i32], warmup_len: usize, partitions: usize) -> usi
     // given e >> 1, it can further be approximated as log(e); however we don't
     // use this formula as it is anyway cheap to compute.
     let block_size = errors.len();
-    let partition_size = (block_size + partitions - 1) / partitions;
+    let partition_size = block_size.div_ceil(partitions);
 
     let mut offset = 0;
     let mut acc = 0;
