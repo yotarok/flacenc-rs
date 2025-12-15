@@ -378,6 +378,7 @@ where
 ///
 /// This function panics if `errors.len()` is smaller than `signal.len()`.
 #[allow(clippy::collapsible_else_if)]
+#[allow(clippy::needless_type_cast, reason = "false alarm")]
 pub fn compute_error(qps: &QuantizedParameters, signal: &[i32], errors: &mut [i32]) {
     assert!(errors.len() >= signal.len());
     let maxabs_signal: u64 = find_max_abs::<16>(signal).into();
