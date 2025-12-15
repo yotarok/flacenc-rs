@@ -1210,16 +1210,6 @@ pub enum FrameOffset {
     StartSample(u64),
 }
 
-/// Reimplementation of `u32::ilog2` for older rust compilers.
-///
-/// # Panics
-///
-/// It panics when `x == 0`.
-#[inline]
-fn ilog2(x: u32) -> u32 {
-    31 - x.leading_zeros()
-}
-
 /// Enum for block size specifier in [`FrameHeader`].
 ///
 /// Refer [`FRAME_HEADER`](https://xiph.org/flac/format.html#frame_header)
@@ -1251,9 +1241,9 @@ impl BlockSizeSpec {
     pub fn from_size(size: u16) -> Self {
         match size {
             192 => Self::S192,
-            576 | 1152 | 2304 | 4608 => Self::Pow2Mul576(ilog2(u32::from(size / 576)) as u8),
+            576 | 1152 | 2304 | 4608 => Self::Pow2Mul576(u32::from(size / 576).ilog2() as u8),
             256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 => {
-                Self::Pow2Mul256(ilog2(u32::from(size / 256)) as u8)
+                Self::Pow2Mul256(u32::from(size / 256).ilog2() as u8)
             }
             x if x <= 256 => Self::ExtraByte((x - 1) as u8),
             x => Self::ExtraTwoBytes(x - 1),
