@@ -17,4 +17,6 @@
 # artifacts made by run_reporter.sh
 /venv
 profile.pb
-
+# artifacts used in bench_runner
+key.json
+.env

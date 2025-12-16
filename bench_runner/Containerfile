@@ -1,0 +1,32 @@
+FROM rust:1-slim-bookworm
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     build-essential \
+     ca-certificates \
+     curl \
+     ffmpeg \
+     git \
+     gnupg \
+     xz-utils \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/share/keyrings \
+ && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+ | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list
+
+RUN apt-get update && apt-get install -y \
+     google-cloud-cli \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN rustup toolchain install stable
+RUN rustup toolchain install nightly
+RUN curl -fsSL https://astral.sh/uv/install.sh | sh
+
+COPY runner_scripts/collect_host_info.sh /collect_host_info.sh
+COPY runner_scripts/run_all.sh /run_all.sh
+
+# bash /run_all.sh | tee /bench_log.txt
+CMD ["bash", "/run_all.sh"]
