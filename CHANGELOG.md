@@ -1,5 +1,22 @@
 # ChangeLog
 
+## 0.5.1 (flacenc-bin: 0.2.7)
+
+### Changed
+
+- Bumped MSRV to 1.83 and enabled the `manual_div_ceil` lint.
+- Removed the custom `ilog2` implementation in favor of the standard library.
+- Updated dependency: use the latest `built` crate (unpinned version).
+
+### Fixed
+
+- Addressed "static reference in const" compile errors on newer toolchains.
+
+### CI/Docs
+
+- Updated GitHub Actions to reflect the new MSRV.
+- Added/updated documentation to mention the MSRV policy.
+
 ## 0.5.0 (flacenc-bin: 0.2.6)
 
 ### Breaking Changes
