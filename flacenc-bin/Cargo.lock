@@ -157,9 +157,9 @@ dependencies = [
 
 [[package]]
 name = "built"
-version = "0.7.1"
+version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d17f4d6e4dc36d1a02fbedc2753a096848e7c1b0772f7654eab8e2c927dd53"
+checksum = "56ed6191a7e78c36abdb16ab65341eefd73d64d303fffccdbb00d51e4205967b"
 
 [[package]]
 name = "bumpalo"
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "built",
  "crc",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "flacenc-bin"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "clap",
  "env_logger",

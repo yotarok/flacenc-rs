@@ -29,7 +29,7 @@ refer to the [auto-generated report].
 Add the following line to your `Cargo.toml`:
 
 ```toml
-flacenc = "0.5.0"
+flacenc = "0.5.1"
 ```
 
 This crate is intended to be, and primarily developed with
@@ -39,7 +39,7 @@ possible to build within a stable toolchain. If you are okay with using a
 nightly toolchain, use this crate with the SIMD features as follows:
 
 ```toml
-flacenc = { version = "0.5.0", features = ["simd-nightly"] }
+flacenc = { version = "0.5.1", features = ["simd-nightly"] }
 ```
 
 The performance improvement with "simd-nightly" feature can be seen by comparing
