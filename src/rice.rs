@@ -45,7 +45,8 @@ static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 
 // max value of p_to_bits is chosen so that an estimate doesn't overflow after
 // being added 2^4 = 16 times each other at maximum.
-static MAX_P_TO_BITS: u32 = (1 << 28) - 1;
+// With RICE2, minimizer packs bits with << 5, so max safe value is (1 << 27) - 1.
+static MAX_P_TO_BITS: u32 = (1 << 27) - 1;
 static MAX_P_TO_BITS_VEC: simd::u32x16 = simd::u32x16::from_array([MAX_P_TO_BITS; 16]);
 
 const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
@@ -135,8 +136,8 @@ impl PrcBitTable {
     pub fn merge(&self, other: &Self, offset: usize) -> Self {
         let offset = simd::u32x16::splat(offset as u32);
         Self {
-            p_to_bits_lo: self.p_to_bits_lo + other.p_to_bits_lo - offset,
-            p_to_bits_hi: self.p_to_bits_hi + other.p_to_bits_hi - offset,
+            p_to_bits_lo: (self.p_to_bits_lo + other.p_to_bits_lo - offset).simd_min(MAX_P_TO_BITS_VEC),
+            p_to_bits_hi: (self.p_to_bits_hi + other.p_to_bits_hi - offset).simd_min(MAX_P_TO_BITS_VEC),
         }
     }
 }
@@ -324,8 +325,8 @@ mod tests {
         let (p, _bits) = table.minimizer(max_p);
         eprintln!("Table = {table:?}");
         eprintln!("Found p = {p}");
-        // assert at least there's some parameter smaller than max.
-        assert!(p < 29);
+        // assert the optimizer found a reasonable parameter, not at the boundary.
+        assert!(p < max_p);
         // Also, must be better than unary coding.
         assert!(p > 0);
     }

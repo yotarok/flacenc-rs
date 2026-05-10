@@ -394,18 +394,18 @@ fn encode_subframe(
         // Assuming constant is always best if it's applicable.
         Constant::from_parts(samples.len(), samples[0], bits_per_sample).into()
     } else {
-        let baseline_bits =
+        let verbatim_bits =
             Verbatim::count_bits_from_metadata(samples.len(), bits_per_sample as usize);
 
         let too_short = samples.len() < MIN_BLOCK_SIZE_FOR_PREDICTION;
         let fixed = if !too_short && config.use_fixed {
-            fixed_lpc(config, samples, bits_per_sample, baseline_bits)
+            fixed_lpc(config, samples, bits_per_sample, verbatim_bits)
         } else {
             None
         };
 
-        let baseline_bits = fixed.as_ref().map_or(baseline_bits, |x| {
-            std::cmp::min(baseline_bits, x.count_bits())
+        let baseline_bits = fixed.as_ref().map_or(verbatim_bits, |x| {
+            std::cmp::min(verbatim_bits, x.count_bits())
         });
         let est_lpc = if !too_short && config.use_lpc {
             let candidate = estimated_qlpc(config, samples, bits_per_sample);
@@ -416,6 +416,7 @@ fn encode_subframe(
 
         est_lpc
             .or(fixed)
+            .filter(|sf| sf.count_bits() < verbatim_bits)
             .unwrap_or_else(|| Verbatim::from_samples(samples, bits_per_sample).into())
     }
 }
