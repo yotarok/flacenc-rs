@@ -492,7 +492,7 @@ mod tests {
         }
         {
             let config = Prc {
-                max_parameter: 18,
+                max_parameter: 31,
                 ..Default::default()
             };
             config.verify().unwrap_err();

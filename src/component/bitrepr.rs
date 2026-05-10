@@ -537,7 +537,10 @@ impl BitRepr for Residual {
         let mut remainder_bits: usize =
             self.sum_rice_params() * (self.block_size() >> self.partition_order());
         remainder_bits -= self.warmup_length() * self.rice_params()[0] as usize;
-        2 + 4 + nparts * 4 + quotient_bits + remainder_bits
+        // Use RICE2 (5-bit params) when any parameter exceeds 14
+        let use_rice2 = self.rice_params().iter().any(|&p| p > 14);
+        let param_bits = if use_rice2 { 5 } else { 4 };
+        2 + 4 + nparts * param_bits + quotient_bits + remainder_bits
     }
 
     /// Writes `Residual` to the [`BitSink`].
@@ -545,10 +548,15 @@ impl BitRepr for Residual {
     /// This is the most inner-loop of the output part of the encoder, so
     /// computational efficiency is prioritized more than readability.
     fn write<S: BitSink>(&self, dest: &mut S) -> Result<(), OutputError<S>> {
-        // The number of partitions with 00 (indicating 4-bit mode) prepended.
-        dest.write_lsbs(self.partition_order() as u32, 6)
-            .map_err(OutputError::<S>::from_sink)?;
         let nparts = 1usize << self.partition_order();
+        // Use RICE2 (5-bit params) when any parameter exceeds 14
+        let use_rice2 = self.rice_params()[..nparts].iter().any(|&p| p > 14);
+        let (method_bits, param_bits): (u32, usize) = if use_rice2 { (1, 5) } else { (0, 4) };
+
+        // Write method (2 bits) + partition order (4 bits) = 6 bits total
+        let header = (method_bits << 4) | (self.partition_order() as u32);
+        dest.write_lsbs(header, 6)
+            .map_err(OutputError::<S>::from_sink)?;
 
         // unforunatelly, the overhead due to the use of iterators is visible
         // here. so we back-off to integer-based loops. (drawback of index-loop
@@ -558,7 +566,7 @@ impl BitRepr for Residual {
         let mut offset = 0;
         while p < nparts {
             let rice_p = self.rice_params()[p];
-            dest.write_lsbs(rice_p, 4)
+            dest.write_lsbs(rice_p, param_bits)
                 .map_err(OutputError::<S>::from_sink)?;
             let start = max(self.warmup_length(), offset);
             offset += part_len;

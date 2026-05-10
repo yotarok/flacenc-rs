@@ -138,9 +138,9 @@ pub mod qlpc {
 pub mod rice {
     /// Maximum allowed value for the Rice parameters.
     ///
-    /// 5-bit rice coding is not supported currently, and 0b1111 is reserved for
-    /// verbatim encoding. So, 14 will be the maximum.
-    pub const MAX_RICE_PARAMETER: usize = 14;
+    /// With 5-bit rice coding (RICE2), the maximum parameter is 30
+    /// (0b11111 = 31 is reserved for escape/verbatim).
+    pub const MAX_RICE_PARAMETER: usize = 30;
 
     /// Maximum order of Rice parameter partitioning.
     pub const MAX_PARTITION_ORDER: usize = 15;

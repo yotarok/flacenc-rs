@@ -25,17 +25,22 @@ use super::repeat::repeat;
 import_simd!(as simd);
 
 /// Table that contains the numbers of bits needed for a partition.
+/// Supports rice parameters 0..=30 using two 16-wide SIMD vectors.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
-#[repr(transparent)]
 struct PrcBitTable {
-    p_to_bits: simd::u32x16,
+    p_to_bits_lo: simd::u32x16,  // params 0..15
+    p_to_bits_hi: simd::u32x16,  // params 16..31
 }
 
 static ZEROS: simd::u32x16 = simd::u32x16::from_array([0u32; 16]);
 static INDEX: simd::u32x16 =
     simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+static INDEX_HI: simd::u32x16 =
+    simd::u32x16::from_array([16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
 static INDEX1: simd::u32x16 =
     simd::u32x16::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+static INDEX1_HI: simd::u32x16 =
+    simd::u32x16::from_array([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
 static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 
 // max value of p_to_bits is chosen so that an estimate doesn't overflow after
@@ -48,71 +53,90 @@ const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
 impl PrcBitTable {
     #[cfg(test)]
     pub fn zero() -> Self {
-        Self { p_to_bits: ZEROS }
+        Self { p_to_bits_lo: ZEROS, p_to_bits_hi: ZEROS }
     }
 
     pub fn from_errors(errors: &[u32], offset: usize) -> Self {
         // ensure that there's no overflow.
         debug_assert!(offset < (1 << 31));
-        let offset =
+        let offset_lo =
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
-        let mut p_to_bits = ZEROS;
+        let offset_hi =
+            simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1_HI;
+        let mut p_to_bits_lo = ZEROS;
+        let mut p_to_bits_hi = ZEROS;
 
-        // MAX_P_TO_BITS is designed not to overflow after 16 times of addition.
-        //
-        // TODO: there's still a risk of overflow when there's a consecutive 16
-        // elements in `error` where all are larger than `1 << 28`. Since it's
-        // very low probability and clamping inputs may degrade the performance,
-        // this issue is ignored currently.
-        //
-        // In most of SIMD-capable CPUs, saturating ops can be done with a
-        // single instruction. However, strangely the use of `saturating_add`
-        // and removing `simd_min` from the loop actually slowed down the
-        // computation by almost twice.
         for chunk in errors.chunks(PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N) {
             if chunk.len() == PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N {
                 repeat!(n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N => {
-                    p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
+                    let v = simd::Simd::splat(chunk[n]);
+                    p_to_bits_lo += v >> INDEX;
+                    p_to_bits_hi += v >> INDEX_HI;
                 });
             } else {
                 repeat!(
                     n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N;
                     while n < chunk.len() => {
-                        p_to_bits += simd::Simd::splat(chunk[n]) >> INDEX;
+                        let v = simd::Simd::splat(chunk[n]);
+                        p_to_bits_lo += v >> INDEX;
+                        p_to_bits_hi += v >> INDEX_HI;
                     }
                 );
             }
-            p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
+            p_to_bits_lo = p_to_bits_lo.simd_min(MAX_P_TO_BITS_VEC);
+            p_to_bits_hi = p_to_bits_hi.simd_min(MAX_P_TO_BITS_VEC);
         }
-        p_to_bits += offset;
-        p_to_bits = p_to_bits.simd_min(MAX_P_TO_BITS_VEC);
-        Self { p_to_bits }
+        p_to_bits_lo += offset_lo;
+        p_to_bits_lo = p_to_bits_lo.simd_min(MAX_P_TO_BITS_VEC);
+        p_to_bits_hi += offset_hi;
+        p_to_bits_hi = p_to_bits_hi.simd_min(MAX_P_TO_BITS_VEC);
+        Self { p_to_bits_lo, p_to_bits_hi }
     }
 
     #[cfg(test)]
     pub fn bits(&self, p: usize) -> usize {
-        self.p_to_bits[p] as usize
+        if p < 16 {
+            self.p_to_bits_lo[p] as usize
+        } else {
+            self.p_to_bits_hi[p - 16] as usize
+        }
     }
 
     #[inline]
     pub fn minimizer(&self, max_p: usize) -> (usize, usize) {
         debug_assert!(max_p <= MAX_RICE_PARAMETER);
-        // exploit the fact that `p_to_bits` only occupies 28-bits of u32.
-        let mask = INDEX.simd_le(simd::u32x16::splat(max_p as u32));
-        let four = simd::u32x16::splat(4);
-        let packed_bits_and_idxs = (mask.select(self.p_to_bits, MAXES) << four) | INDEX;
-        let minim = packed_bits_and_idxs.reduce_min();
-        let ret_bits = minim >> 4;
-        let ret_p = minim & 0x0F;
 
-        (ret_p as usize, ret_bits as usize)
+        // Search low half (params 0..15)
+        let five = simd::u32x16::splat(5);
+
+        let lo_max = std::cmp::min(max_p, 15);
+        let mask_lo = INDEX.simd_le(simd::u32x16::splat(lo_max as u32));
+        let packed_lo = (mask_lo.select(self.p_to_bits_lo, MAXES) << five) | INDEX;
+        let minim_lo = packed_lo.reduce_min();
+
+        if max_p > 15 {
+            // Also search high half (params 16..31)
+            let mask_hi = INDEX_HI.simd_le(simd::u32x16::splat(max_p as u32));
+            let packed_hi = (mask_hi.select(self.p_to_bits_hi, MAXES) << five) | INDEX_HI;
+            let minim_hi = packed_hi.reduce_min();
+
+            let minim = std::cmp::min(minim_lo, minim_hi);
+            let ret_bits = minim >> 5;
+            let ret_p = minim & 0x1F;
+            (ret_p as usize, ret_bits as usize)
+        } else {
+            let ret_bits = minim_lo >> 5;
+            let ret_p = minim_lo & 0x1F;
+            (ret_p as usize, ret_bits as usize)
+        }
     }
 
     #[inline]
     pub fn merge(&self, other: &Self, offset: usize) -> Self {
         let offset = simd::u32x16::splat(offset as u32);
         Self {
-            p_to_bits: self.p_to_bits + other.p_to_bits - offset,
+            p_to_bits_lo: self.p_to_bits_lo + other.p_to_bits_lo - offset,
+            p_to_bits_hi: self.p_to_bits_hi + other.p_to_bits_hi - offset,
         }
     }
 }
@@ -300,8 +324,8 @@ mod tests {
         let (p, _bits) = table.minimizer(max_p);
         eprintln!("Table = {table:?}");
         eprintln!("Found p = {p}");
-        // assert at least there's some parameter smaller than verbatim coding.
-        assert!(p < 13);
+        // assert at least there's some parameter smaller than max.
+        assert!(p < 29);
         // Also, must be better than unary coding.
         assert!(p > 0);
     }
@@ -335,9 +359,9 @@ mod tests {
     #[test]
     fn partition_evaluation() {
         let mut part1 = PrcBitTable::zero();
-        part1.p_to_bits[0..5].copy_from_slice(&[17, 19, 15, 11, 19]);
+        part1.p_to_bits_lo[0..5].copy_from_slice(&[17, 19, 15, 11, 19]);
         let mut part2 = PrcBitTable::zero();
-        part2.p_to_bits[0..5].copy_from_slice(&[12, 14, 16, 18, 20]);
+        part2.p_to_bits_lo[0..5].copy_from_slice(&[12, 14, 16, 18, 20]);
 
         let mut params = [0, 0];
         let min_bits = eval_partitions(&[part1, part2], &mut params, 4);
@@ -348,32 +372,32 @@ mod tests {
     #[test]
     fn partition_merging() {
         let mut part1 = PrcBitTable::zero();
-        part1.p_to_bits[0..5].copy_from_slice(&[17, 19, 15, 11, 19]);
+        part1.p_to_bits_lo[0..5].copy_from_slice(&[17, 19, 15, 11, 19]);
         let mut part2 = PrcBitTable::zero();
-        part2.p_to_bits[0..5].copy_from_slice(&[12, 14, 16, 18, 20]);
+        part2.p_to_bits_lo[0..5].copy_from_slice(&[12, 14, 16, 18, 20]);
 
         let mut table = [part1, part2];
         let table_size = merge_partitions(&mut table);
         assert_eq!(table_size, 1);
-        assert_eq!(table[0].p_to_bits[0..5], [25, 29, 27, 25, 35]);
+        assert_eq!(table[0].p_to_bits_lo[0..5], [25, 29, 27, 25, 35]);
     }
 
     #[test]
     fn minimizer_search() {
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..8].copy_from_slice(&[6, 7, 4, 5, 9, 0, 0, 0]);
+        bt.p_to_bits_lo[0..8].copy_from_slice(&[6, 7, 4, 5, 9, 0, 0, 0]);
         assert_eq!(bt.minimizer(4), (2, 4));
 
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..8].copy_from_slice(&[6, 7, 8, 5, 3, 0, 0, 0]);
+        bt.p_to_bits_lo[0..8].copy_from_slice(&[6, 7, 8, 5, 3, 0, 0, 0]);
         assert_eq!(bt.minimizer(4), (4, 3));
 
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..8].copy_from_slice(&[1, 7, 8, 5, 3, 0, 0, 0]);
+        bt.p_to_bits_lo[0..8].copy_from_slice(&[1, 7, 8, 5, 3, 0, 0, 0]);
         assert_eq!(bt.minimizer(4), (0, 1));
 
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..8].copy_from_slice(&[7, 1, 1, 1, 3, 0, 0, 0]);
+        bt.p_to_bits_lo[0..8].copy_from_slice(&[7, 1, 1, 1, 3, 0, 0, 0]);
         // Current implementation prefers the smallest p when there're multiple
         // minimizers.
         assert_eq!(bt.minimizer(4), (1, 1));
