@@ -63,6 +63,7 @@ cmd env | grep -Ev '(KEY|API|SECRET)'
 section "Git"
 cmd git rev-parse HEAD
 cmd git status --porcelain
+cmd echo "${REPO_DIGEST}"
 
 section "Rust"
 cmd rustup run stable rustc --version --verbose

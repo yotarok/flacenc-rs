@@ -1,5 +1,7 @@
 FROM rust:1-slim-bookworm
 
+ARG REPO_DIGEST
+
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
      build-essential \
@@ -27,6 +29,10 @@ RUN curl -fsSL https://astral.sh/uv/install.sh | sh
 
 COPY runner_scripts/collect_host_info.sh /collect_host_info.sh
 COPY runner_scripts/run_all.sh /run_all.sh
+COPY src.tar.gz /src.tar.gz
+COPY .testwav /testwav
+
+ENV REPO_DIGEST=${REPO_DIGEST}
 
 # bash /run_all.sh | tee /bench_log.txt
 CMD ["bash", "/run_all.sh"]

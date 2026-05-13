@@ -20,3 +20,5 @@ profile.pb
 # artifacts used in bench_runner
 key.json
 .env
+src.tar.gz
+bench_runner/.testwav
