@@ -57,9 +57,7 @@ pub trait LpcFloat:
     type Simd<const N: usize>: SimdFloat<Scalar = Self>
         + StdFloat
         + Copy
-        + From<simd::Simd<Self, N>>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount;
+        + From<simd::Simd<Self, N>>;
 
     /// Solves symetric positive-definite linear equation in-place.
     ///
@@ -74,10 +72,7 @@ pub trait LpcFloat:
 macro_rules! def_lpc_float {
     ($ty:ty) => {
         impl self::LpcFloat for $ty {
-            type Simd<const N: usize>
-                = simd::Simd<$ty, N>
-            where
-                simd::LaneCount<N>: simd::SupportedLaneCount;
+            type Simd<const N: usize> = simd::Simd<$ty, N>;
 
             #[cfg(feature = "experimental")]
             #[inline]
@@ -163,11 +158,8 @@ pub trait Weight {
     /// Apply weight to a sample `x` at time-offset `t`.
     fn apply(&self, t: usize, x: f32) -> f32;
     /// Apply weights to a vector of samples `x` starting at time-offset `t0`.
-    #[cfg(feature = "experimental")]
     #[allow(dead_code)]
-    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount;
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>;
 }
 
 struct NoWeight;
@@ -181,12 +173,8 @@ impl<W: Weight> Weight for &W {
     fn apply(&self, t: usize, x: f32) -> f32 {
         (*self).apply(t, x)
     }
-    #[cfg(feature = "experimental")]
     #[inline]
-    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N> {
         (*self).apply_simd(t0, x)
     }
 }
@@ -196,12 +184,8 @@ impl Weight for NoWeight {
     fn apply(&self, _t: usize, x: f32) -> f32 {
         x
     }
-    #[cfg(feature = "experimental")]
     #[inline]
-    fn apply_simd<const N: usize>(&self, _t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
+    fn apply_simd<const N: usize>(&self, _t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N> {
         x
     }
 }
@@ -213,10 +197,7 @@ impl Weight for VecWeight {
         self.0[t] * x
     }
     #[inline]
-    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N> {
         x * simd::Simd::<f32, N>::from_slice(&self.0[t0..(t0 + N)])
     }
 }
@@ -228,10 +209,7 @@ impl<W: Weight, const M: usize> Weight for ShiftedWeight<M, W> {
         self.0.apply(t + M, x)
     }
     #[inline]
-    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N>
-    where
-        simd::LaneCount<N>: simd::SupportedLaneCount,
-    {
+    fn apply_simd<const N: usize>(&self, t0: usize, x: simd::Simd<f32, N>) -> simd::Simd<f32, N> {
         self.0.apply_simd(t0 + M, x)
     }
 }
@@ -332,7 +310,6 @@ where
         + std::ops::Sub<simd::Simd<T, N>, Output = simd::Simd<T, N>>
         + std::ops::Mul<simd::Simd<T, N>, Output = simd::Simd<T, N>>
         + std::ops::AddAssign<simd::Simd<T, N>>,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     let block_size = signal.len();
     debug_assert!(errors.len() >= block_size);
@@ -472,7 +449,6 @@ fn weighted_delay_prod_sum_impl<
 ) -> T
 where
     T: LpcFloat,
-    simd::LaneCount<LANES>: simd::SupportedLaneCount,
     W: Weight,
 {
     assert!(DELAY <= LANES);

@@ -27,7 +27,6 @@ import_simd!(as simd);
 pub struct SimdVec<T, const N: usize>
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     inner: Vec<simd::Simd<T, N>>,
     len: usize,
@@ -38,7 +37,6 @@ type IterSimd<'a, T, const N: usize> = std::slice::Iter<'a, simd::Simd<T, N>>;
 impl<T, const N: usize> SimdVec<T, N>
 where
     T: simd::SimdElement + Default,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     /// Constructs new `SimdVec` with length `0` and the default capacity.
     pub fn new() -> Self {
@@ -395,7 +393,6 @@ pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
 pub fn pack_into_simd_vec<T, const LANES: usize>(src: &[T], dest: &mut Vec<simd::Simd<T, LANES>>)
 where
     T: simd::SimdElement + Default,
-    simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
     let zero_v = simd::Simd::<T, LANES>::default();
     dest.clear();
@@ -416,7 +413,6 @@ where
 pub fn unpack_simds<T, const LANES: usize>(src: &[simd::Simd<T, LANES>], dest: &mut Vec<T>)
 where
     T: simd::SimdElement + Default,
-    simd::LaneCount<LANES>: simd::SupportedLaneCount,
 {
     dest.resize(src.len() * LANES, T::default());
     let mut offset = 0;
@@ -431,7 +427,6 @@ where
 fn slice_as_simd<T, const N: usize>(data: &[T]) -> (&[T], &[simd::Simd<T, N>], &[T])
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     #[cfg(feature = "simd-nightly")]
     {
@@ -449,7 +444,6 @@ fn slice_as_simd_mut<T, const N: usize>(
 ) -> (&mut [T], &mut [simd::Simd<T, N>], &mut [T])
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     #[cfg(feature = "simd-nightly")]
     {
@@ -479,7 +473,6 @@ where
     Q: Fn(U, U) -> U,
     R: Fn(simd::Simd<U, N>, simd::Simd<U, N>) -> simd::Simd<U, N>,
     S: Fn(simd::Simd<U, N>) -> U,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     let mut acc_v = simd::Simd::splat(init);
     let mut acc = init;
@@ -500,14 +493,11 @@ where
 }
 
 /// Finds the element with maximum absolute value from the data.
-pub fn find_sum_abs_f32<const N: usize>(data: &[i32]) -> f32
-where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
+pub fn find_sum_abs_f32<const N: usize>(data: &[i32]) -> f32 {
     simd_map_and_reduce(
         data,
         |x| x.abs() as f32,
-        |v| v.abs().cast(),
+        |v: simd::Simd<_, N>| v.abs().cast(),
         std::ops::Add::add,
         std::ops::Add::add,
         SimdFloat::reduce_sum,
@@ -516,14 +506,11 @@ where
 }
 
 /// Finds the element with maximum absolute value from the data.
-pub fn find_max_abs<const N: usize>(data: &[i32]) -> u32
-where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
+pub fn find_max_abs<const N: usize>(data: &[i32]) -> u32 {
     simd_map_and_reduce(
         data,
         i32::unsigned_abs,
-        |v| v.abs().cast(),
+        |v: simd::Simd<_, N>| v.abs().cast(),
         std::cmp::max,
         SimdOrd::simd_max,
         SimdUint::reduce_max,
@@ -532,12 +519,9 @@ where
 }
 
 /// Finds the minimum and maximum of the `data`.
-pub fn find_min_and_max<const N: usize>(data: &[i32], init: i32) -> (i32, i32)
-where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
-    let mut max_v = simd::Simd::splat(init);
-    let mut min_v = simd::Simd::splat(init);
+pub fn find_min_and_max<const N: usize>(data: &[i32], init: i32) -> (i32, i32) {
+    let mut max_v: simd::Simd<_, N> = simd::Simd::splat(init);
+    let mut min_v: simd::Simd<_, N> = simd::Simd::splat(init);
     let mut max = init;
     let mut min = init;
     let (head, body, foot) = slice_as_simd(data);
@@ -560,16 +544,13 @@ where
 }
 
 /// Finds the element with maximum value from the unsigned data.
-pub fn find_max<const N: usize>(data: &[u32]) -> u32
-where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
+pub fn find_max<const N: usize>(data: &[u32]) -> u32 {
     simd_map_and_reduce(
         data,
         #[inline(always)]
         |x| x,
         #[inline(always)]
-        |v| v,
+        |v: simd::Simd<_, N>| v,
         std::cmp::max,
         SimdOrd::simd_max,
         SimdUint::reduce_max,
@@ -584,7 +565,6 @@ where
     T: simd::SimdElement + num_traits::WrappingAdd + num_traits::Zero,
     simd::Simd<T, N>: SimdUint<Scalar = T> + std::ops::Add<Output = simd::Simd<T, N>>,
     repeat::Count<N>: repeat::Repeat,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     simd_map_and_reduce::<T, N, _, _, _, _, _, _>(
         data,
@@ -620,7 +600,6 @@ pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
 ) where
     T: simd::SimdElement,
     U: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
     F: FnMut(&mut T, U),
     G: FnMut(&mut simd::Simd<T, N>, simd::Simd<U, N>),
 {
@@ -663,7 +642,6 @@ pub fn unaligned_map_and_update<T, const N: usize, U, F, G>(
 pub fn transmute_and_flatten_simd<T, const N: usize>(simds: &[simd::Simd<T, N>]) -> &[T]
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     let newlen = simds.len() * N;
     unsafe { std::slice::from_raw_parts(simds.as_ptr().cast(), newlen) }
@@ -676,7 +654,6 @@ where
 pub fn transmute_and_flatten_simd_mut<T, const N: usize>(simds: &mut [simd::Simd<T, N>]) -> &mut [T]
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
 {
     let newlen = simds.len() * N;
     unsafe { std::slice::from_raw_parts_mut(simds.as_mut_ptr().cast(), newlen) }

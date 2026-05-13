@@ -171,10 +171,7 @@ pub const fn encode_signbit(v: i32) -> u32 {
 }
 
 #[inline]
-pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<u32, N>
-where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
+pub fn encode_signbit_simd<const N: usize>(v: simd::Simd<i32, N>) -> simd::Simd<u32, N> {
     (v.abs().cast() << simd::Simd::splat(1u32)) - (v.cast() >> simd::Simd::splat(31u32))
 }
 
