@@ -28,19 +28,21 @@ import_simd!(as simd);
 /// Supports rice parameters 0..=30 using two 16-wide SIMD vectors.
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 struct PrcBitTable {
-    p_to_bits_lo: simd::u32x16,  // params 0..15
-    p_to_bits_hi: simd::u32x16,  // params 16..31
+    p_to_bits_lo: simd::u32x16, // params 0..15
+    p_to_bits_hi: simd::u32x16, // params 16..31
 }
 
 static ZEROS: simd::u32x16 = simd::u32x16::from_array([0u32; 16]);
 static INDEX: simd::u32x16 =
     simd::u32x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-static INDEX_HI: simd::u32x16 =
-    simd::u32x16::from_array([16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
+static INDEX_HI: simd::u32x16 = simd::u32x16::from_array([
+    16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+]);
 static INDEX1: simd::u32x16 =
     simd::u32x16::from_array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-static INDEX1_HI: simd::u32x16 =
-    simd::u32x16::from_array([17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+static INDEX1_HI: simd::u32x16 = simd::u32x16::from_array([
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+]);
 static MAXES: simd::u32x16 = simd::u32x16::from_array([u32::MAX; 16]);
 
 // max value of p_to_bits is chosen so that an estimate doesn't overflow after
@@ -54,7 +56,10 @@ const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
 impl PrcBitTable {
     #[cfg(test)]
     pub fn zero() -> Self {
-        Self { p_to_bits_lo: ZEROS, p_to_bits_hi: ZEROS }
+        Self {
+            p_to_bits_lo: ZEROS,
+            p_to_bits_hi: ZEROS,
+        }
     }
 
     pub fn from_errors(errors: &[u32], offset: usize) -> Self {
@@ -62,8 +67,8 @@ impl PrcBitTable {
         debug_assert!(offset < (1 << 31));
         let offset_lo =
             simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1;
-        let offset_hi =
-            simd::u32x16::splat(offset as u32) + simd::u32x16::splat(errors.len() as u32) * INDEX1_HI;
+        let offset_hi = simd::u32x16::splat(offset as u32)
+            + simd::u32x16::splat(errors.len() as u32) * INDEX1_HI;
         let mut p_to_bits_lo = ZEROS;
         let mut p_to_bits_hi = ZEROS;
 
@@ -91,7 +96,10 @@ impl PrcBitTable {
         p_to_bits_lo = p_to_bits_lo.simd_min(MAX_P_TO_BITS_VEC);
         p_to_bits_hi += offset_hi;
         p_to_bits_hi = p_to_bits_hi.simd_min(MAX_P_TO_BITS_VEC);
-        Self { p_to_bits_lo, p_to_bits_hi }
+        Self {
+            p_to_bits_lo,
+            p_to_bits_hi,
+        }
     }
 
     #[cfg(test)]
@@ -136,8 +144,10 @@ impl PrcBitTable {
     pub fn merge(&self, other: &Self, offset: usize) -> Self {
         let offset = simd::u32x16::splat(offset as u32);
         Self {
-            p_to_bits_lo: (self.p_to_bits_lo + other.p_to_bits_lo - offset).simd_min(MAX_P_TO_BITS_VEC),
-            p_to_bits_hi: (self.p_to_bits_hi + other.p_to_bits_hi - offset).simd_min(MAX_P_TO_BITS_VEC),
+            p_to_bits_lo: (self.p_to_bits_lo + other.p_to_bits_lo - offset)
+                .simd_min(MAX_P_TO_BITS_VEC),
+            p_to_bits_hi: (self.p_to_bits_hi + other.p_to_bits_hi - offset)
+                .simd_min(MAX_P_TO_BITS_VEC),
         }
     }
 }
