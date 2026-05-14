@@ -2212,7 +2212,7 @@ impl QuantizedParameters {
     /// Constructs new `QuantizedParameters` from parts without data verification.
     #[inline]
     pub(crate) fn from_parts(coefs: &[i16], order: usize, shift: i8, precision: usize) -> Self {
-        debug_assert!(coefs.len() == order);
+        debug_assert_eq!(coefs.len(), order);
         let mut coefs_v = simd::i16x32::default();
         coefs_v[0..order].copy_from_slice(coefs);
         Self {
@@ -2320,7 +2320,7 @@ impl Residual {
         quotients: Vec<u32>,
         remainders: Vec<u32>,
     ) -> Self {
-        debug_assert!(rice_params.len() == 1usize << partition_order as usize);
+        debug_assert_eq!(rice_params.len(), 1usize << partition_order as usize);
 
         let max_quotients: usize = find_max::<64>(&quotients) as usize;
         let sum_quotients: usize = if max_quotients * block_size < u32::MAX as usize {

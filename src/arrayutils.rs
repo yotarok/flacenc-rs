@@ -322,7 +322,7 @@ fn le16_bytes_to_i32s(bytes: &[u8], dest: &mut [i32]) {
         off += LE16_BYTES_TO_I32S_LANES;
     }
 
-    debug_assert!(foot.len() % 2 == 0);
+    debug_assert_eq!(foot.len() % 2, 0);
     let mut n = 0;
     while n < foot.len() {
         dest[off] = (i32::from(foot[n + 1] as i8) << 8) | i32::from(foot[n]);

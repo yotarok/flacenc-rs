@@ -235,11 +235,11 @@ impl<T1: Signal + Sized, T2: Signal + Sized> Signal for Mix<T1, T2> {
         let mut buf = vec![0.0f32; dest.len()];
         self.signal1.fill_buffer(offset, &mut buf);
         for (p, x) in dest.iter_mut().zip(buf.iter()) {
-            *p += self.weight1 * *x;
+            *p = self.weight1.mul_add(*x, *p);
         }
         self.signal2.fill_buffer(offset, &mut buf);
         for (p, x) in dest.iter_mut().zip(buf.iter()) {
-            *p += self.weight2 * *x;
+            *p = self.weight2.mul_add(*x, *p);
         }
     }
 }
