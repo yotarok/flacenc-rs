@@ -434,7 +434,7 @@ mod bench {
     #[bench]
     fn rice_find_minimizer(b: &mut Bencher) {
         let mut bt = PrcBitTable::zero();
-        bt.p_to_bits[0..16].copy_from_slice(&[6, 7, 4, 5, 9, 9, 2, 3, 8, 2, 4, 3, 0, 0, 0, 0]);
+        bt.p_to_bits_lo[0..16].copy_from_slice(&[6, 7, 4, 5, 9, 9, 2, 3, 8, 2, 4, 3, 0, 0, 0, 0]);
         // This should be almost zero-cost
         b.iter(|| black_box(&bt).minimizer(black_box(12)));
     }
