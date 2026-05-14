@@ -117,7 +117,7 @@ mod tests {
         let mut bv_ref: MemSink<u64> = MemSink::new();
         let frame_cloned = frame.clone();
         frame_cloned.write(&mut bv_ref)?;
-        assert!(bv_ref.len() % 8 == 0); // frame must be byte-aligned.
+        assert_eq!(bv_ref.len() % 8, 0); // frame must be byte-aligned.
 
         frame.precompute_bitstream();
         assert!(frame.is_bitstream_precomputed());

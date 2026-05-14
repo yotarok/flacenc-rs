@@ -15,7 +15,7 @@
 
 #![doc = include_str!("../README.md")]
 #![cfg_attr(feature = "simd-nightly", feature(portable_simd))]
-#![cfg_attr(feature = "simd-nightly", feature(test))]
+#![cfg_attr(all(test, feature = "simd-nightly"), feature(test))]
 // Note that clippy attributes should be in sync with those declared in "main.rs"
 #![warn(clippy::all, clippy::nursery, clippy::pedantic, clippy::cargo)]
 #![allow(unknown_lints)]

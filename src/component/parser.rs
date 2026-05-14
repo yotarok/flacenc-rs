@@ -445,7 +445,7 @@ where
     let (remaining_input, typetag) = bit_take(7usize)(remaining_input)?;
     let (remaining_input, wasted_flag): (_, u8) = bit_take(1usize)(remaining_input)?;
 
-    assert!(wasted_flag == 0); // not supported
+    assert_eq!(wasted_flag, 0); // not supported
 
     Ok((remaining_input, (typetag, wasted_flag != 0)))
 }

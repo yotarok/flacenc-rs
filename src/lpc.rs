@@ -452,7 +452,7 @@ where
     W: Weight,
 {
     assert!(DELAY <= LANES);
-    assert!(LANES_MINUS_DELAY == LANES - DELAY);
+    assert_eq!(LANES_MINUS_DELAY, LANES - DELAY);
     let mut acc = T::zero();
 
     let delayed_signal = &signal[warm_up - DELAY..];
@@ -612,7 +612,7 @@ where
         errors[t] = -signal[t] as f32;
         for j in 0..lpc_order {
             let coef: f32 = lpc_coefs[j].as_();
-            errors[t] += coef * signal[t - 1 - j] as f32;
+            errors[t] = coef.mul_add(signal[t - 1 - j] as f32, errors[t]);
         }
     }
 }
@@ -1115,7 +1115,7 @@ mod tests {
         // zeroes.
         assert!(qlpc.coefs().len() <= lpc_order);
         eprintln!("Raw coefs: {:?}", &lpc_coefs[0..lpc_order]);
-        eprintln!("QLPC params: {:?}", &qlpc);
+        eprintln!("QLPC params: {:?}", qlpc);
         compute_error(&qlpc, &signal, &mut errors);
 
         let mut signal_energy = 0.0f64;

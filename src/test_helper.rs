@@ -72,7 +72,7 @@ macro_rules! assert_finite {
 
 #[allow(clippy::similar_names)]
 fn read_le16(src: &[u8]) -> Vec<i32> {
-    assert!(src.len() % 2 == 0);
+    assert_eq!(src.len() % 2, 0);
     let mut ret = vec![0i32; src.len() / 2];
     le_bytes_to_i32s(src, &mut ret, 2);
     ret

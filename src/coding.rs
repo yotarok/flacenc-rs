@@ -131,10 +131,8 @@ fn encode_residual_partition(
     quotients: &mut [u32],
     remainders: &mut [u32],
 ) {
-    let mut t = start;
-    for err in &errors[start..end] {
+    for (t, err) in (start..).zip(errors[start..end].iter()) {
         (quotients[t], remainders[t]) = quotients_and_remainders(*err, rice_p);
-        t += 1;
     }
 }
 
@@ -752,7 +750,7 @@ mod tests {
             block_size,
         )
         .expect("Source read error");
-        eprintln!("MD5 of DC signal ({constant}) with len={signal_len} and ch={channels} was",);
+        eprintln!("MD5 of DC signal ({constant}) with len={signal_len} and ch={channels} was");
         eprint!("[");
         for &b in stream.stream_info().md5_digest() {
             eprint!("0x{b:02X}, ");
@@ -850,7 +848,7 @@ mod tests {
                 "should select the error sequence that minimizes the bit count."
             );
             if order == selected_order {
-                assert!(ref_residual.decode() == residual.decode());
+                assert_eq!(ref_residual.decode(), residual.decode());
             }
         }
     }
