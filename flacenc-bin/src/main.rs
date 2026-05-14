@@ -496,23 +496,32 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    enum TestSignalType {
+        NoisySine,
+        Square,
+    }
+
     struct SourceConfig {
         duration_secs: usize,
         sample_rate: usize,
         channels: usize,
         bits_per_sample: usize,
+        signal_type: TestSignalType,
     }
 
     fn generate_test_wav<P: AsRef<Path>>(output_path: P, src: &SourceConfig) {
         let period_440 = src.sample_rate / 440;
         let signal_len = src.sample_rate * src.duration_secs;
         let mut signals = vec![];
+
+        let gen: Box<dyn Signal> = match src.signal_type {
+            TestSignalType::NoisySine => Box::new(Sine::new(period_440, 0.8).mix(Noise::new(0.2))),
+            TestSignalType::Square => Box::new(Square::new(period_440, 0.8)),
+        };
+
         for _ch in 0..src.channels {
-            signals.push(
-                Sine::new(period_440, 0.8)
-                    .mix(Noise::new(0.2))
-                    .to_vec_quantized(src.bits_per_sample, signal_len),
-            );
+            signals.push(gen.to_vec_quantized(src.bits_per_sample, signal_len));
         }
 
         let mut writer = hound::WavWriter::create(
@@ -562,27 +571,83 @@ mod tests {
     #[rstest]
     #[case(
         "canonical", 
-        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 16 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44100,
+            channels: 2,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        }
     )]
     #[case(
         "sr44097",
-        SourceConfig { duration_secs: 3, sample_rate: 44097, channels: 2, bits_per_sample: 16 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44097,
+            channels: 2,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        }
     )]
     #[case(
         "ch1",
-        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 16 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44100,
+            channels: 1,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        }
     )]
     #[case(
         "ch3",
-        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 3, bits_per_sample: 16 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44100,
+            channels: 3,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        }
     )]
     #[case(
         "bps24",
-        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 2, bits_per_sample: 24 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44100,
+            channels: 2,
+            bits_per_sample: 24,
+            signal_type: TestSignalType::NoisySine
+        }
     )]
     #[case(
         "bps8",
-        SourceConfig { duration_secs: 3, sample_rate: 44100, channels: 1, bits_per_sample: 8 }
+        SourceConfig {
+            duration_secs: 3,
+            sample_rate: 44100,
+            channels: 1,
+            bits_per_sample: 8,
+            signal_type: TestSignalType::NoisySine
+        }
+    )]
+    #[case(
+        "square_bps16",
+        SourceConfig {
+            duration_secs: 1,
+            sample_rate: 48000,
+            channels: 1,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::Square
+        }
+    )]
+    #[case(
+        "square_bps24",
+        SourceConfig {
+            duration_secs: 1,
+            sample_rate: 48000,
+            channels: 1,
+            bits_per_sample: 24,
+            signal_type: TestSignalType::Square
+        }
     )]
     fn integration_encoder_decoder(#[case] case_name: &str, #[case] source_config: SourceConfig) {
         let tmpdir = tempfile::tempdir().unwrap();
@@ -614,6 +679,11 @@ mod tests {
             output: flac_path.to_string_lossy().to_string(),
         })
         .expect("no error expected.");
+
+        let original_size = source_path.metadata().expect("metadata must exist").len();
+        let compressed_size = flac_path.metadata().expect("metadata must exist").len();
+        assert_ne!(compressed_size, 0);
+        assert!(original_size > compressed_size);
 
         main_dec_body(DecodeArgs {
             dump_struct: None,

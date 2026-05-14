@@ -167,6 +167,33 @@ impl Signal for Sine {
     }
 }
 
+/// Generator for a sinusoidal wave.
+#[derive(Clone, Debug)]
+pub struct Square {
+    period: usize,
+    amplitude: f32,
+}
+
+impl Square {
+    /// Constructs new square wave signal with `period` and `amplitude`.
+    pub fn new(period: usize, amplitude: f32) -> Self {
+        Self { period, amplitude }
+    }
+}
+
+impl Signal for Square {
+    fn fill_buffer(&self, offset: usize, dest: &mut [f32]) {
+        for (t, p) in dest.iter_mut().enumerate() {
+            let t = t + offset;
+            *p = if (t / self.period) % 2 == 0 {
+                self.amplitude
+            } else {
+                -self.amplitude
+            };
+        }
+    }
+}
+
 /// Generator for a uniform random white noise.
 #[derive(Clone, Debug)]
 pub struct Noise {
