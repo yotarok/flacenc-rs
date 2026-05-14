@@ -47,14 +47,12 @@ import_simd!(as simd);
 struct SimdDef<T, const N: usize>(#[serde(getter = "simd::Simd::as_array")] [T; N])
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
     [T; N]: for<'a> Deserialize<'a> + Serialize;
 
 #[cfg(feature = "serde")]
 impl<T, const N: usize> From<SimdDef<T, N>> for simd::Simd<T, N>
 where
     T: simd::SimdElement,
-    simd::LaneCount<N>: simd::SupportedLaneCount,
     [T; N]: for<'a> Deserialize<'a> + Serialize,
 {
     fn from(def: SimdDef<T, N>) -> Self {

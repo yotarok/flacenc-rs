@@ -69,9 +69,7 @@ fn quotients_and_remainders_simd<const N: usize>(
     rice_p: u8,
     quotients: &mut [u32],
     remainders: &mut [u32],
-) where
-    simd::LaneCount<N>: simd::SupportedLaneCount,
-{
+) {
     let rice_p_v = simd::Simd::splat(u32::from(rice_p));
     let remainder_mask_v = simd::Simd::splat((1u32 << rice_p) - 1);
     let err_v = rice::encode_signbit_simd(err_v);

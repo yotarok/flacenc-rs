@@ -34,7 +34,7 @@ pub struct Mask<T: SimdElement, const LANES: usize> {
 }
 
 // ===
-// SIMD ELEMENT TRAITS and `SupportedLaneCount`
+// SIMD ELEMENT TRAITS
 // ===
 pub trait SimdElement: Copy + std::fmt::Debug {
     type Mask;
@@ -130,16 +130,6 @@ impl SimdElement for f64 {
         self - rhs
     }
 }
-
-pub trait SupportedLaneCount {}
-pub struct LaneCount<const LANES: usize>;
-impl SupportedLaneCount for LaneCount<1> {}
-impl SupportedLaneCount for LaneCount<2> {}
-impl SupportedLaneCount for LaneCount<4> {}
-impl SupportedLaneCount for LaneCount<8> {}
-impl SupportedLaneCount for LaneCount<16> {}
-impl SupportedLaneCount for LaneCount<32> {}
-impl SupportedLaneCount for LaneCount<64> {}
 
 pub trait SimdCast: SimdElement + NumCast {}
 impl<T: SimdElement + NumCast> SimdCast for T {}
@@ -514,7 +504,6 @@ where
 impl<T, const N: usize> Default for Simd<T, N>
 where
     T: SimdElement + Default,
-    LaneCount<N>: SupportedLaneCount,
 {
     #[inline]
     fn default() -> Self {
