@@ -19,13 +19,28 @@ EOF
 fi
 echo "Project: ${GCP_PROJECT}"
 
+pushd $(git rev-parse --show-toplevel)
+git archive --format=tgz --prefix=flacenc-rs/ -o bench_runner/src.tar.gz HEAD
+popd
+
 REPO_DIGEST="$(git rev-parse --short=7 HEAD)"
-podman build --platform=linux/amd64 -t "${GCP_REPOSITORY}/${GCP_PROJECT}/benchrunner/benchrunner:${REPO_DIGEST}" .
+
+## Download testwavs
+if [[ ! -d .testwav ]] ; then
+  export WIKIMEDIA_ROOT="https://upload.wikimedia.org/wikipedia/commons"
+  mkdir .testwav/
+  curl -sSL "${WIKIMEDIA_ROOT}/9/97/%22I_Love_You%2C_California%22%2C_performed_by_the_Prince%27s_Orchestra_in_1914_for_Columbia_Records.oga" | ffmpeg -i - .testwav/wikimedia.i_love_you_california.wav
+  curl -sSL "${WIKIMEDIA_ROOT}/b/bd/Drozerix_-_A_Winter_Kiss.wav" > .testwav/wikimedia.winter_kiss.wav 
+  curl -sSL "${WIKIMEDIA_ROOT}/7/7f/Jazz_Funk_no1_%28saxophone%29.flac" | ffmpeg -i - .testwav/wikimedia.jazz_funk_no1_sax.wav
+  curl -sSL "${WIKIMEDIA_ROOT}/5/5e/Albert_Roussel_-_Suite_en_Fa%2C_op.33_-_I._Pr%C3%A9lude.flac" | ffmpeg -i - .testwav/wikimedia.suite_en_fa_op_33_1.wav
+fi
+
+podman build --platform=linux/amd64 --build-arg "REPO_DIGEST=${REPO_DIGEST}" -t "${GCP_REPOSITORY}/${GCP_PROJECT}/benchrunner/benchrunner:${REPO_DIGEST}" .
 podman push "${GCP_REPOSITORY}/${GCP_PROJECT}/benchrunner/benchrunner:${REPO_DIGEST}"
 
 gcloud compute instances create-with-container benchrunner-vm \
   --zone "${GCP_ZONE}" \
-  --machine-type e2-standard-8 \
+  --machine-type c2-standard-8 \
   --boot-disk-size=50GB \
   --boot-disk-type=pd-balanced \
   --service-account "${GCP_SERVICE_ACCOUNT}" \
