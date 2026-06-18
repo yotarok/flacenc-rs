@@ -105,6 +105,11 @@ impl Verify for Stream {
         } else if self.frames()[0].header().is_variable_blocking() {
             self.verify_variable_blocking_frames()
         } else {
+            verify_true!(
+                "min_block_size",
+                self.stream_info().min_block_size() == self.stream_info().max_block_size(),
+                "must be equal for fixed-blocking streams"
+            )?;
             self.verify_fixed_blocking_frames()
         }
     }

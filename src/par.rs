@@ -360,14 +360,6 @@ pub fn encode_with_fixed_block_size<T: Source>(
     let config: Arc<Verified<config::Encoder>> = Arc::new(config.clone());
     let mut stream = Stream::new(src.sample_rate(), src.channels(), src.bits_per_sample())?;
 
-    // Probably not very important, but it follows the FLAC reference encoder's behavior
-    // that copies `block_size` to `max_block_size` field of `StreamInfo` when there's
-    // only one frame that is shorter than `block_size`.
-    stream
-        .stream_info_mut()
-        .set_block_sizes(block_size, block_size)
-        .unwrap();
-
     let worker_count = determine_worker_count(&config)?;
     let parbuf = Arc::new(ParFrameBuf::new(
         worker_count * constant::par::FRAMEBUF_MULTIPLICITY,
@@ -437,6 +429,17 @@ pub fn encode_with_fixed_block_size<T: Source>(
     }
 
     destruct_arc(parsink).finalize(|f: Frame| stream.add_frame(f));
+
+    // Keep fixed-block STREAMINFO consistent with the serial encoder path:
+    // strict decoders may require `min_block_size == max_block_size` even when
+    // the tail frame is shorter on-wire, so we finalize to `max,max`.
+    if stream.frame_count() > 0 {
+        let max_block_size = stream.stream_info().max_block_size();
+        stream
+            .stream_info_mut()
+            .set_block_sizes(max_block_size, max_block_size)
+            .unwrap();
+    }
 
     stream
         .stream_info_mut()

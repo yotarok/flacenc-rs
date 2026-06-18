@@ -659,14 +659,6 @@ pub fn encode_with_fixed_block_size<T: Source>(
         Context::new(src.bits_per_sample(), src.channels()),
     );
 
-    // Probably not very important, but it follows the FLAC reference encoder's behavior
-    // that copies `block_size` to `max_block_size` field of `StreamInfo` when there's
-    // only one frame that is shorter than `block_size`.
-    stream
-        .stream_info_mut()
-        .set_block_sizes(block_size, block_size)
-        .unwrap();
-
     loop {
         let read_samples = src.read_samples(block_size, &mut framebuf_and_context)?;
         if read_samples == 0 {
@@ -682,6 +674,17 @@ pub fn encode_with_fixed_block_size<T: Source>(
     }
 
     let (_, context) = framebuf_and_context;
+    // In fixed-block mode, strict decoders may require STREAMINFO to expose a
+    // single block size (`min_block_size == max_block_size`) even when the tail
+    // frame header carries the shorter remainder block size. We therefore
+    // finalize STREAMINFO to `max,max` after all frames are collected.
+    if stream.frame_count() > 0 {
+        let max_block_size = stream.stream_info().max_block_size();
+        stream
+            .stream_info_mut()
+            .set_block_sizes(max_block_size, max_block_size)
+            .unwrap();
+    }
     stream
         .stream_info_mut()
         .set_md5_digest(&context.md5_digest());
@@ -814,6 +817,128 @@ mod tests {
         frame.verify().unwrap();
 
         assert_eq!(frame.decode(), vec![0; block_size]);
+    }
+
+    fn assert_fixed_block_tail_alignment(stream: &Stream, signal_len: usize, block_size: usize) {
+        let stream_info = stream.stream_info();
+        let remainder = signal_len % block_size;
+        let expected_frame_count = signal_len.div_ceil(block_size);
+
+        assert_eq!(stream.frame_count(), expected_frame_count);
+        assert_eq!(stream_info.total_samples(), signal_len);
+        assert_eq!(
+            stream_info.min_block_size(),
+            stream_info.max_block_size(),
+            "STREAMINFO must indicate fixed blocking (min == max) for strict decoders"
+        );
+
+        for (i, frame) in stream.frames().iter().enumerate() {
+            let header = frame.header();
+            assert!(
+                !header.is_variable_blocking(),
+                "frame {i} must use fixed blocking"
+            );
+            assert_eq!(
+                header.frame_number(),
+                i as u32,
+                "frame {i} must have sequential frame number"
+            );
+
+            let expected_block_size = if i + 1 == expected_frame_count && remainder != 0 {
+                remainder
+            } else {
+                block_size
+            };
+            assert_eq!(
+                frame.block_size(),
+                expected_block_size,
+                "frame {i} block size"
+            );
+        }
+    }
+
+    fn fixed_block_encoder_config() -> Verified<config::Encoder> {
+        config::Encoder {
+            multithread: false,
+            ..Default::default()
+        }
+        .into_verified()
+        .unwrap()
+    }
+
+    #[test]
+    fn fixed_block_tail_alignment_regression() {
+        let block_size = 4096;
+        let signal_len = 102;
+        let channels = 1;
+        let bits_per_sample = 16;
+        let sample_rate = 44100;
+        assert_ne!(signal_len % block_size, 0);
+
+        let signal =
+            sigen::Sine::new(440, 0.5).to_vec_quantized(bits_per_sample, signal_len * channels);
+        let source =
+            source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+        let stream =
+            encode_with_fixed_block_size(&fixed_block_encoder_config(), source, block_size)
+                .expect("encoding error");
+
+        assert_fixed_block_tail_alignment(&stream, signal_len, block_size);
+        crate::test_helper::integrity_test(
+            |s| {
+                encode_with_fixed_block_size(&fixed_block_encoder_config(), s, block_size)
+                    .expect("encoding error")
+            },
+            &source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate),
+        );
+    }
+
+    #[test]
+    fn fixed_block_tail_alignment_mono_short_input() {
+        let block_size = 128;
+        let signal_len = 102;
+        let channels = 1;
+        let bits_per_sample = 16;
+        let sample_rate = 44100;
+        assert_ne!(signal_len % block_size, 0);
+
+        let signal =
+            sigen::Noise::new(0.3).to_vec_quantized(bits_per_sample, signal_len * channels);
+        let source =
+            source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+        let stream =
+            encode_with_fixed_block_size(&fixed_block_encoder_config(), source, block_size)
+                .expect("encoding error");
+
+        assert_fixed_block_tail_alignment(&stream, signal_len, block_size);
+    }
+
+    #[test]
+    fn fixed_block_tail_alignment_stereo_realistic_input() {
+        let block_size = 4096;
+        let signal_len = 16123;
+        let channels = 2;
+        let bits_per_sample = 16;
+        let sample_rate = 44100;
+        assert_ne!(signal_len % block_size, 0);
+
+        let signal = sigen::Sine::new(1000, 0.4)
+            .noise(0.05)
+            .to_vec_quantized(bits_per_sample, signal_len * channels);
+        let source =
+            source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate);
+        let stream =
+            encode_with_fixed_block_size(&fixed_block_encoder_config(), source, block_size)
+                .expect("encoding error");
+
+        assert_fixed_block_tail_alignment(&stream, signal_len, block_size);
+        crate::test_helper::integrity_test(
+            |s| {
+                encode_with_fixed_block_size(&fixed_block_encoder_config(), s, block_size)
+                    .expect("encoding error")
+            },
+            &source::MemSource::from_samples(&signal, channels, bits_per_sample, sample_rate),
+        );
     }
 
     #[test]
