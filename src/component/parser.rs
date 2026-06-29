@@ -789,6 +789,12 @@ mod tests {
         let comp = coding::encode_with_fixed_block_size(&config, source, config.block_size)
             .expect("encoding error");
 
+        assert_ne!(signal_len % config.block_size, 0);
+        assert_eq!(
+            comp.stream_info().min_block_size(),
+            comp.stream_info().max_block_size()
+        );
+
         let bytes = comp.to_bytes();
         let (_remaining_input, decoded) =
             stream::<VerboseError<&[u8]>>(&bytes).expect("Unexpected parse error");
