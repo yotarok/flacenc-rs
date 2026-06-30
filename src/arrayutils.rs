@@ -159,17 +159,28 @@ seq!(N in 2..=8 {
         let dst_samples = dest.len() / N;
         let src_samples = interleaved.len() / N;
         let mut t0 = 0;
-        while t0 < dst_samples {
-            repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
-                repeat!(ch to N => {
-                    dest[channel_stride * ch + t0 + offset] = if (t0 + offset) < src_samples {
-                        interleaved[N * (t0 + offset) + ch]
-                    } else {
-                        0i32
-                    };
+        if src_samples >= dst_samples {
+            while t0 < dst_samples {
+                repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
+                    repeat!(ch to N => {
+                        dest[channel_stride * ch + t0 + offset] = interleaved[N * (t0 + offset) + ch];
+                    });
                 });
-            });
-            t0 += 32;
+                t0 += 32;
+            }
+        } else {
+            while t0 < dst_samples {
+                repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
+                    repeat!(ch to N => {
+                        dest[channel_stride * ch + t0 + offset] = if (t0 + offset) < src_samples {
+                            interleaved[N * (t0 + offset) + ch]
+                        } else {
+                            0i32
+                        };
+                    });
+                });
+                t0 += 32;
+            }
         }
     }
 });
@@ -276,16 +287,34 @@ fn le_bytes_to_i32s_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
     assert!(dest.len() >= t_end / BPS);
     let mut t = 0;
     let mut n = 0;
-    while t < t_end {
-        dest[n] = i32::from_le_bytes(std::array::from_fn(|i| {
-            if i < (4 - BPS) {
-                0u8
-            } else {
-                bytes[t + i - (4 - BPS)]
-            }
-        })) >> ((4 - BPS) * 8);
-        n += 1;
-        t += BPS;
+    if BPS == 1 {
+        while t < t_end {
+            dest[n] = i32::from(bytes[t] as i8);
+            n += 1;
+            t += 1;
+        }
+    } else if BPS == 2 {
+        while t + 1 < t_end {
+            let val = u16::from_le_bytes([bytes[t], bytes[t + 1]]);
+            dest[n] = i32::from(val as i16);
+            n += 1;
+            t += 2;
+        }
+    } else if BPS == 3 {
+        while t + 2 < t_end {
+            let val = u32::from_le_bytes([bytes[t], bytes[t + 1], bytes[t + 2], 0u8]);
+            dest[n] = ((val << 8) as i32) >> 8;
+            n += 1;
+            t += 3;
+        }
+    } else if BPS == 4 {
+        while t + 3 < t_end {
+            dest[n] = i32::from_le_bytes([bytes[t], bytes[t + 1], bytes[t + 2], bytes[t + 3]]);
+            n += 1;
+            t += 4;
+        }
+    } else {
+        panic!("Unsupported BPS");
     }
 }
 
@@ -380,12 +409,7 @@ pub fn i32s_to_le_bytes(ints: &[i32], dest: &mut [u8], bytes_per_sample: usize) 
 
 /// Returns true if all elements are equal.
 pub fn is_constant<T: PartialEq>(samples: &[T]) -> bool {
-    for t in 1..samples.len() {
-        if samples[0] != samples[t] {
-            return false;
-        }
-    }
-    true
+    samples.len() <= 1 || samples[1..] == samples[..samples.len() - 1]
 }
 
 /// Pack unaligned scalars into `Vec` of `Simd`s.
