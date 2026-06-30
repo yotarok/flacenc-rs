@@ -343,51 +343,7 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
         let frame = stream.frame(n).unwrap();
         let frame_signal = frame.decode();
 
-        md5_buf.resize(frame_signal.len() * bytes_per_sample, 0);
-        let mut idx = 0;
-        match bytes_per_sample {
-            1 => {
-                for &v in &frame_signal {
-                    md5_buf[idx] = v.to_le_bytes()[0];
-                    idx += 1;
-                }
-            }
-            2 => {
-                for &v in &frame_signal {
-                    let bytes = v.to_le_bytes();
-                    md5_buf[idx] = bytes[0];
-                    md5_buf[idx + 1] = bytes[1];
-                    idx += 2;
-                }
-            }
-            3 => {
-                for &v in &frame_signal {
-                    let bytes = v.to_le_bytes();
-                    md5_buf[idx] = bytes[0];
-                    md5_buf[idx + 1] = bytes[1];
-                    md5_buf[idx + 2] = bytes[2];
-                    idx += 3;
-                }
-            }
-            4 => {
-                for &v in &frame_signal {
-                    let bytes = v.to_le_bytes();
-                    md5_buf[idx] = bytes[0];
-                    md5_buf[idx + 1] = bytes[1];
-                    md5_buf[idx + 2] = bytes[2];
-                    md5_buf[idx + 3] = bytes[3];
-                    idx += 4;
-                }
-            }
-            _ => {
-                for &v in &frame_signal {
-                    let bytes = v.to_le_bytes();
-                    md5_buf[idx..idx + bytes_per_sample].copy_from_slice(&bytes[0..bytes_per_sample]);
-                    idx += bytes_per_sample;
-                }
-            }
-        }
-        md5.update(&md5_buf);
+        update_md5_buffer(&frame_signal, bytes_per_sample, &mut md5_buf, &mut md5);
 
         for &v in &frame_signal {
             writer.write_sample(v).map_err(|e| {
@@ -426,6 +382,60 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
     );
 
     Ok(())
+}
+
+/// Updates the MD5 context with decoded frame signals.
+fn update_md5_buffer(
+    frame_signal: &[i32],
+    bytes_per_sample: usize,
+    md5_buf: &mut Vec<u8>,
+    md5: &mut md5::Md5,
+) {
+    md5_buf.resize(frame_signal.len() * bytes_per_sample, 0);
+    let mut idx = 0;
+    match bytes_per_sample {
+        1 => {
+            for &v in frame_signal {
+                md5_buf[idx] = v.to_le_bytes()[0];
+                idx += 1;
+            }
+        }
+        2 => {
+            for &v in frame_signal {
+                let bytes = v.to_le_bytes();
+                md5_buf[idx] = bytes[0];
+                md5_buf[idx + 1] = bytes[1];
+                idx += 2;
+            }
+        }
+        3 => {
+            for &v in frame_signal {
+                let bytes = v.to_le_bytes();
+                md5_buf[idx] = bytes[0];
+                md5_buf[idx + 1] = bytes[1];
+                md5_buf[idx + 2] = bytes[2];
+                idx += 3;
+            }
+        }
+        4 => {
+            for &v in frame_signal {
+                let bytes = v.to_le_bytes();
+                md5_buf[idx] = bytes[0];
+                md5_buf[idx + 1] = bytes[1];
+                md5_buf[idx + 2] = bytes[2];
+                md5_buf[idx + 3] = bytes[3];
+                idx += 4;
+            }
+        }
+        _ => {
+            for &v in frame_signal {
+                let bytes = v.to_le_bytes();
+                md5_buf[idx..idx + bytes_per_sample].copy_from_slice(&bytes[0..bytes_per_sample]);
+                idx += bytes_per_sample;
+            }
+        }
+    }
+    md5.update(md5_buf);
 }
 
 #[cfg(feature = "pprof")]
