@@ -320,8 +320,10 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
         EX_IOERR
     })?;
 
+    let buffered_writer = std::io::BufWriter::new(&temp_wav_file);
+
     let mut writer = hound::WavWriter::new(
-        &temp_wav_file,
+        buffered_writer,
         hound::WavSpec {
             channels: stream_info.channels() as u16,
             sample_rate: stream_info.sample_rate() as u32,
@@ -336,18 +338,70 @@ fn main_dec_body(args: DecodeArgs) -> Result<(), NonZeroU8> {
 
     let mut md5 = md5::Md5::new();
     let bytes_per_sample = (stream_info.bits_per_sample() + 7) / 8;
+    let mut md5_buf = Vec::new();
     for n in 0..frame_count {
         let frame = stream.frame(n).unwrap();
         let frame_signal = frame.decode();
-        for v in &frame_signal {
-            let v = *v;
+
+        md5_buf.resize(frame_signal.len() * bytes_per_sample, 0);
+        let mut idx = 0;
+        match bytes_per_sample {
+            1 => {
+                for &v in &frame_signal {
+                    md5_buf[idx] = v.to_le_bytes()[0];
+                    idx += 1;
+                }
+            }
+            2 => {
+                for &v in &frame_signal {
+                    let bytes = v.to_le_bytes();
+                    md5_buf[idx] = bytes[0];
+                    md5_buf[idx + 1] = bytes[1];
+                    idx += 2;
+                }
+            }
+            3 => {
+                for &v in &frame_signal {
+                    let bytes = v.to_le_bytes();
+                    md5_buf[idx] = bytes[0];
+                    md5_buf[idx + 1] = bytes[1];
+                    md5_buf[idx + 2] = bytes[2];
+                    idx += 3;
+                }
+            }
+            4 => {
+                for &v in &frame_signal {
+                    let bytes = v.to_le_bytes();
+                    md5_buf[idx] = bytes[0];
+                    md5_buf[idx + 1] = bytes[1];
+                    md5_buf[idx + 2] = bytes[2];
+                    md5_buf[idx + 3] = bytes[3];
+                    idx += 4;
+                }
+            }
+            _ => {
+                for &v in &frame_signal {
+                    let bytes = v.to_le_bytes();
+                    md5_buf[idx..idx + bytes_per_sample].copy_from_slice(&bytes[0..bytes_per_sample]);
+                    idx += bytes_per_sample;
+                }
+            }
+        }
+        md5.update(&md5_buf);
+
+        for &v in &frame_signal {
             writer.write_sample(v).map_err(|e| {
                 display::show_error_msg("Failed to write decoded samples.", Some(e));
                 EX_CANTCREAT
             })?;
-            md5.update(&v.to_le_bytes()[0..bytes_per_sample]);
         }
     }
+
+    writer.finalize().map_err(|e| {
+        display::show_error_msg("Failed to finalize WAV writer.", Some(e));
+        EX_IOERR
+    })?;
+
     let computed_digest: [u8; 16] = md5.finalize().into();
     let stored_digest = stream_info.md5_digest();
     if stored_digest != &[0x00; 16] && stored_digest != &computed_digest {
@@ -675,6 +729,8 @@ mod tests {
         main_enc_body(EncodeArgs {
             config: None,
             dump_config: Some(config_dump_path.to_string_lossy().to_string()),
+            #[cfg(feature = "pprof")]
+            pprof_output: None,
             source: source_path.to_string_lossy().to_string(),
             output: flac_path.to_string_lossy().to_string(),
         })
