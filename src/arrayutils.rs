@@ -158,8 +158,8 @@ seq!(N in 2..=8 {
     fn deinterleave_ch~N(interleaved: &[i32], channel_stride: usize, dest: &mut [i32]) {
         let dst_samples = dest.len() / N;
         let src_samples = interleaved.len() / N;
+        let mut t0 = 0;
         if src_samples >= dst_samples {
-            let mut t0 = 0;
             while t0 < dst_samples {
                 repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
                     repeat!(ch to N => {
@@ -169,7 +169,6 @@ seq!(N in 2..=8 {
                 t0 += 32;
             }
         } else {
-            let mut t0 = 0;
             while t0 < dst_samples {
                 repeat!(offset to 32 ; while (t0 + offset) < dst_samples => {
                     repeat!(ch to N => {
@@ -290,14 +289,14 @@ fn le_bytes_to_i32s_impl<const BPS: usize>(bytes: &[u8], dest: &mut [i32]) {
     let mut n = 0;
     if BPS == 1 {
         while t < t_end {
-            dest[n] = bytes[t] as i8 as i32;
+            dest[n] = i32::from(bytes[t] as i8);
             n += 1;
             t += 1;
         }
     } else if BPS == 2 {
         while t + 1 < t_end {
             let val = u16::from_le_bytes([bytes[t], bytes[t + 1]]);
-            dest[n] = val as i16 as i32;
+            dest[n] = i32::from(val as i16);
             n += 1;
             t += 2;
         }
