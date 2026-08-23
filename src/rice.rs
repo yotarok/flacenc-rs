@@ -55,9 +55,10 @@ const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
 
 #[inline]
 fn add_bounded_bits(current: simd::u32x16, additional: simd::u32x16) -> simd::u32x16 {
-    let sum = current + additional;
-    sum.simd_lt(current)
-        .select(MAX_P_TO_BITS_VEC, sum.simd_min(MAX_P_TO_BITS_VEC))
+    // Clamping the addend first keeps the sum far below the u32 range, so a
+    // separate overflow check would be unreachable.
+    let additional = additional.simd_min(MAX_P_TO_BITS_VEC);
+    (current + additional).simd_min(MAX_P_TO_BITS_VEC)
 }
 
 impl PrcBitTable {
