@@ -236,7 +236,7 @@ where
     T: LpcFloat,
 {
     assert!(precision <= 15);
-    assert!(!coefs.is_empty());
+    assert_ne!(coefs, []);
     let max_abs_coef: T = coefs
         .iter()
         .copied()
