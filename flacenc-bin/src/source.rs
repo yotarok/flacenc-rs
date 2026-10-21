@@ -107,15 +107,22 @@ impl Source for HoundSource {
     ) -> Result<usize, SourceError> {
         self.bytebuf.clear();
         let to_read = std::cmp::min(self.duration - self.current_offset, block_size);
+        let block_align = self.bytes_per_sample * self.channels();
 
-        let to_read_bytes = to_read * self.bytes_per_sample * self.channels();
-        self.bytebuf.resize(to_read_bytes, 0u8);
-        let read_bytes = self
-            .reader
-            .read(&mut self.bytebuf)
+        // A single `read` may return fewer bytes than requested (e.g. when the
+        // request crosses the end of the internal buffer of `BufReader`), so
+        // keep reading until the block is complete or the file ends.
+        self.reader
+            .by_ref()
+            .take((to_read * block_align) as u64)
+            .read_to_end(&mut self.bytebuf)
             .map_err(SourceError::from_io_error)?;
+        // A truncated file may end in the middle of an inter-channel sample.
+        self.bytebuf
+            .truncate(self.bytebuf.len() - self.bytebuf.len() % block_align);
+        let read_samples = self.bytebuf.len() / block_align;
 
-        self.current_offset += to_read;
+        self.current_offset += read_samples;
         if self.bytes_per_sample == 1 {
             // 8-bit wav is not in two's complement, so convert it first
             self.bytebuf.iter_mut().for_each(|p| {
@@ -124,7 +131,7 @@ impl Source for HoundSource {
         }
         dest.fill_le_bytes(&self.bytebuf, self.bytes_per_sample)?;
 
-        Ok(read_bytes / self.channels() / self.bytes_per_sample)
+        Ok(read_samples)
     }
 
     fn len_hint(&self) -> Option<usize> {

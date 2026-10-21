@@ -650,6 +650,48 @@ mod tests {
         }
     )]
     fn integration_encoder_decoder(#[case] case_name: &str, #[case] source_config: SourceConfig) {
+        run_encoder_decoder(case_name, &source_config, None);
+    }
+
+    // Blocks smaller than the internal buffer of `BufReader` (8 KiB) that do not
+    // evenly divide it make some reads of `HoundSource` cross the end of that
+    // buffer, where `Read::read` returns fewer bytes than requested.
+    #[rstest]
+    #[case(
+        "bs576_ch1",
+        SourceConfig {
+            duration_secs: 1,
+            sample_rate: 8000,
+            channels: 1,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        },
+        576
+    )]
+    #[case(
+        "bs1000_ch2",
+        SourceConfig {
+            duration_secs: 1,
+            sample_rate: 44100,
+            channels: 2,
+            bits_per_sample: 16,
+            signal_type: TestSignalType::NoisySine
+        },
+        1000
+    )]
+    fn integration_encoder_decoder_small_block(
+        #[case] case_name: &str,
+        #[case] source_config: SourceConfig,
+        #[case] block_size: usize,
+    ) {
+        run_encoder_decoder(case_name, &source_config, Some(block_size));
+    }
+
+    fn run_encoder_decoder(
+        case_name: &str,
+        source_config: &SourceConfig,
+        block_size: Option<usize>,
+    ) {
         let tmpdir = tempfile::tempdir().unwrap();
         let tmpdir_path = std::env::var_os("FLACENC_TEST_WORKDIR").map_or_else(
             || tmpdir.as_ref().to_path_buf(),
@@ -663,6 +705,13 @@ mod tests {
         );
         let mut config_dump_path = tmpdir_path.clone();
         config_dump_path.push("dumped.toml");
+        let config_path = block_size.map(|block_size| {
+            let mut config_path = tmpdir_path.clone();
+            config_path.push("config.toml");
+            std::fs::write(&config_path, format!("block_size = {block_size}\n"))
+                .expect("Config file creation should not fail.");
+            config_path.to_string_lossy().to_string()
+        });
         let mut flac_path = tmpdir_path.clone();
         flac_path.push("compressed.flac");
         let mut source_path = tmpdir_path.clone();
@@ -670,10 +719,10 @@ mod tests {
         let mut decoded_path = tmpdir_path;
         decoded_path.push("decoded.wav");
 
-        generate_test_wav(&source_path, &source_config);
+        generate_test_wav(&source_path, source_config);
 
         main_enc_body(EncodeArgs {
-            config: None,
+            config: config_path,
             dump_config: Some(config_dump_path.to_string_lossy().to_string()),
             source: source_path.to_string_lossy().to_string(),
             output: flac_path.to_string_lossy().to_string(),
