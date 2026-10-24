@@ -819,6 +819,37 @@ mod tests {
         assert_eq!(frame.decode(), vec![0; block_size]);
     }
 
+    #[test]
+    fn encoding_24_bit_transition_to_silence_stays_bounded() {
+        let channel_count = 2;
+        let block_size = 240;
+        let bits_per_sample = 24;
+        let stream_info = StreamInfo::new(48_000, channel_count, bits_per_sample).unwrap();
+        let mut samples = vec![0; block_size * channel_count];
+        for frame in 0..120 {
+            samples[frame * 2] = -2_000_000 + frame as i32 * 127;
+            samples[frame * 2 + 1] = -1_500_000 + frame as i32 * 63;
+        }
+        let mut frame_buffer = FrameBuf::with_size(channel_count, block_size).unwrap();
+        frame_buffer.fill_interleaved(&samples).unwrap();
+
+        let frame = encode_fixed_size_frame(
+            &config::Encoder::default().into_verified().unwrap(),
+            &frame_buffer,
+            0,
+            &stream_info,
+        )
+        .unwrap();
+        let verbatim_bits = block_size * channel_count * bits_per_sample;
+
+        assert!(
+            frame.count_bits() <= verbatim_bits + 256,
+            "encoded frame uses {} bits for a {verbatim_bits}-bit PCM block",
+            frame.count_bits()
+        );
+        assert_eq!(frame.decode(), samples);
+    }
+
     fn assert_fixed_block_tail_alignment(stream: &Stream, signal_len: usize, block_size: usize) {
         let stream_info = stream.stream_info();
         let remainder = signal_len % block_size;

@@ -53,6 +53,14 @@ static MAX_P_TO_BITS_VEC: simd::u32x16 = simd::u32x16::from_array([MAX_P_TO_BITS
 
 const PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N: usize = 16; // must be up to 16.
 
+#[inline]
+fn add_bounded_bits(current: simd::u32x16, additional: simd::u32x16) -> simd::u32x16 {
+    // Clamping the addend first keeps the sum far below the u32 range, so a
+    // separate overflow check would be unreachable.
+    let additional = additional.simd_min(MAX_P_TO_BITS_VEC);
+    (current + additional).simd_min(MAX_P_TO_BITS_VEC)
+}
+
 impl PrcBitTable {
     #[cfg(test)]
     pub fn zero() -> Self {
@@ -76,21 +84,19 @@ impl PrcBitTable {
             if chunk.len() == PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N {
                 repeat!(n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N => {
                     let v = simd::Simd::splat(chunk[n]);
-                    p_to_bits_lo += v >> INDEX;
-                    p_to_bits_hi += v >> INDEX_HI;
+                    p_to_bits_lo = add_bounded_bits(p_to_bits_lo, v >> INDEX);
+                    p_to_bits_hi = add_bounded_bits(p_to_bits_hi, v >> INDEX_HI);
                 });
             } else {
                 repeat!(
                     n to PRC_BIT_TABLE_FROM_ERRORS_UNROLL_N;
                     while n < chunk.len() => {
                         let v = simd::Simd::splat(chunk[n]);
-                        p_to_bits_lo += v >> INDEX;
-                        p_to_bits_hi += v >> INDEX_HI;
+                        p_to_bits_lo = add_bounded_bits(p_to_bits_lo, v >> INDEX);
+                        p_to_bits_hi = add_bounded_bits(p_to_bits_hi, v >> INDEX_HI);
                     }
                 );
             }
-            p_to_bits_lo = p_to_bits_lo.simd_min(MAX_P_TO_BITS_VEC);
-            p_to_bits_hi = p_to_bits_hi.simd_min(MAX_P_TO_BITS_VEC);
         }
         p_to_bits_lo += offset_lo;
         p_to_bits_lo = p_to_bits_lo.simd_min(MAX_P_TO_BITS_VEC);
@@ -415,6 +421,12 @@ mod tests {
     fn prc_max_bits() {
         // check if the numbers of bits are bounded.
         let table = PrcBitTable::from_errors(&[0x0FFF_FFFE, 0x0100_0000], 0);
+        assert_eq!(table.bits(0), MAX_P_TO_BITS as usize);
+    }
+
+    #[test]
+    fn prc_max_bits_does_not_wrap_within_an_unrolled_chunk() {
+        let table = PrcBitTable::from_errors(&[0x1000_0000; 16], 0);
         assert_eq!(table.bits(0), MAX_P_TO_BITS as usize);
     }
 }
