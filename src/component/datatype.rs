@@ -2002,7 +2002,7 @@ impl FixedLpc {
             verify_sample_range!("warm_up", *v, bits_per_sample)?;
         }
         let warm_up = heapless::Vec::from_slice(warm_up)
-            .map_err(|()| VerifyError::new("warm_up", "must be shorter than (or equal to) 4"))?;
+            .map_err(|_| VerifyError::new("warm_up", "must be shorter than (or equal to) 4"))?;
         let ret = Self::from_parts(warm_up, residual, bits_per_sample as u8);
         Ok(ret)
     }
@@ -2095,7 +2095,7 @@ impl Lpc {
         for v in warm_up {
             verify_sample_range!("warm_up", *v, bits_per_sample)?;
         }
-        let warm_up = heapless::Vec::from_slice(warm_up).map_err(|()| {
+        let warm_up = heapless::Vec::from_slice(warm_up).map_err(|_| {
             VerifyError::new(
                 "warm_up",
                 "must be shorter than (or equal to) `qlpc::MAX_ORDER`",
